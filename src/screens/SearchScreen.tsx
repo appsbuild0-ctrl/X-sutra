@@ -7,7 +7,7 @@ import { ScreenHeader } from '../components/ScreenHeader'
 import { ArrowLeftIcon, ChevronRightIcon, SearchIcon } from '../components/icons'
 import { compactNumber } from '../lib/format'
 import { publicMediaApi } from '../lib/redgifs'
-import type { Creator, TagSuggestion } from '../types'
+import type { Creator, Niche, TagSuggestion } from '../types'
 import { usePagedMedia } from '../hooks/usePagedMedia'
 
 export function SearchScreen(): React.JSX.Element {
@@ -17,6 +17,7 @@ export function SearchScreen(): React.JSX.Element {
   const [value, setValue] = useState(query)
   const [suggestions, setSuggestions] = useState<TagSuggestion[]>([])
   const [creators, setCreators] = useState<Creator[]>([])
+  const [niches, setNiches] = useState<Niche[]>([])
   const [creatorError, setCreatorError] = useState<string | null>(null)
   const feed = usePagedMedia(useCallback((page: number) => publicMediaApi.search(query, page), [query]), [query])
 
@@ -38,9 +39,13 @@ export function SearchScreen(): React.JSX.Element {
   useEffect(() => {
     let cancelled = false
     setCreatorError(null)
+    setNiches([])
     void publicMediaApi.creators(query)
       .then((items) => { if (!cancelled) setCreators(items) })
       .catch((reason) => { if (!cancelled) setCreatorError(reason instanceof Error ? reason.message : 'Creator search failed.') })
+    void publicMediaApi.searchNiches(query)
+      .then((items) => { if (!cancelled) setNiches(items) })
+      .catch(() => { if (!cancelled) setNiches([]) })
     return () => { cancelled = true }
   }, [query])
 
@@ -79,6 +84,15 @@ export function SearchScreen(): React.JSX.Element {
         </div>
         <button className="text-button" type="button" onClick={() => void feed.reload()}>Refresh</button>
       </div>
+
+      {niches.length > 0 && (
+        <>
+          <div className="subsection-heading">Niche results</div>
+          <div className="niche-row">
+            {niches.slice(0, 8).map((niche) => <button className="niche-chip" type="button" key={niche.id} onClick={() => navigate(`/niche/${encodeURIComponent(niche.id)}`)}>{niche.name}<ChevronRightIcon size={14} /></button>)}
+          </div>
+        </>
+      )}
 
       {creators.length > 0 && (
         <>

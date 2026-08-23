@@ -256,6 +256,13 @@ export const publicMediaApi = {
     return stringList(raw.categories)
   },
 
+  async searchNiches(query: string): Promise<Niche[]> {
+    if (!query.trim()) return []
+    const raw = record(await request('/v2/niches/search', { order: 'best_match', page: 1, query: query.trim() }))
+    const rows = Array.isArray(raw.niches) ? raw.niches : []
+    return rows.map(nicheFromRaw).filter((item): item is Niche => item !== null)
+  },
+
   async niche(id: string, page = 1, order: FeedOrder = 'latest'): Promise<PageResult<MediaItem>> {
     return mediaPage(await request('/v2/niches/' + encodeURIComponent(id) + '/gifs', { page, count: 48, order }))
   },
