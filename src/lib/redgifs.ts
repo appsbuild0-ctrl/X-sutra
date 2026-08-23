@@ -46,7 +46,9 @@ function nestedStrings(value: unknown, depth = 0): string[] {
 }
 
 function uniqueUrls(values: string[]): string[] {
-  return [...new Set(values.filter((value) => /^https?:\/\//i.test(value)))]
+  return [...new Set(values
+    .map((value) => value.startsWith('//') ? `https:${value}` : value)
+    .filter((value) => /^https?:\/\//i.test(value)))]
 }
 
 function queryPath(pathname: string, params: Record<string, string | number | boolean | undefined> = {}): string {
