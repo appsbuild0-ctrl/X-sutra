@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { HashRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { BottomNav } from './components/BottomNav'
 import { ToastHost } from './components/ToastHost'
@@ -10,6 +10,7 @@ import { DiscoverScreen } from './screens/DiscoverScreen'
 import { DownloadsScreen } from './screens/DownloadsScreen'
 import { HomeScreen } from './screens/HomeScreen'
 import { LibraryScreen } from './screens/LibraryScreen'
+import { LoginScreen } from './screens/LoginScreen'
 import { NicheScreen } from './screens/NicheScreen'
 import { SearchScreen } from './screens/SearchScreen'
 import { SettingsScreen } from './screens/SettingsScreen'
@@ -50,5 +51,15 @@ function XsApp(): React.JSX.Element {
 }
 
 export default function App(): React.JSX.Element {
+  const [authenticated, setAuthenticated] = useState(() => {
+    try {
+      return window.sessionStorage.getItem('x-sutra.authenticated') === 'true'
+    } catch {
+      return false
+    }
+  })
+
+  if (!authenticated) return <LoginScreen onAuthenticated={() => setAuthenticated(true)} />
+
   return <AppProvider><HashRouter><XsApp /></HashRouter></AppProvider>
 }
