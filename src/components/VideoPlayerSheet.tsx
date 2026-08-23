@@ -1,29 +1,84 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { compactNumber } from '../lib/format'
-import { BookmarkIcon, CloseIcon, DownloadIcon, ExternalIcon } from './icons'
+import { compactNumber, durationLabel } from '../lib/format'
+import {
+  BookmarkIcon,
+  CheckIcon,
+  CloseIcon,
+  DownloadIcon,
+  ExternalIcon,
+  HeartIcon,
+  MuteIcon,
+  PauseIcon,
+  PlayIcon,
+  ShareIcon,
+  UserIcon,
+  VolumeIcon
+} from './icons'
 
+/** Source-style immersive player for the real queue opened from a media grid. */
 export function VideoPlayerSheet(): React.JSX.Element | null {
   const {
     activeMedia,
+    playerQueue,
+    playerIndex,
     closePlayer,
+    stepPlayer,
+    isLiked,
+    toggleLike,
     isSaved,
     toggleSaved,
+    isFollowing,
+    toggleFollow,
     requestDownload,
     preferences,
+    updatePreferences,
     collections,
-    addToCollection
+    addToCollection,
+    notify
   } = useApp()
   const navigate = useNavigate()
+  const videoRef = useRef<HTMLVideoElement | null>(null)
+  const touchStart = useRef<number | null>(null)
+  const lastTap = useRef(0)
+  const [playing, setPlaying] = useState(true)
+  const [muted, setMuted] = useState(preferences.muted)
+  const [progress, setProgress] = useState(0)
+  const [videoError, setVideoError] = useState(false)
   const [collectionId, setCollectionId] = useState('')
+  const [heartBurst, setHeartBurst] = useState(false)
+
+  useEffect(() => {
+    setMuted(preferences.muted)
+  }, [preferences.muted])
 
   useEffect(() => {
     if (!activeMedia) return
+    setProgress(0)
+    setVideoError(false)
     setCollectionId('')
+    setPlaying(true)
+    const timeout = window.setTimeout(() => {
+      const video = videoRef.current
+      if (!video) return
+      video.muted = muted
+      void video.play().then(() => setPlaying(true)).catch(() => setPlaying(false))
+    }, 40)
+    return () => window.clearTimeout(timeout)
+  }, [activeMedia?.id])
+
+  useEffect(() => {
+    if (!activeMedia) return
     const previousOverflow = document.body.style.overflow
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') closePlayer()
+      if (event.key === 'ArrowDown') stepPlayer(1)
+      if (event.key === 'ArrowUp') stepPlayer(-1)
+      if (event.key === ' ') {
+        event.preventDefault()
+        togglePlayback()
+      }
     }
     document.body.style.overflow = 'hidden'
     window.addEventListener('keydown', onKeyDown)
@@ -31,106 +86,161 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
       document.body.style.overflow = previousOverflow
       window.removeEventListener('keydown', onKeyDown)
     }
-  }, [activeMedia, closePlayer])
+  // `togglePlayback` is intentionally stable enough for this document listener.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMedia?.id, closePlayer, stepPlayer])
 
   if (!activeMedia) return null
+  const media = activeMedia
 
+  const source = media.videoUrl ?? media.videoUrlSd
+  const liked = isLiked(activeMedia.id)
   const saved = isSaved(activeMedia.id)
-  const source = activeMedia.videoUrl ?? activeMedia.videoUrlSd
+  const following = isFollowing(activeMedia.creator)
+  const canNext = playerIndex < playerQueue.length - 1
+  const canPrevious = playerIndex > 0
+
+  function togglePlayback(): void {
+    const video = videoRef.current
+    if (!video) return
+    if (video.paused) {
+      void video.play().then(() => setPlaying(true)).catch(() => setPlaying(false))
+    } else {
+      video.pause()
+      setPlaying(false)
+    }
+  }
+
+  function toggleMute(): void {
+    const next = !muted
+    setMuted(next)
+    updatePreferences({ muted: next })
+    if (videoRef.current) videoRef.current.muted = next
+  }
+
+  function burstLike(): void {
+    setHeartBurst(true)
+    window.setTimeout(() => setHeartBurst(false), 580)
+    if (!liked) toggleLike(media)
+  }
+
+  function onVideoTap(): void {
+    const now = Date.now()
+    if (now - lastTap.current < 280) {
+      lastTap.current = 0
+      burstLike()
+      return
+    }
+    lastTap.current = now
+    window.setTimeout(() => {
+      if (lastTap.current === now) {
+        lastTap.current = 0
+        togglePlayback()
+      }
+    }, 280)
+  }
+
+  async function share(): Promise<void> {
+    const payload = { title: media.title, text: `@${media.creator} on X-sutra`, url: media.sourceUrl }
+    try {
+      if (navigator.share) {
+        await navigator.share(payload)
+        notify('Share sheet opened', 'success')
+      } else if (navigator.clipboard) {
+        await navigator.clipboard.writeText(media.sourceUrl)
+        notify('Source link copied', 'success')
+      } else {
+        notify('Sharing is not supported by this browser', 'error')
+      }
+    } catch {
+      // User cancelling the native share sheet is not an error worth surfacing.
+    }
+  }
+
   const openRoute = (path: string) => {
     closePlayer()
     navigate(path)
   }
 
   return (
-    <div className="player-overlay" role="presentation" onMouseDown={(event) => {
-      if (event.target === event.currentTarget) closePlayer()
-    }}>
-      <section className="player-sheet" role="dialog" aria-modal="true" aria-label={`Player for ${activeMedia.title}`}>
-        <header className="player-sheet__topbar">
-          <span className="player-sheet__brand">X-sutra <i>•</i> Public player</span>
-          <button className="round-button round-button--dark" type="button" onClick={closePlayer} aria-label="Close player"><CloseIcon size={20} /></button>
-        </header>
+    <div
+      className="immersive-player"
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Player for ${activeMedia.title}`}
+      onTouchStart={(event) => { touchStart.current = event.touches[0]?.clientY ?? null }}
+      onTouchEnd={(event) => {
+        if (touchStart.current === null) return
+        const end = event.changedTouches[0]?.clientY ?? touchStart.current
+        const delta = end - touchStart.current
+        touchStart.current = null
+        if (delta < -86 && canNext) stepPlayer(1)
+        if (delta > 86 && canPrevious) stepPlayer(-1)
+      }}
+    >
+      <div className="immersive-player__media" onClick={onVideoTap}>
+        {source ? (
+          <video
+            ref={videoRef}
+            key={activeMedia.id}
+            src={source}
+            poster={activeMedia.thumbnail}
+            loop
+            playsInline
+            muted={muted}
+            preload="auto"
+            autoPlay
+            onError={() => { setVideoError(true); setPlaying(false) }}
+            onPlay={() => setPlaying(true)}
+            onPause={() => setPlaying(false)}
+            onTimeUpdate={(event) => {
+              const video = event.currentTarget
+              if (video.duration) setProgress(video.currentTime / video.duration)
+            }}
+          />
+        ) : <div className="immersive-player__unavailable">This public item has no playable video URL.</div>}
+      </div>
+      <div className="immersive-player__scrim" />
 
-        <div className="player-stage">
-          {source ? (
-            <video
-              key={activeMedia.id}
-              src={source}
-              poster={activeMedia.thumbnail}
-              controls
-              autoPlay={preferences.autoplay}
-              muted={preferences.muted}
-              playsInline
-              preload="metadata"
-            >
-              Your device cannot play this public video.
-            </video>
-          ) : (
-            <div className="player-stage__placeholder">
-              <span>Unavailable</span>
-              <strong>This public item does not expose a playable video URL.</strong>
-            </div>
-          )}
-        </div>
+      {heartBurst && <span className="immersive-player__heart" aria-hidden="true"><HeartIcon filled size={76} /></span>}
+      {!playing && !videoError && <span className="immersive-player__paused" aria-hidden="true"><PlayIcon size={34} /></span>}
+      {videoError && <div className="immersive-player__error">Public video could not play on this device. <a href={activeMedia.sourceUrl} target="_blank" rel="noreferrer">Open source</a></div>}
 
-        <div className="player-sheet__body">
-          <div className="player-sheet__headline">
-            <div>
-              <button className="player-creator-link" type="button" onClick={() => openRoute(`/creator/${encodeURIComponent(activeMedia.creator)}`)}>@{activeMedia.creator}</button>
-              <h2>{activeMedia.title}</h2>
-              <p className="player-sheet__stats">{compactNumber(activeMedia.views)} views <span>·</span> {compactNumber(activeMedia.likes)} likes</p>
-            </div>
-            <button
-              className={`save-button save-button--large${saved ? ' is-saved' : ''}`}
-              type="button"
-              onClick={() => toggleSaved(activeMedia)}
-              aria-label={saved ? 'Remove from library' : 'Save to library'}
-            >
-              <BookmarkIcon filled={saved} size={20} />
-            </button>
+      <header className="immersive-player__top">
+        <span>{playerIndex + 1} / {playerQueue.length || 1} · public video</span>
+        <button type="button" onClick={closePlayer} aria-label="Close player"><CloseIcon size={21} /></button>
+      </header>
+
+      <aside className="immersive-player__rail" aria-label="Player actions">
+        <RailAction label={liked ? 'Liked' : 'Like'} active={liked} onClick={() => toggleLike(activeMedia)}><HeartIcon filled={liked} size={22} /></RailAction>
+        <RailAction label="Share" onClick={() => void share()}><ShareIcon size={22} /></RailAction>
+        <RailAction label={muted ? 'Sound off' : 'Sound on'} onClick={toggleMute}>{muted ? <MuteIcon size={22} /> : <VolumeIcon size={22} />}</RailAction>
+        <RailAction label={saved ? 'Saved' : 'Save'} active={saved} onClick={() => toggleSaved(activeMedia)}><BookmarkIcon filled={saved} size={22} /></RailAction>
+        <RailAction label="Download" onClick={() => void requestDownload(activeMedia)}><DownloadIcon size={22} /></RailAction>
+      </aside>
+
+      <footer className="immersive-player__info">
+        <div className="immersive-player__creator">
+          <button className={`player-follow-button${following ? ' is-on' : ''}`} type="button" onClick={() => toggleFollow({ username: activeMedia.creator, displayName: activeMedia.creator, followers: 0, gifs: 0, views: 0, verified: false })} aria-label={following ? 'Unfollow creator' : 'Follow creator'}>
+            {following ? <CheckIcon size={16} /> : <UserIcon size={16} />}
+          </button>
+          <div>
+            <button className="immersive-player__handle" type="button" onClick={() => openRoute(`/creator/${encodeURIComponent(activeMedia.creator)}`)}>@{activeMedia.creator}</button>
+            <p>{compactNumber(activeMedia.views)} views · {durationLabel(activeMedia.duration)}</p>
           </div>
-
-          {activeMedia.description && activeMedia.description !== activeMedia.title && <p className="player-description">{activeMedia.description}</p>}
-
-          {activeMedia.tags.length > 0 && (
-            <div className="tag-row" aria-label="Tags">
-              {activeMedia.tags.slice(0, 10).map((tag) => (
-                <button className="tag tag--button" type="button" key={tag} onClick={() => openRoute(`/tag/${encodeURIComponent(tag)}`)}>#{tag}</button>
-              ))}
-            </div>
-          )}
-
-          {activeMedia.niches.length > 0 && (
-            <div className="niche-link-row">
-              {activeMedia.niches.slice(0, 4).map((niche) => <button key={niche} type="button" onClick={() => openRoute(`/niche/${encodeURIComponent(niche)}`)}>Explore {niche}</button>)}
-            </div>
-          )}
-
-          {collections.length > 0 && (
-            <div className="collection-adder">
-              <select value={collectionId} onChange={(event) => setCollectionId(event.target.value)} aria-label="Choose local collection">
-                <option value="">Add to collection…</option>
-                {collections.map((collection) => <option key={collection.id} value={collection.id}>{collection.name}</option>)}
-              </select>
-              <button className="secondary-button" type="button" disabled={!collectionId} onClick={() => {
-                if (collectionId) addToCollection(collectionId, activeMedia)
-                setCollectionId('')
-              }}>Add</button>
-            </div>
-          )}
-
-          <div className="player-sheet__actions">
-            <button className="primary-button" type="button" onClick={() => void requestDownload(activeMedia)} disabled={!source}>
-              <DownloadIcon size={19} /> Download
-            </button>
-            <a className="secondary-button" href={activeMedia.sourceUrl} target="_blank" rel="noreferrer">
-              <ExternalIcon size={18} /> Open source
-            </a>
-          </div>
-          <p className="player-sheet__note">This player uses the public source URL. Save, collection, and download history stay on this device.</p>
         </div>
-      </section>
+        <h2>{activeMedia.title}</h2>
+        {activeMedia.tags.length > 0 && <div className="immersive-player__tags">{activeMedia.tags.slice(0, 7).map((tag) => <button type="button" key={tag} onClick={() => openRoute(`/tag/${encodeURIComponent(tag)}`)}>#{tag}</button>)}</div>}
+        {collections.length > 0 && <div className="immersive-player__collection"><select value={collectionId} onChange={(event) => setCollectionId(event.target.value)} aria-label="Choose collection"><option value="">Add to collection…</option>{collections.map((collection) => <option key={collection.id} value={collection.id}>{collection.name}</option>)}</select><button type="button" disabled={!collectionId} onClick={() => { if (collectionId) addToCollection(collectionId, activeMedia); setCollectionId('') }}>Add</button></div>}
+      </footer>
+      <div className="immersive-player__progress"><i style={{ width: `${Math.round(progress * 100)}%` }} /></div>
+      {canPrevious && <button className="immersive-player__step immersive-player__step--up" type="button" onClick={() => stepPlayer(-1)} aria-label="Previous video">‹</button>}
+      {canNext && <button className="immersive-player__step immersive-player__step--down" type="button" onClick={() => stepPlayer(1)} aria-label="Next video">›</button>}
+      {!source && <a className="immersive-player__source" href={activeMedia.sourceUrl} target="_blank" rel="noreferrer"><ExternalIcon size={17} /> Open source</a>}
     </div>
   )
+}
+
+function RailAction({ label, active = false, onClick, children }: { label: string; active?: boolean; onClick: () => void; children: React.ReactNode }): React.JSX.Element {
+  return <button className={`immersive-player__action${active ? ' is-active' : ''}`} type="button" onClick={onClick}><span>{children}</span><small>{label}</small></button>
 }

@@ -7,11 +7,12 @@ import { BookmarkIcon, PlayIcon } from './icons'
 
 interface MediaCardProps {
   item: MediaItem
+  queue?: MediaItem[]
   priority?: boolean
 }
 
 /** Real-media card with ordered source fallback instead of a generated placeholder. */
-export function MediaCard({ item, priority = false }: MediaCardProps): React.JSX.Element {
+export function MediaCard({ item, queue, priority = false }: MediaCardProps): React.JSX.Element {
   const { isSaved, openPlayer, toggleSaved } = useApp()
   const navigate = useNavigate()
   const [thumbnailIndex, setThumbnailIndex] = useState(0)
@@ -42,7 +43,7 @@ export function MediaCard({ item, priority = false }: MediaCardProps): React.JSX
       <button
         className={`media-card__visual${activeThumbnail || (previewSource && !previewFailed) ? '' : ' media-card__visual--empty'}`}
         type="button"
-        onClick={() => openPlayer(item)}
+onClick={() => openPlayer(item, queue)}
         aria-label={`Open ${item.title}`}
       >
         {activeThumbnail ? (
@@ -51,7 +52,6 @@ export function MediaCard({ item, priority = false }: MediaCardProps): React.JSX
             src={activeThumbnail}
             alt=""
             loading={priority ? 'eager' : 'lazy'}
-            referrerPolicy="no-referrer"
             onError={nextThumbnail}
           />
         ) : previewSource && !previewFailed ? (
@@ -76,7 +76,7 @@ export function MediaCard({ item, priority = false }: MediaCardProps): React.JSX
 
       <div className="media-card__info">
         <div className="media-card__copy">
-          <button className="media-card__title" type="button" onClick={() => openPlayer(item)}>{item.title}</button>
+          <button className="media-card__title" type="button" onClick={() => openPlayer(item, queue)}>{item.title}</button>
           <button className="media-card__creator" type="button" onClick={() => navigate(`/creator/${encodeURIComponent(item.creator)}`)}>@{item.creator}</button>
         </div>
         <button

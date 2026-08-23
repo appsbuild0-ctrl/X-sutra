@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { CreatorAvatar } from '../components/CreatorAvatar'
 import { LiveError, ScreenNotice } from '../components/LiveState'
 import { MediaGrid } from '../components/MediaGrid'
 import { ScreenHeader } from '../components/ScreenHeader'
@@ -56,9 +57,7 @@ export function CreatorScreen(): React.JSX.Element {
       />
 
       <div className="creator-profile-card">
-        <span className="creator-profile-card__avatar">
-          {profile?.avatar ? <img src={profile.avatar} alt="" /> : username.slice(0, 1).toUpperCase()}
-        </span>
+        <CreatorAvatar src={profile?.avatar} label={profile?.displayName || username} className="creator-profile-card__avatar" />
         <div className="creator-profile-card__body">
           <p className="eyebrow">@{username}</p>
           <h2>{profile?.displayName || username}</h2>

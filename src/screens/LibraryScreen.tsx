@@ -1,15 +1,16 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { CreatorAvatar } from '../components/CreatorAvatar'
 import { MediaGrid } from '../components/MediaGrid'
 import { ScreenHeader } from '../components/ScreenHeader'
 import { BookmarkIcon, ChevronRightIcon, CompassIcon, LibraryIcon, UserIcon } from '../components/icons'
 import { useApp } from '../context/AppContext'
 
-type LibraryView = 'saved' | 'collections' | 'following'
+type LibraryView = 'saved' | 'likes' | 'collections' | 'following'
 
 export function LibraryScreen(): React.JSX.Element {
   const navigate = useNavigate()
-  const { saved, follows, collections, createCollection } = useApp()
+  const { saved, liked, follows, collections, createCollection } = useApp()
   const [view, setView] = useState<LibraryView>('saved')
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState('')
@@ -36,6 +37,7 @@ export function LibraryScreen(): React.JSX.Element {
 
       <div className="segmented library-segmented" role="tablist" aria-label="Library sections">
         <button type="button" className={view === 'saved' ? 'is-active' : ''} onClick={() => setView('saved')}>Saved</button>
+        <button type="button" className={view === 'likes' ? 'is-active' : ''} onClick={() => setView('likes')}>Likes</button>
         <button type="button" className={view === 'collections' ? 'is-active' : ''} onClick={() => setView('collections')}>Collections</button>
         <button type="button" className={view === 'following' ? 'is-active' : ''} onClick={() => setView('following')}>Following</button>
       </div>
@@ -43,6 +45,11 @@ export function LibraryScreen(): React.JSX.Element {
       {view === 'saved' && <>
         <div className="section-heading"><div><p className="eyebrow">Local saves</p><h3>Saved clips</h3></div>{saved.length > 0 && <span>{saved.length} clips</span>}</div>
         <MediaGrid items={saved} empty={<div className="empty-state empty-state--tall"><span className="empty-state__icon"><BookmarkIcon size={25} /></span><strong>Your library is waiting.</strong><span>Save a real public clip from any feed or player.</span><button type="button" className="secondary-button" onClick={() => navigate('/discover')}><CompassIcon size={18} /> Explore clips</button></div>} />
+      </>}
+
+      {view === 'likes' && <>
+        <div className="section-heading"><div><p className="eyebrow">Local likes</p><h3>Liked clips</h3></div>{liked.length > 0 && <span>{liked.length} clips</span>}</div>
+        <MediaGrid items={liked} empty={<div className="empty-state empty-state--tall"><span className="empty-state__icon"><BookmarkIcon size={25} /></span><strong>No local likes yet.</strong><span>Double-tap a video or tap Like inside the player.</span><button type="button" className="secondary-button" onClick={() => navigate('/discover')}><CompassIcon size={18} /> Browse public clips</button></div>} />
       </>}
 
       {view === 'collections' && <>
@@ -53,7 +60,7 @@ export function LibraryScreen(): React.JSX.Element {
 
       {view === 'following' && <>
         <div className="section-heading"><div><p className="eyebrow">Local following list</p><h3>Following</h3></div>{follows.length > 0 && <span>{follows.length} creators</span>}</div>
-        {follows.length ? <div className="creator-list">{follows.map((creator, index) => <button className="creator-row" type="button" key={creator.username} onClick={() => navigate(`/creator/${encodeURIComponent(creator.username)}`)}><span className="creator-avatar" style={!creator.avatar ? { '--avatar-index': index } as React.CSSProperties : undefined}>{creator.avatar ? <img src={creator.avatar} alt="" /> : creator.displayName.slice(0, 1).toUpperCase()}</span><span className="creator-row__copy"><strong>{creator.displayName}</strong><small>@{creator.username}</small></span><ChevronRightIcon size={18} /></button>)}</div> : <div className="empty-state empty-state--tall"><span className="empty-state__icon"><UserIcon size={24} /></span><strong>No followed creators.</strong><span>Use Follow on a public creator profile to add it here.</span></div>}
+        {follows.length ? <div className="creator-list">{follows.map((creator, index) => <button className="creator-row" type="button" key={creator.username} onClick={() => navigate(`/creator/${encodeURIComponent(creator.username)}`)}><CreatorAvatar src={creator.avatar} label={creator.displayName} index={index} /><span className="creator-row__copy"><strong>{creator.displayName}</strong><small>@{creator.username}</small></span><ChevronRightIcon size={18} /></button>)}</div> : <div className="empty-state empty-state--tall"><span className="empty-state__icon"><UserIcon size={24} /></span><strong>No followed creators.</strong><span>Use Follow on a public creator profile to add it here.</span></div>}
       </>}
     </section>
   )

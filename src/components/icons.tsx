@@ -105,3 +105,23 @@ export function ExternalIcon(props: IconProps): React.JSX.Element {
 export function SparkIcon(props: IconProps): React.JSX.Element {
   return <IconFrame {...props}><path d="m12 2 1.7 6.3L20 10l-6.3 1.7L12 18l-1.7-6.3L4 10l6.3-1.7L12 2Z" /><path d="m19 16 .7 2.3L22 19l-2.3.7L19 22l-.7-2.3L16 19l2.3-.7L19 16Z" /></IconFrame>
 }
+
+export function HeartIcon({ filled = false, ...props }: IconProps & { filled?: boolean }): React.JSX.Element {
+  return <IconFrame {...props} fill={filled ? 'currentColor' : 'none'}><path d="M20.8 8.4c0 5.3-8.8 10.6-8.8 10.6S3.2 13.7 3.2 8.4A4.4 4.4 0 0 1 11 5.6L12 6.8l1-1.2a4.4 4.4 0 0 1 7.8 2.8Z" /></IconFrame>
+}
+
+export function ShareIcon(props: IconProps): React.JSX.Element {
+  return <IconFrame {...props}><circle cx="18" cy="5" r="2.5" /><circle cx="6" cy="12" r="2.5" /><circle cx="18" cy="19" r="2.5" /><path d="m8.2 10.8 7.6-4.4M8.2 13.2l7.6 4.4" /></IconFrame>
+}
+
+export function VolumeIcon(props: IconProps): React.JSX.Element {
+  return <IconFrame {...props}><path d="M4 10v4h4l5 4V6L8 10H4Z" /><path d="M16 9.2a4 4 0 0 1 0 5.6M18.5 6.7a7.5 7.5 0 0 1 0 10.6" /></IconFrame>
+}
+
+export function MuteIcon(props: IconProps): React.JSX.Element {
+  return <IconFrame {...props}><path d="M4 10v4h4l5 4V6L8 10H4Z" /><path d="m17 10 4 4m0-4-4 4" /></IconFrame>
+}
+
+export function PauseIcon(props: IconProps): React.JSX.Element {
+  return <IconFrame {...props} fill="currentColor"><path d="M8 6h3v12H8zM13 6h3v12h-3z" stroke="none" /></IconFrame>
+}

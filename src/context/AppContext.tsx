@@ -21,14 +21,19 @@ interface ToastMessage {
 
 interface AppContextValue {
   saved: MediaItem[]
+  liked: MediaItem[]
   follows: Creator[]
   collections: LocalCollection[]
   downloads: DownloadRecord[]
   activeMedia: MediaItem | null
+  playerQueue: MediaItem[]
+  playerIndex: number
   preferences: Preferences
   toast: ToastMessage | null
   isSaved: (id: string) => boolean
   toggleSaved: (item: MediaItem) => void
+  isLiked: (id: string) => boolean
+  toggleLike: (item: MediaItem) => void
   isFollowing: (username: string) => boolean
   toggleFollow: (creator: Creator) => void
   createCollection: (name: string, description?: string) => void
@@ -37,7 +42,8 @@ interface AppContextValue {
   collectionItems: (collectionId: string) => MediaItem[]
   requestDownload: (item: MediaItem) => Promise<void>
   clearDownloads: () => void
-  openPlayer: (item: MediaItem) => void
+  openPlayer: (item: MediaItem, queue?: MediaItem[]) => void
+  stepPlayer: (direction: -1 | 1) => void
   closePlayer: () => void
   updatePreferences: (patch: Partial<Preferences>) => void
   notify: (text: string, tone?: ToastTone) => void
@@ -46,6 +52,7 @@ interface AppContextValue {
 const AppContext = createContext<AppContextValue | null>(null)
 
 const SAVED_KEY = 'x-sutra.saved.real.v2'
+const LIKED_KEY = 'x-sutra.likes.local.v1'
 const FOLLOWS_KEY = 'x-sutra.follows.real.v2'
 const COLLECTIONS_KEY = 'x-sutra.collections.local.v2'
 const DOWNLOADS_KEY = 'x-sutra.downloads.real.v2'
@@ -101,14 +108,18 @@ async function saveVideo(url: string, filename: string): Promise<void> {
 
 export function AppProvider({ children }: { children: ReactNode }): React.JSX.Element {
   const [saved, setSaved] = useState<MediaItem[]>(readRealSaved)
+  const [liked, setLiked] = useState<MediaItem[]>(() => readStored<MediaItem[]>(LIKED_KEY, []).map((item) => ({ ...item, thumbnailUrls: item.thumbnailUrls ?? (item.thumbnail ? [item.thumbnail] : []) })))
   const [follows, setFollows] = useState<Creator[]>(() => readStored(FOLLOWS_KEY, []))
   const [collections, setCollections] = useState<LocalCollection[]>(() => readStored(COLLECTIONS_KEY, []))
   const [downloads, setDownloads] = useState<DownloadRecord[]>(() => readStored(DOWNLOADS_KEY, []))
   const [preferences, setPreferences] = useState<Preferences>(() => ({ ...defaultPreferences, ...readStored(PREFERENCES_KEY, defaultPreferences) }))
   const [activeMedia, setActiveMedia] = useState<MediaItem | null>(null)
+  const [playerQueue, setPlayerQueue] = useState<MediaItem[]>([])
+  const [playerIndex, setPlayerIndex] = useState(0)
   const [toast, setToast] = useState<ToastMessage | null>(null)
 
   useEffect(() => writeStored(SAVED_KEY, saved), [saved])
+  useEffect(() => writeStored(LIKED_KEY, liked), [liked])
   useEffect(() => writeStored(FOLLOWS_KEY, follows), [follows])
   useEffect(() => writeStored(COLLECTIONS_KEY, collections), [collections])
   useEffect(() => writeStored(DOWNLOADS_KEY, downloads), [downloads])
@@ -132,6 +143,19 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
         return current.filter((savedItem) => savedItem.id !== item.id)
       }
       notify('Saved to your local library', 'success')
+      return [item, ...current]
+    })
+  }, [notify])
+
+  const isLiked = useCallback((id: string) => liked.some((item) => item.id === id), [liked])
+
+  const toggleLike = useCallback((item: MediaItem) => {
+    setLiked((current) => {
+      if (current.some((likedItem) => likedItem.id === item.id)) {
+        notify('Removed local like')
+        return current.filter((likedItem) => likedItem.id !== item.id)
+      }
+      notify('Liked on this device', 'success')
       return [item, ...current]
     })
   }, [notify])
@@ -207,16 +231,39 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
     }
   }, [notify, preferences.quality])
 
+  const openPlayer = useCallback((item: MediaItem, queue: MediaItem[] = [item]) => {
+    const uniqueQueue = queue.filter((entry, index, all) => all.findIndex((candidate) => candidate.id === entry.id) === index)
+    const index = Math.max(0, uniqueQueue.findIndex((entry) => entry.id === item.id))
+    const resolvedQueue = uniqueQueue.length ? uniqueQueue : [item]
+    setPlayerQueue(resolvedQueue)
+    setPlayerIndex(index)
+    setActiveMedia(resolvedQueue[index] ?? item)
+  }, [])
+
+  const stepPlayer = useCallback((direction: -1 | 1) => {
+    setPlayerIndex((current) => {
+      const next = Math.min(Math.max(current + direction, 0), Math.max(playerQueue.length - 1, 0))
+      const nextItem = playerQueue[next]
+      if (nextItem) setActiveMedia(nextItem)
+      return next
+    })
+  }, [playerQueue])
+
   const value = useMemo<AppContextValue>(() => ({
     saved,
+    liked,
     follows,
     collections,
     downloads,
     activeMedia,
+    playerQueue,
+    playerIndex,
     preferences,
     toast,
     isSaved,
     toggleSaved,
+    isLiked,
+    toggleLike,
     isFollowing,
     toggleFollow,
     createCollection,
@@ -228,11 +275,16 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
       setDownloads([])
       notify('Download history cleared')
     },
-    openPlayer: setActiveMedia,
-    closePlayer: () => setActiveMedia(null),
+    openPlayer,
+    stepPlayer,
+    closePlayer: () => {
+      setActiveMedia(null)
+      setPlayerQueue([])
+      setPlayerIndex(0)
+    },
     updatePreferences: (patch) => setPreferences((current) => ({ ...current, ...patch })),
     notify
-  }), [activeMedia, addToCollection, collectionItems, collections, createCollection, deleteCollection, downloads, follows, isFollowing, isSaved, notify, preferences, requestDownload, saved, toast, toggleFollow, toggleSaved])
+  }), [activeMedia, addToCollection, collectionItems, collections, createCollection, deleteCollection, downloads, follows, isFollowing, isLiked, isSaved, liked, notify, openPlayer, playerIndex, playerQueue, preferences, requestDownload, saved, stepPlayer, toast, toggleFollow, toggleLike, toggleSaved])
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }

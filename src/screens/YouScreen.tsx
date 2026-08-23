@@ -1,11 +1,11 @@
 import { useNavigate } from 'react-router-dom'
 import { ScreenHeader } from '../components/ScreenHeader'
-import { DownloadIcon, LibraryIcon, SettingsIcon, UserIcon } from '../components/icons'
+import { DownloadIcon, HeartIcon, LibraryIcon, SettingsIcon, UserIcon } from '../components/icons'
 import { useApp } from '../context/AppContext'
 
 export function YouScreen(): React.JSX.Element {
   const navigate = useNavigate()
-  const { saved, follows, downloads } = useApp()
+  const { saved, liked, follows, downloads } = useApp()
 
   return (
     <section className="screen screen--you">
@@ -14,7 +14,7 @@ export function YouScreen(): React.JSX.Element {
         <span className="guest-card__avatar"><UserIcon size={27} /></span>
         <div><p className="eyebrow">Guest mode</p><h2>Public feed access</h2><p>No login is active. Your saves, follows and preferences stay on this device.</p></div>
       </div>
-      <div className="profile-stats"><div><LibraryIcon size={19} /><strong>{saved.length}</strong><span>Saved</span></div><div><UserIcon size={19} /><strong>{follows.length}</strong><span>Following</span></div><div><DownloadIcon size={19} /><strong>{downloads.length}</strong><span>Downloads</span></div></div>
+      <div className="profile-stats"><div><LibraryIcon size={19} /><strong>{saved.length}</strong><span>Saved</span></div><div><HeartIcon size={19} /><strong>{liked.length}</strong><span>Likes</span></div><div><UserIcon size={19} /><strong>{follows.length}</strong><span>Following</span></div><div><DownloadIcon size={19} /><strong>{downloads.length}</strong><span>Downloads</span></div></div>
       <div className="section-heading section-heading--spaced"><div><p className="eyebrow">Quick access</p><h3>Your local data</h3></div></div>
       <div className="quick-link-list">
         <button type="button" onClick={() => navigate('/library')}><span><LibraryIcon size={19} /><strong>Library</strong><small>Saved clips, collections and follows</small></span><i>›</i></button>

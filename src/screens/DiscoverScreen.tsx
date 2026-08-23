@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { CreatorAvatar } from '../components/CreatorAvatar'
 import { LiveError, ScreenNotice } from '../components/LiveState'
 import { MediaGrid } from '../components/MediaGrid'
 import { ScreenHeader } from '../components/ScreenHeader'
@@ -107,9 +108,7 @@ export function DiscoverScreen(): React.JSX.Element {
         <div className="creator-list">
           {creators.slice(0, 12).map((creator, index) => (
             <button className="creator-row" type="button" key={creator.username} onClick={() => navigate(`/creator/${encodeURIComponent(creator.username)}`)}>
-              <span className="creator-avatar" style={!creator.avatar ? { '--avatar-index': index } as React.CSSProperties : undefined}>
-                {creator.avatar ? <img src={creator.avatar} alt="" /> : creator.displayName.slice(0, 1).toUpperCase()}
-              </span>
+              <CreatorAvatar src={creator.avatar} label={creator.displayName} index={index} />
               <span className="creator-row__copy">
                 <strong>{creator.displayName}{creator.verified && <i className="verified-dot">✓</i>}</strong>
                 <small>@{creator.username} · {compactNumber(creator.followers)} followers</small>

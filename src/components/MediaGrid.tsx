@@ -25,7 +25,7 @@ export function MediaGrid({ items, loading = false, empty, canLoadMore = false, 
   return (
     <>
       <div className="media-grid">
-        {items.map((item, index) => <MediaCard key={item.id} item={item} priority={index < 4} />)}
+        {items.map((item, index) => <MediaCard key={item.id} item={item} queue={items} priority={index < 4} />)}
       </div>
       {canLoadMore && onLoadMore && (
         <div className="load-more-wrap">
