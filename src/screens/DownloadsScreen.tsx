@@ -8,8 +8,9 @@ import type { DownloadStatus } from '../types'
 
 function statusLabel(status: DownloadStatus): string {
   if (status === 'queued') return 'Queued'
-  if (status === 'downloading') return 'Starting download'
-  if (status === 'done') return 'Sent to device'
+  if (status === 'downloading') return 'Resolving actual media'
+  if (status === 'done') return 'Verified download started'
+  if (status === 'opened') return 'Actual media URL opened'
   return 'Could not start'
 }
 
@@ -40,7 +41,7 @@ export function DownloadsScreen(): React.JSX.Element {
   return (
     <section className="screen">
       <ScreenHeader title="Downloads" eyebrow="Public media files" actions={downloads.length > 0 ? <button className="round-button" type="button" onClick={clearDownloads} aria-label="Clear download history"><TrashIcon size={19} /></button> : undefined} />
-      <div className="download-callout"><span className="download-callout__icon"><DownloadIcon size={23} /></span><div><h2>Save a public clip.</h2><p>Paste a public watch link or clip ID. X-sutra resolves real source data before it opens a download.</p></div></div>
+      <div className="download-callout"><span className="download-callout__icon"><DownloadIcon size={23} /></span><div><h2>Save a public clip.</h2><p>Paste a public watch link or clip ID. X-sutra resolves the current API media URL and rejects HTML/error pages before offering a file.</p></div></div>
       <form className="link-form" onSubmit={(event) => void addFromLink(event)}><span><LinkIcon size={19} /></span><input value={link} onChange={(event) => setLink(event.target.value)} placeholder="Paste a public watch link or clip ID" aria-label="Public watch link or clip ID" inputMode="url" /><button className="primary-button" type="submit" disabled={adding}>{adding ? 'Resolving…' : 'Add'}</button></form>
       <p className="form-help">Only public source URLs can be resolved. New downloads use your selected quality setting.</p>
       <div className="section-heading section-heading--spaced"><div><p className="eyebrow">Local history</p><h3>Recent downloads</h3></div>{downloads.length > 0 && <span>{downloads.length} items</span>}</div>

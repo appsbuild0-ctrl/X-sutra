@@ -1,3 +1,4 @@
+import { Capacitor, CapacitorHttp } from '@capacitor/core'
 import type { Creator, CreatorProfile, FeedOrder, MediaItem, Niche, PageResult, TagSuggestion } from '../types'
 
 /**
@@ -5,13 +6,18 @@ import type { Creator, CreatorProfile, FeedOrder, MediaItem, Niche, PageResult, 
  * proxy; static Netlify Drop builds use an included 200 rewrite proxy. Both
  * preserve the public temporary-token flow without a browser CORS failure.
  */
+const ORIGIN = 'https://api.redgifs.com'
+const USER_AGENT = 'Mozilla/5.0 (compatible; X-sutra/1.0; public-media-client)'
 const PROXY_PATH = '/api/redgifs'
 const DROP_PROXY_PREFIX = '/api/redgifs'
 // `npm run build:drop` creates a static Netlify Drop build. Netlify's 200
 // rewrite proxies this prefix to the source API, so browser CORS is avoided.
 const USE_DROP_PROXY = import.meta.env.MODE === 'drop'
+const USE_NATIVE_HTTP = Capacitor.isNativePlatform()
 let directToken = ''
 let directTokenExpiry = 0
+let nativeToken = ''
+let nativeTokenExpiry = 0
 
 type RawRecord = Record<string, unknown>
 
@@ -52,7 +58,7 @@ function uniqueUrls(values: string[]): string[] {
 }
 
 function queryPath(pathname: string, params: Record<string, string | number | boolean | undefined> = {}): string {
-  const url = new URL(pathname, 'https://api.redgifs.com')
+  const url = new URL(pathname, ORIGIN)
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== '') url.searchParams.set(key, String(value))
   }
@@ -87,8 +93,57 @@ async function dropProxyRequest<T>(path: string, retry = true): Promise<T> {
   return response.json() as Promise<T>
 }
 
+function responseData<T>(data: unknown): T {
+  if (typeof data !== 'string') return data as T
+  try {
+    return JSON.parse(data) as T
+  } catch {
+    throw new Error('The public API returned an invalid JSON response')
+  }
+}
+
+async function nativeTemporaryToken(force = false): Promise<string> {
+  if (!force && nativeToken && Date.now() < nativeTokenExpiry) return nativeToken
+  const response = await CapacitorHttp.get({
+    url: `${ORIGIN}/v2/auth/temporary`,
+    headers: { Accept: 'application/json', 'User-Agent': USER_AGENT }
+  })
+  if (response.status < 200 || response.status >= 300) {
+    throw new Error(`Temporary public token request failed (${response.status})`)
+  }
+  const data = responseData<{ token?: string }>(response.data)
+  if (!data.token) throw new Error('Temporary public token response was empty')
+  nativeToken = data.token
+  nativeTokenExpiry = Date.now() + 40 * 60 * 1000
+  return nativeToken
+}
+
+/** Native HTTP keeps the Android build on the same anonymous API flow without browser CORS. */
+async function nativeRequest<T>(path: string, retry = true): Promise<T> {
+  const token = await nativeTemporaryToken(!retry)
+  const response = await CapacitorHttp.get({
+    url: `${ORIGIN}${path}`,
+    headers: {
+      Accept: 'application/json',
+      Authorization: `Bearer ${token}`,
+      'User-Agent': USER_AGENT
+    }
+  })
+  if (response.status === 401 && retry) {
+    nativeToken = ''
+    nativeTokenExpiry = 0
+    return nativeRequest<T>(path, false)
+  }
+  if (response.status < 200 || response.status >= 300) {
+    const detail = typeof response.data === 'string' ? response.data.slice(0, 180) : JSON.stringify(response.data).slice(0, 180)
+    throw new Error(`Live public data request failed (${response.status})${detail ? ` — ${detail}` : ''}`)
+  }
+  return responseData<T>(response.data)
+}
+
 async function request<T>(pathname: string, params?: Record<string, string | number | boolean | undefined>): Promise<T> {
   const path = queryPath(pathname, params)
+  if (USE_NATIVE_HTTP) return nativeRequest<T>(path)
   if (USE_DROP_PROXY) return dropProxyRequest<T>(path)
 
   const url = new URL(PROXY_PATH, window.location.origin)
@@ -314,6 +369,8 @@ export function redgifsIdFromLink(input: string): string | null {
   if (/^[a-z0-9]{5,}$/i.test(value)) return value
   try {
     const url = new URL(value.includes('://') ? value : `https://${value}`)
+    const hostname = url.hostname.toLowerCase()
+    if (hostname !== 'redgifs.com' && !hostname.endsWith('.redgifs.com')) return null
     const parts = url.pathname.split('/').filter(Boolean)
     const watch = parts.findIndex((part) => part.toLowerCase() === 'watch')
     const candidate = watch >= 0 ? parts[watch + 1] : parts[parts.length - 1]

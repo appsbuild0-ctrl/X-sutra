@@ -1,4 +1,3 @@
-import { Capacitor } from '@capacitor/core'
 import {
   createContext,
   useCallback,
@@ -8,6 +7,8 @@ import {
   useState,
   type ReactNode
 } from 'react'
+import { saveMediaFile } from '../lib/download'
+import { publicMediaApi } from '../lib/redgifs'
 import { readStored, writeStored } from '../lib/storage'
 import type { Creator, DownloadRecord, LocalCollection, MediaItem, Preferences } from '../types'
 
@@ -57,7 +58,7 @@ const FOLLOWS_KEY = 'x-sutra.follows.real.v2'
 const COLLECTIONS_KEY = 'x-sutra.collections.local.v2'
 const DOWNLOADS_KEY = 'x-sutra.downloads.real.v2'
 const PREFERENCES_KEY = 'x-sutra.preferences.v2'
-const defaultPreferences: Preferences = { quality: 'hd', autoplay: false, muted: false, blockedTags: [] }
+const defaultPreferences: Preferences = { quality: 'hd', autoplay: true, muted: true, blockedTags: [] }
 
 function readRealSaved(): MediaItem[] {
   return readStored<MediaItem[]>(SAVED_KEY, [])
@@ -65,44 +66,15 @@ function readRealSaved(): MediaItem[] {
     .map((item) => ({ ...item, thumbnailUrls: item.thumbnailUrls ?? (item.thumbnail ? [item.thumbnail] : []) }))
 }
 
-function fileNameFor(item: MediaItem): string {
-  const clean = `${item.creator}-${item.title}`
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/(^-|-$)/g, '')
-    .slice(0, 72)
-  return `${clean || item.id}.mp4`
-}
-
-function triggerBrowserDownload(url: string, filename: string): void {
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = filename
-  anchor.target = '_blank'
-  anchor.rel = 'noopener'
-  document.body.appendChild(anchor)
-  anchor.click()
-  anchor.remove()
-}
-
-async function saveVideo(url: string, filename: string): Promise<void> {
-  if (Capacitor.isNativePlatform()) {
-    const { Directory, Filesystem } = await import('@capacitor/filesystem')
-    await Filesystem.downloadFile({ url, path: filename, directory: Directory.Documents, recursive: true })
-    return
-  }
-
-  try {
-    const response = await fetch(url)
-    if (!response.ok) throw new Error(`Download request failed (${response.status})`)
-    const blob = await response.blob()
-    const objectUrl = URL.createObjectURL(blob)
-    triggerBrowserDownload(objectUrl, filename)
-    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1500)
-  } catch {
-    // Some public media hosts disallow blob fetches. Let the browser/native
-    // handler open the public file instead of inventing a fake completion.
-    triggerBrowserDownload(url, filename)
+function mergeMediaDetail(item: MediaItem, detail: MediaItem): MediaItem {
+  return {
+    ...item,
+    ...detail,
+    thumbnail: detail.thumbnail ?? item.thumbnail,
+    thumbnailUrls: detail.thumbnailUrls.length ? detail.thumbnailUrls : item.thumbnailUrls,
+    previewUrl: detail.previewUrl ?? item.previewUrl,
+    videoUrl: detail.videoUrl ?? item.videoUrl,
+    videoUrlSd: detail.videoUrlSd ?? item.videoUrlSd
   }
 }
 
@@ -210,24 +182,40 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
   }, [collections, saved])
 
   const requestDownload = useCallback(async (item: MediaItem) => {
-    const url = preferences.quality === 'sd' ? item.videoUrlSd ?? item.videoUrl : item.videoUrl ?? item.videoUrlSd
-    if (!url) {
-      notify('This public clip does not expose a downloadable video URL', 'error')
-      return
-    }
-
     const recordId = `${item.id}-${Date.now()}`
     setDownloads((current) => [{ id: recordId, item, status: 'queued', createdAt: new Date().toISOString() }, ...current])
 
     try {
       setDownloads((current) => current.map((entry) => entry.id === recordId ? { ...entry, status: 'downloading' } : entry))
-      await saveVideo(url, fileNameFor(item))
-      setDownloads((current) => current.map((entry) => entry.id === recordId ? { ...entry, status: 'done' } : entry))
-      notify('Download sent to your device/browser', 'success')
+
+      // Refresh the selected clip from the detail endpoint at download time so
+      // the file URL is the current URL supplied by the API, not a watch page,
+      // embed URL, or hard-coded fallback. Existing API data remains usable if
+      // the detail refresh is temporarily unavailable.
+      let resolved = item
+      try {
+        resolved = mergeMediaDetail(item, await publicMediaApi.getById(item.id))
+      } catch (error) {
+        if (!item.videoUrl && !item.videoUrlSd) throw error
+      }
+
+      const mediaUrl = preferences.quality === 'sd'
+        ? resolved.videoUrlSd ?? resolved.videoUrl
+        : resolved.videoUrl ?? resolved.videoUrlSd
+      if (!mediaUrl) throw new Error('This public clip does not expose a downloadable video URL')
+
+      setDownloads((current) => current.map((entry) => entry.id === recordId
+        ? { ...entry, item: resolved, mediaUrl }
+        : entry))
+      const disposition = await saveMediaFile(resolved, mediaUrl)
+      const status = disposition === 'saved' ? 'done' : 'opened'
+      setDownloads((current) => current.map((entry) => entry.id === recordId ? { ...entry, status } : entry))
+      if (disposition === 'saved') notify('Verified media download started', 'success')
+      else notify('The actual media URL was opened; use your browser to save it')
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to start download'
       setDownloads((current) => current.map((entry) => entry.id === recordId ? { ...entry, status: 'failed', error: message } : entry))
-      notify('The download could not be started', 'error')
+      notify(message, 'error')
     }
   }, [notify, preferences.quality])
 
