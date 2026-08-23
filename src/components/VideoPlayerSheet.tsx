@@ -32,7 +32,6 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
     isFollowing,
     toggleFollow,
     requestDownload,
-    preferences,
     updatePreferences,
     collections,
     addToCollection,
@@ -43,15 +42,13 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
   const touchStart = useRef<number | null>(null)
   const lastTap = useRef(0)
   const [playing, setPlaying] = useState(true)
-  const [muted, setMuted] = useState(preferences.muted)
+  // Mobile browsers allow dependable autoplay for muted media. The user can
+  // turn sound on from the source-style action rail after playback begins.
+  const [muted, setMuted] = useState(true)
   const [progress, setProgress] = useState(0)
   const [videoError, setVideoError] = useState(false)
   const [collectionId, setCollectionId] = useState('')
   const [heartBurst, setHeartBurst] = useState(false)
-
-  useEffect(() => {
-    setMuted(preferences.muted)
-  }, [preferences.muted])
 
   useEffect(() => {
     if (!activeMedia) return
@@ -59,10 +56,11 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
     setVideoError(false)
     setCollectionId('')
     setPlaying(true)
+    setMuted(true)
     const timeout = window.setTimeout(() => {
       const video = videoRef.current
       if (!video) return
-      video.muted = muted
+      video.muted = true
       void video.play().then(() => setPlaying(true)).catch(() => setPlaying(false))
     }, 40)
     return () => window.clearTimeout(timeout)

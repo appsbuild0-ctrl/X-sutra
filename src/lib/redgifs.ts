@@ -36,6 +36,19 @@ function stringList(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : []
 }
 
+/** Collect string URLs from normal and alternate API response shapes. */
+function nestedStrings(value: unknown, depth = 0): string[] {
+  if (depth > 3 || value === null || value === undefined) return []
+  if (typeof value === 'string') return value ? [value] : []
+  if (Array.isArray(value)) return value.flatMap((entry) => nestedStrings(entry, depth + 1))
+  if (typeof value === 'object') return Object.values(value as RawRecord).flatMap((entry) => nestedStrings(entry, depth + 1))
+  return []
+}
+
+function uniqueUrls(values: string[]): string[] {
+  return [...new Set(values.filter((value) => /^https?:\/\//i.test(value)))]
+}
+
 function queryPath(pathname: string, params: Record<string, string | number | boolean | undefined> = {}): string {
   const url = new URL(pathname, 'https://api.redgifs.com')
   for (const [key, value] of Object.entries(params)) {
@@ -94,12 +107,31 @@ function mediaFromRaw(value: unknown): MediaItem {
   const tags = stringList(raw.tags)
   const description = text(raw.description) || text(raw.title)
   const title = description || tags.slice(0, 3).join(' · ') || `Clip ${id}`
-  const thumbnailUrls = [...new Set([
-    text(urls.poster),
-    text(urls.thumbnail),
-    text(urls.vthumbnail),
-    text(raw.thumbnail)
-  ].filter(Boolean))]
+  // Some feeds use alternate property names or nest source variants. Preserve
+  // every real URL candidate, then let the card/player try the best type first.
+  const allUrls = uniqueUrls([
+    ...nestedStrings(urls),
+    ...nestedStrings({
+      thumbnail: raw.thumbnail,
+      thumbnailUrl: raw.thumbnailUrl,
+      poster: raw.poster,
+      posterUrl: raw.posterUrl,
+      previewUrl: raw.previewUrl,
+      videoUrl: raw.videoUrl,
+      media: raw.media
+    })
+  ])
+  const imageUrls = allUrls.filter((url) => /(?:thumb|poster|preview)|\.(?:jpe?g|png|webp|gif)(?:[?#]|$)/i.test(url))
+  const videoUrls = allUrls.filter((url) => /(?:silent|video)|\.(?:mp4|webm|m3u8)(?:[?#]|$)/i.test(url))
+  const thumbnailUrls = uniqueUrls([
+    text(urls.poster), text(urls.thumbnail), text(urls.vthumbnail),
+    text(raw.thumbnail), text(raw.thumbnailUrl), text(raw.poster), text(raw.posterUrl),
+    ...imageUrls, ...allUrls
+  ])
+  const preferredVideos = uniqueUrls([
+    text(urls.hd), text(urls.sd), text(urls.silent), text(urls.gif),
+    text(raw.videoUrl), text(raw.previewUrl), ...videoUrls
+  ])
 
   return {
     id,
@@ -108,9 +140,9 @@ function mediaFromRaw(value: unknown): MediaItem {
     creator: text(raw.userName) || text(raw.username) || text(raw.user) || 'creator',
     thumbnail: thumbnailUrls[0],
     thumbnailUrls,
-    previewUrl: text(urls.silent) || text(urls.vthumbnail) || text(urls.gif) || undefined,
-    videoUrl: text(urls.hd) || text(urls.sd) || text(urls.gif) || undefined,
-    videoUrlSd: text(urls.sd) || undefined,
+    previewUrl: text(urls.silent) || videoUrls[0] || preferredVideos[0],
+    videoUrl: text(urls.hd) || preferredVideos[0],
+    videoUrlSd: text(urls.sd) || preferredVideos[1],
     sourceUrl: `https://www.redgifs.com/watch/${encodeURIComponent(id)}`,
     duration: number(raw.duration),
     likes: number(raw.likes) || number(raw.likesCount),

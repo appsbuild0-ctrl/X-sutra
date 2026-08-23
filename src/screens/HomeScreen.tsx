@@ -45,7 +45,9 @@ export function HomeScreen(): React.JSX.Element {
     let result: PageResult<MediaItem>
     if (mode === 'trending') result = await publicMediaApi.trending(apiPage)
     else {
-      const order: FeedOrder = mode === 'likes' ? 'top' : mode === 'views' ? 'best' : 'latest'
+      // Valid V2 orders are top/top7/top28/latest/score/trending. We sort the
+      // returned real batch by views/duration in rankRealItems below.
+      const order: FeedOrder = mode === 'likes' ? 'top' : mode === 'views' ? 'score' : 'latest'
       result = await publicMediaApi.latest(apiPage, order)
     }
     return normalizePage(result, logicalPage, firstApiPage, mode)

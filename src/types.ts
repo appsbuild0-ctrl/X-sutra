@@ -1,6 +1,7 @@
 export type TabId = 'home' | 'discover' | 'library' | 'downloads' | 'you'
 export type FeedMode = 'trending' | 'latest'
-export type FeedOrder = 'latest' | 'best' | 'top' | 'trending'
+/** Public V2 gif-search sorting values accepted by the source API. */
+export type FeedOrder = 'latest' | 'top' | 'top7' | 'top28' | 'score' | 'trending'
 export type DownloadStatus = 'queued' | 'downloading' | 'done' | 'failed'
 
 export interface MediaItem {

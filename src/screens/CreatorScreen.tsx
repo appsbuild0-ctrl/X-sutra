@@ -83,7 +83,7 @@ export function CreatorScreen(): React.JSX.Element {
 
       <div className="feed-toolbar creator-feed-toolbar">
         <div className="section-heading section-heading--inline"><div><p className="eyebrow">Creator feed</p><h3>Public clips</h3></div></div>
-        <label className="sort-control"><span className="sr-only">Sort creator clips</span><select value={order} onChange={(event) => setOrder(event.target.value as FeedOrder)}><option value="latest">Latest</option><option value="best">Best</option><option value="top">Top</option></select></label>
+        <label className="sort-control"><span className="sr-only">Sort creator clips</span><select value={order} onChange={(event) => setOrder(event.target.value as FeedOrder)}><option value="latest">Latest</option><option value="score">Score</option><option value="top">Top</option></select></label>
       </div>
 
       {feed.error ? <LiveError message={feed.error} onRetry={feed.reload} title="Creator clips could not load." /> : (
