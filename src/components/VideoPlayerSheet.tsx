@@ -32,6 +32,7 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
     isFollowing,
     toggleFollow,
     requestDownload,
+    preferences,
     updatePreferences,
     collections,
     addToCollection,
@@ -41,10 +42,8 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
   const videoRef = useRef<HTMLVideoElement | null>(null)
   const touchStart = useRef<number | null>(null)
   const lastTap = useRef(0)
-  const [playing, setPlaying] = useState(true)
-  // Mobile browsers allow dependable autoplay for muted media. The user can
-  // turn sound on from the source-style action rail after playback begins.
-  const [muted, setMuted] = useState(true)
+  const [playing, setPlaying] = useState(preferences.autoplay)
+  const [muted, setMuted] = useState(preferences.muted)
   const [progress, setProgress] = useState(0)
   const [videoError, setVideoError] = useState(false)
   const [collectionId, setCollectionId] = useState('')
@@ -55,15 +54,23 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
     setProgress(0)
     setVideoError(false)
     setCollectionId('')
-    setPlaying(true)
-    setMuted(true)
+    setPlaying(preferences.autoplay)
+    setMuted(preferences.muted)
     const timeout = window.setTimeout(() => {
       const video = videoRef.current
       if (!video) return
-      video.muted = true
-      void video.play().then(() => setPlaying(true)).catch(() => setPlaying(false))
+      video.muted = preferences.muted
+      if (preferences.autoplay) {
+        void video.play().then(() => setPlaying(true)).catch(() => setPlaying(false))
+      } else {
+        video.pause()
+        setPlaying(false)
+      }
     }, 40)
     return () => window.clearTimeout(timeout)
+  // Opening or stepping to a clip applies the current on-open preferences.
+  // Player controls can then change mute/playback without resetting progress.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeMedia?.id])
 
   useEffect(() => {
@@ -92,7 +99,7 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
   const media = activeMedia
 
   const source = media.videoUrl ?? media.videoUrlSd
-  const embedUrl = `https://www.redgifs.com/ifr/${encodeURIComponent(media.id)}?autoplay=1`
+  const embedUrl = `https://www.redgifs.com/ifr/${encodeURIComponent(media.id)}?autoplay=${preferences.autoplay ? '1' : '0'}`
   const liked = isLiked(activeMedia.id)
   const saved = isSaved(activeMedia.id)
   const following = isFollowing(activeMedia.creator)
@@ -188,7 +195,7 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
             playsInline
             muted={muted}
             preload="auto"
-            autoPlay
+            autoPlay={preferences.autoplay}
             onError={() => { setVideoError(true); setPlaying(false) }}
             onPlay={() => setPlaying(true)}
             onPause={() => setPlaying(false)}

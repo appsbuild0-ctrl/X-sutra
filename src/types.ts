@@ -2,7 +2,7 @@ export type TabId = 'home' | 'discover' | 'library' | 'downloads' | 'you'
 export type FeedMode = 'trending' | 'latest'
 /** Public V2 gif-search sorting values accepted by the source API. */
 export type FeedOrder = 'latest' | 'top' | 'top7' | 'top28' | 'score' | 'trending'
-export type DownloadStatus = 'queued' | 'downloading' | 'done' | 'failed'
+export type DownloadStatus = 'queued' | 'downloading' | 'done' | 'opened' | 'failed'
 
 export interface MediaItem {
   id: string
@@ -79,6 +79,8 @@ export interface DownloadRecord {
   item: MediaItem
   status: DownloadStatus
   createdAt: string
+  /** Exact media URL returned by the public API for this download attempt. */
+  mediaUrl?: string
   error?: string
 }
 

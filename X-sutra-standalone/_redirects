@@ -1,0 +1,3 @@
+# Host this directory on Netlify to enable the same-origin public API proxy.
+/api/redgifs/*  https://api.redgifs.com/:splat  200!
+/*  /index.html  200

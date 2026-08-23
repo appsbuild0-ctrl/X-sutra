@@ -234,6 +234,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .download-row__state small { color: var(--muted); font-family: 'DM Mono', monospace; font-size: 8px; line-height: 1.1; }
 .status-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
 .status-dot--done { background: var(--success); box-shadow: 0 0 0 3px rgba(145,211,156,.12); }
+.status-dot--opened { background: var(--ember-strong); box-shadow: 0 0 0 3px rgba(240,100,67,.12); }
 .status-dot--downloading { background: var(--gold); animation: pulse 1s infinite ease-in-out; }
 .status-dot--failed { background: var(--danger); }
 @keyframes pulse { 50% { opacity: .25; transform: scale(.7); } }
