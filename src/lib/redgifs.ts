@@ -1,15 +1,15 @@
 import type { Creator, CreatorProfile, FeedOrder, MediaItem, Niche, PageResult, TagSuggestion } from '../types'
 
 /**
- * Browser calls stay same-origin. In production Netlify's function obtains a
- * temporary public token server-side, then calls the public RedGifs V2 API.
- * That avoids exposing a user token and avoids browser CORS failures.
+ * Browser calls stay same-origin. Git-connected Netlify builds use the function
+ * proxy; static Netlify Drop builds use an included 200 rewrite proxy. Both
+ * preserve the public temporary-token flow without a browser CORS failure.
  */
 const PROXY_PATH = '/api/redgifs'
-const DIRECT_API_ORIGIN = 'https://api.redgifs.com'
-// `npm run build:direct` creates a ready static Netlify Drop build. The normal
-// Netlify Git build uses the same-origin serverless proxy instead.
-const USE_DIRECT_PUBLIC_API = import.meta.env.MODE === 'direct'
+const DROP_PROXY_PREFIX = '/api/redgifs'
+// `npm run build:drop` creates a static Netlify Drop build. Netlify's 200
+// rewrite proxies this prefix to the source API, so browser CORS is avoided.
+const USE_DROP_PROXY = import.meta.env.MODE === 'drop'
 let directToken = ''
 let directTokenExpiry = 0
 
@@ -44,9 +44,9 @@ function queryPath(pathname: string, params: Record<string, string | number | bo
   return `${url.pathname}${url.search}`
 }
 
-async function directTemporaryToken(force = false): Promise<string> {
+async function dropProxyTemporaryToken(force = false): Promise<string> {
   if (!force && directToken && Date.now() < directTokenExpiry) return directToken
-  const response = await fetch(`${DIRECT_API_ORIGIN}/v2/auth/temporary`, { headers: { Accept: 'application/json' } })
+  const response = await fetch(`${DROP_PROXY_PREFIX}/v2/auth/temporary`, { headers: { Accept: 'application/json' } })
   if (!response.ok) throw new Error(`Temporary public token request failed (${response.status})`)
   const data = await response.json() as { token?: string }
   if (!data.token) throw new Error('Temporary public token response was empty')
@@ -55,15 +55,15 @@ async function directTemporaryToken(force = false): Promise<string> {
   return directToken
 }
 
-async function directRequest<T>(path: string, retry = true): Promise<T> {
-  const token = await directTemporaryToken(!retry)
-  const response = await fetch(`${DIRECT_API_ORIGIN}${path}`, {
+async function dropProxyRequest<T>(path: string, retry = true): Promise<T> {
+  const token = await dropProxyTemporaryToken(!retry)
+  const response = await fetch(`${DROP_PROXY_PREFIX}${path}`, {
     headers: { Accept: 'application/json', Authorization: `Bearer ${token}` }
   })
   if (response.status === 401 && retry) {
     directToken = ''
     directTokenExpiry = 0
-    return directRequest<T>(path, false)
+    return dropProxyRequest<T>(path, false)
   }
   if (!response.ok) {
     const body = await response.text().catch(() => '')
@@ -74,7 +74,7 @@ async function directRequest<T>(path: string, retry = true): Promise<T> {
 
 async function request<T>(pathname: string, params?: Record<string, string | number | boolean | undefined>): Promise<T> {
   const path = queryPath(pathname, params)
-  if (USE_DIRECT_PUBLIC_API) return directRequest<T>(path)
+  if (USE_DROP_PROXY) return dropProxyRequest<T>(path)
 
   const url = new URL(PROXY_PATH, window.location.origin)
   url.searchParams.set('path', path)

@@ -34,7 +34,7 @@ The Vite server listens on `0.0.0.0:5173`.
 
 ## Direct Netlify Drop ZIP
 
-`X-sutra-netlify-drop.zip` is a complete Netlify project package, ready to drag directly onto [Netlify Drop](https://app.netlify.com/drop). Do **not** unzip it. Because public V2 API requests need a same-origin server-side proxy, Netlify will read the included `netlify.toml`, run the build, and deploy `netlify/functions/redgifs.mjs` with the site. This is the functional real-data ZIP; a plain static HTML/assets-only drop cannot reliably make the required browser API requests.
+`X-sutra-netlify-drop.zip` is a static package ready to drag directly onto [Netlify Drop](https://app.netlify.com/drop). Do **not** unzip it. It contains an `_redirects` rule that uses Netlify's same-origin 200 rewrite proxy for `/api/redgifs/*`, so the live public V2 calls avoid browser CORS restrictions while the ZIP remains a simple static Drop deployment. No mock feed is embedded.
 
 ## Git-connected Netlify deployment
 

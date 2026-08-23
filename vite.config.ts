@@ -18,7 +18,9 @@ function allowedTarget(rawPath: string): URL | null {
 
 async function servePublicMedia(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const requestUrl = new URL(req.url ?? '/', 'http://localhost')
-  const target = allowedTarget(requestUrl.searchParams.get('path') ?? '')
+  // Development supports both the function-style ?path= URL and the static
+  // Netlify Drop rewrite URL (/api/redgifs/v2/...).
+  const target = allowedTarget(requestUrl.searchParams.get('path') ?? requestUrl.pathname)
   if (!target) {
     res.statusCode = 400
     res.setHeader('Content-Type', 'application/json')
