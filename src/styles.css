@@ -112,6 +112,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .media-card__visual--empty { background: linear-gradient(145deg, #251a1b, #141112); }
 .media-card__visual img, .media-card__visual video { width: 100%; height: 100%; object-fit: cover; transition: transform .35s ease, filter .35s ease; }
 .media-card__visual video { background: #171011; }
+.media-card__embed { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #171011; pointer-events: none; }
 .media-card__visual:hover img, .media-card__visual:hover video { transform: scale(1.045); filter: saturate(1.05); }
 .media-card__missing { position: absolute; inset: 0; display: grid; place-items: center; padding: 20px; color: var(--muted); font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: .05em; text-transform: uppercase; }
 .media-card__shade { position: absolute; inset: 0; z-index: 1; background: linear-gradient(180deg, rgba(13,8,8,0) 45%, rgba(10,7,7,.78) 100%); pointer-events: none; }
@@ -393,6 +394,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .immersive-player { position: fixed; z-index: 95; inset: 0; overflow: hidden; color: #fff9f3; background: #050404; touch-action: pan-y; animation: fade-in .18s ease both; }
 .immersive-player__media { position: absolute; inset: 0; display: grid; place-items: center; background: #050404; }
 .immersive-player__media video { display: block; width: 100%; height: 100%; object-fit: contain; background: #050404; }
+.immersive-player__embed { display: block; width: 100%; height: 100%; border: 0; background: #050404; }
 .immersive-player__unavailable { max-width: 260px; padding: 20px; color: var(--text-soft); font-family: 'Fraunces', serif; font-size: 21px; text-align: center; }
 .immersive-player__scrim { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(0,0,0,.7) 0%, transparent 24%, transparent 54%, rgba(0,0,0,.84) 100%); }
 .immersive-player__top { position: absolute; z-index: 2; top: calc(13px + env(safe-area-inset-top, 0px)); right: 15px; left: 15px; display: flex; align-items: center; justify-content: space-between; }

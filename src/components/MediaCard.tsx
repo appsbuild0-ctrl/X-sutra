@@ -92,6 +92,7 @@ export function MediaCard({ item, queue, priority = false }: MediaCardProps): Re
   const thumbnails = useMemo(() => [...new Set((display.thumbnailUrls?.length ? display.thumbnailUrls : (display.thumbnail ? [display.thumbnail] : [])).filter(Boolean))], [display.thumbnail, display.thumbnailUrls])
   const activeThumbnail = !imageExhausted ? thumbnails[thumbnailIndex] : undefined
   const previewSource = display.previewUrl ?? display.videoUrlSd ?? display.videoUrl
+  const embedUrl = `https://www.redgifs.com/ifr/${encodeURIComponent(display.id)}?autoplay=1`
 
   useEffect(() => {
     if (!imageExhausted || resolved || !inView) return
@@ -128,8 +129,10 @@ export function MediaCard({ item, queue, priority = false }: MediaCardProps): Re
           <img key={activeThumbnail} src={activeThumbnail} alt="" loading={priority ? 'eager' : 'lazy'} onError={nextThumbnail} />
         ) : previewSource && !previewFailed ? (
           <video key={previewSource} src={previewSource} muted autoPlay loop playsInline preload="metadata" onError={() => setPreviewFailed(true)} />
+        ) : inView ? (
+          <iframe className="media-card__embed" src={embedUrl} title="Public video preview" loading="lazy" allow="autoplay; fullscreen" tabIndex={-1} aria-hidden="true" />
         ) : (
-          <span className="media-card__missing">{opening ? 'Opening source…' : 'Source preview unavailable'}</span>
+          <span className="media-card__missing">{opening ? 'Opening source…' : 'Loading source preview…'}</span>
         )}
         <span className="media-card__shade" aria-hidden="true" />
         <span className="media-card__play" aria-hidden="true"><PlayIcon size={18} /></span>

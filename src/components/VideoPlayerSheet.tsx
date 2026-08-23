@@ -92,6 +92,7 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
   const media = activeMedia
 
   const source = media.videoUrl ?? media.videoUrlSd
+  const embedUrl = `https://www.redgifs.com/ifr/${encodeURIComponent(media.id)}?autoplay=1`
   const liked = isLiked(activeMedia.id)
   const saved = isSaved(activeMedia.id)
   const following = isFollowing(activeMedia.creator)
@@ -177,12 +178,12 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
       }}
     >
       <div className="immersive-player__media" onClick={onVideoTap}>
-        {source ? (
+        {source && !videoError ? (
           <video
             ref={videoRef}
-            key={activeMedia.id}
+            key={media.id}
             src={source}
-            poster={activeMedia.thumbnail}
+            poster={media.thumbnail}
             loop
             playsInline
             muted={muted}
@@ -196,13 +197,13 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
               if (video.duration) setProgress(video.currentTime / video.duration)
             }}
           />
-        ) : <div className="immersive-player__unavailable">This public item has no playable video URL.</div>}
+        ) : <iframe className="immersive-player__embed" src={embedUrl} title="Public RedGifs video" allow="autoplay; fullscreen" allowFullScreen />}
       </div>
       <div className="immersive-player__scrim" />
 
       {heartBurst && <span className="immersive-player__heart" aria-hidden="true"><HeartIcon filled size={76} /></span>}
       {!playing && !videoError && <span className="immersive-player__paused" aria-hidden="true"><PlayIcon size={34} /></span>}
-      {videoError && <div className="immersive-player__error">Public video could not play on this device. <a href={activeMedia.sourceUrl} target="_blank" rel="noreferrer">Open source</a></div>}
+      {videoError && <div className="immersive-player__error">Using the public embed fallback. <a href={media.sourceUrl} target="_blank" rel="noreferrer">Open source</a></div>}
 
       <header className="immersive-player__top">
         <span>{playerIndex + 1} / {playerQueue.length || 1} · public video</span>
