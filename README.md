@@ -1,60 +1,77 @@
 # X-sutra
 
-A standalone, dark-ember Android media browser built for **X-sutra**. It uses public media endpoints for browsing and downloads, while saved items, download history, preferences, and the optional display-name profile remain local to the device.
+**X-sutra** is a dark, mobile-first public-media browser built as a standalone React + Capacitor application. It is branded and structured independently; the shared external project is used only as a product/feature reference.
 
-> The external project shared for direction was used only as a product reference. This repository is branded and structured as X-sutra, with no external-account login or credential capture flow.
+## What works
 
-## Included experience
+- Android-ready React + Capacitor project
+- Hash-routed pages: **Home**, **Discover**, **Search**, **Creator**, **Tag**, **Niche**, **Library**, **Collection**, **Downloads**, **You**, and **Settings**
+- Real public RedGifs V2 feeds: Trending, Latest, search, tag results, creator clips, creator profiles, niche clips, live suggestions, categories, and related niches
+- Real public thumbnails and browser/native video playback in a full-screen player
+- Public watch-link / clip-ID resolver and device/browser download flow
+- Local-only saved clips, follows, collections, download history, playback preferences, and blocked-tag filtering
+- No demo/fake feed data and no external account password/token capture
+- Login/authentication is intentionally not included yet; it can be added later as a separate flow
 
-- Android-ready React + Capacitor app
-- Five working bottom tabs: **Home**, **Discover**, **Library**, **Downloads**, and **You**
-- Public Trending / For-you-style feeds with search, topics, creator browsing, and a full-screen player
-- Public watch-link / clip-ID resolver and download action
-- Local saved library and persisted download history
-- Simple local profile on the final **You** tab — no password, third-party login, or account token is stored
-- Download quality and autoplay preferences
-- Graceful interactive preview data when a public API is unavailable
-- Responsive web preview for UI iteration before creating an APK
+## How live API data works
 
-## Run the UI locally
+Browser requests go through the included Netlify Function at `netlify/functions/redgifs.mjs`:
+
+1. The function obtains a fresh read-only public temporary token server-side.
+2. It requests only allowlisted public V2/V1 read endpoints.
+3. The browser receives real JSON data through same-origin `/api/redgifs`.
+
+This prevents browser CORS problems and keeps external account credentials out of X-sutra. Vite development uses an equivalent local proxy for `/api/redgifs`.
+
+## Local development
 
 ```bash
 npm install
 npm run dev
 ```
 
-The Vite server listens on `0.0.0.0:5173` and can be viewed in a browser or the live Arena preview.
+The Vite server listens on `0.0.0.0:5173`.
 
-## Build the web bundle
+## Netlify deployment
+
+The repository includes `netlify.toml` with the required settings:
+
+```text
+Build command:       npm run build
+Publish directory:   dist
+Functions directory: netlify/functions
+Node version:         22
+```
+
+When connecting the repo in Netlify, choose the branch containing the X-sutra work:
+
+```text
+arena/01a02d4e-x-sutra
+```
+
+Netlify builds the app and deploys the public API function together. A plain static `index.html` opened via `file://` cannot call the same-origin function, so use the Netlify deployment for live data/playback.
+
+## Production build
 
 ```bash
 npm run build
 ```
 
-## Sync and open the Android project
+## Android sync
 
 ```bash
 npm run cap:sync
 npm run android:open
 ```
 
-Open `android/` in Android Studio to run on a device/emulator or create a signed APK/AAB. The native project uses the package ID `app.xsutra.mobile` and application label `X-sutra`.
-
-> Android compilation requires a local JDK and Android SDK / Android Studio. The source project and Capacitor sync are included in this repository.
-
-## Data and privacy
-
-- Public browsing uses temporary public API access only.
-- X-sutra never asks for an external site password or captures account credentials.
-- Local profile name, saved clips, download history, and preferences are held in browser/device storage.
-- Download behavior depends on the source file being public and the platform permitting that public file download.
+Open `android/` in Android Studio to run on a device/emulator or create a signed APK/AAB. The package ID is `app.xsutra.mobile` and the application label is `X-sutra`.
 
 ## Main commands
 
 | Command | Purpose |
 | --- | --- |
-| `npm run dev` | Start the responsive UI preview |
-| `npm run build` | Type-check and create `dist/` |
-| `npm run check` | Type-check without building |
+| `npm run dev` | Start Vite with the local public-API proxy |
+| `npm run build` | Type-check and create the production bundle |
+| `npm run check` | Type-check without creating `dist/` |
 | `npm run cap:sync` | Build web assets and copy them into Android |
 | `npm run android:open` | Open the Android Studio project |

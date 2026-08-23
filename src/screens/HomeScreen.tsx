@@ -1,115 +1,83 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useMemo, useState } from 'react'
+import { LiveError, ScreenNotice } from '../components/LiveState'
 import { MediaGrid } from '../components/MediaGrid'
 import { ScreenHeader } from '../components/ScreenHeader'
 import { RefreshIcon, SparkIcon } from '../components/icons'
-import { demoMedia } from '../lib/demo'
+import { useApp } from '../context/AppContext'
+import { usePagedMedia } from '../hooks/usePagedMedia'
 import { publicMediaApi } from '../lib/redgifs'
-import type { FeedMode, MediaItem } from '../types'
-
-type SortMode = 'featured' | 'newest' | 'popular'
-
-function sorted(items: MediaItem[], sort: SortMode): MediaItem[] {
-  const copy = [...items]
-  if (sort === 'popular') return copy.sort((a, b) => (b.likes ?? 0) - (a.likes ?? 0))
-  if (sort === 'newest') return copy.sort((a, b) => b.id.localeCompare(a.id))
-  return copy
-}
+import type { FeedMode, FeedOrder } from '../types'
 
 export function HomeScreen(): React.JSX.Element {
+  const { preferences } = useApp()
   const [mode, setMode] = useState<FeedMode>('trending')
-  const [sort, setSort] = useState<SortMode>('featured')
-  const [items, setItems] = useState<MediaItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const [usingPreview, setUsingPreview] = useState(false)
+  const [order, setOrder] = useState<FeedOrder>('latest')
 
-  const load = useCallback(async () => {
-    setLoading(true)
-    try {
-      const remoteItems = mode === 'trending'
-        ? await publicMediaApi.trending()
-        : await publicMediaApi.latest()
-      if (!remoteItems.length) throw new Error('No public results returned')
-      setItems(remoteItems)
-      setUsingPreview(false)
-    } catch {
-      setItems(mode === 'trending' ? demoMedia : [...demoMedia].reverse())
-      setUsingPreview(true)
-    } finally {
-      setLoading(false)
-    }
-  }, [mode])
+  const loadFeed = useCallback((page: number) => {
+    return mode === 'trending' ? publicMediaApi.trending(page) : publicMediaApi.latest(page, order)
+  }, [mode, order])
+  const feed = usePagedMedia(loadFeed, [mode, order])
 
-  useEffect(() => { void load() }, [load])
-
-  const visibleItems = useMemo(() => sorted(items, sort), [items, sort])
+  const visibleItems = useMemo(() => {
+    const blocked = new Set(preferences.blockedTags.map((tag) => tag.toLowerCase()))
+    return feed.items.filter((item) => !item.tags.some((tag) => blocked.has(tag.toLowerCase())))
+  }, [feed.items, preferences.blockedTags])
 
   return (
     <section className="screen screen--home">
       <ScreenHeader
         title="X-sutra"
-        eyebrow="Your private viewing space"
-        actions={
-          <button className="round-button" type="button" onClick={() => void load()} aria-label="Refresh feed">
-            <RefreshIcon size={20} />
-          </button>
-        }
+        eyebrow="Public media browser"
+        actions={<button className="round-button" type="button" onClick={() => void feed.reload()} aria-label="Refresh live feed"><RefreshIcon size={20} /></button>}
       />
 
       <div className="home-intro">
         <div>
-          <p className="home-intro__kicker"><SparkIcon size={16} /> Public feed</p>
-          <h2>{mode === 'trending' ? 'What’s moving now.' : 'Fresh picks for you.'}</h2>
-          <p>Browse freely. No external account is required.</p>
+          <p className="home-intro__kicker"><SparkIcon size={16} /> Real public feed</p>
+          <h2>{mode === 'trending' ? 'What’s moving now.' : 'Newest public clips.'}</h2>
+          <p>Live public data, playable source previews, and local-only saves. No account sign-in is required.</p>
         </div>
-        <span className="live-pill"><i className={usingPreview ? 'is-preview' : ''} /> {usingPreview ? 'Preview mode' : 'Live'}</span>
+        <span className="live-pill"><i /> Live V2</span>
       </div>
 
       <div className="feed-toolbar">
         <div className="segmented" role="tablist" aria-label="Feed selection">
-          <button
-            className={mode === 'for-you' ? 'is-active' : ''}
-            type="button"
-            role="tab"
-            aria-selected={mode === 'for-you'}
-            onClick={() => setMode('for-you')}
-          >
-            For you
-          </button>
-          <button
-            className={mode === 'trending' ? 'is-active' : ''}
-            type="button"
-            role="tab"
-            aria-selected={mode === 'trending'}
-            onClick={() => setMode('trending')}
-          >
-            Trending
-          </button>
+          <button className={mode === 'latest' ? 'is-active' : ''} type="button" role="tab" aria-selected={mode === 'latest'} onClick={() => setMode('latest')}>Latest</button>
+          <button className={mode === 'trending' ? 'is-active' : ''} type="button" role="tab" aria-selected={mode === 'trending'} onClick={() => setMode('trending')}>Trending</button>
         </div>
         <label className="sort-control">
-          <span className="sr-only">Sort feed</span>
-          <select value={sort} onChange={(event) => setSort(event.target.value as SortMode)}>
-            <option value="featured">Featured</option>
-            <option value="newest">Newest</option>
-            <option value="popular">Most liked</option>
+          <span className="sr-only">Sort public feed</span>
+          <select value={order} disabled={mode === 'trending'} onChange={(event) => setOrder(event.target.value as FeedOrder)}>
+            <option value="latest">Latest</option>
+            <option value="best">Best</option>
+            <option value="top">Top</option>
+            <option value="trending">Trending</option>
           </select>
         </label>
       </div>
 
-      {usingPreview && !loading && (
-        <div className="connection-note">
-          Live public content is not reachable right now, so X-sutra is showing a local interactive preview. Tap refresh to try again.
-        </div>
-      )}
+      {preferences.blockedTags.length > 0 && <ScreenNotice>{preferences.blockedTags.length} blocked tag{preferences.blockedTags.length === 1 ? '' : 's'} are hidden from this live feed.</ScreenNotice>}
 
       <div className="section-heading">
         <div>
-          <p className="eyebrow">{mode === 'trending' ? 'Popular today' : 'Fresh from the public feed'}</p>
-          <h3>{mode === 'trending' ? 'Trending now' : 'For your session'}</h3>
+          <p className="eyebrow">{mode === 'trending' ? 'Public feed' : 'Public search index'}</p>
+          <h3>{mode === 'trending' ? 'Trending now' : 'Latest clips'}</h3>
         </div>
-        {!loading && <span>{visibleItems.length} clips</span>}
+        {!feed.loading && <span>{visibleItems.length} loaded</span>}
       </div>
 
-      <MediaGrid items={visibleItems} loading={loading} />
+      {feed.error ? (
+        <LiveError message={feed.error} onRetry={feed.reload} />
+      ) : (
+        <MediaGrid
+          items={visibleItems}
+          loading={feed.loading}
+          canLoadMore={feed.canLoadMore}
+          loadingMore={feed.loadingMore}
+          onLoadMore={() => void feed.loadMore()}
+          empty={<div className="empty-state"><strong>No public clips matched.</strong><span>Change the feed or review blocked tags in Settings.</span></div>}
+        />
+      )}
     </section>
   )
 }

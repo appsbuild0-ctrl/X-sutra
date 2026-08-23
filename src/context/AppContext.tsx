@@ -8,8 +8,8 @@ import {
   useState,
   type ReactNode
 } from 'react'
-import { readStored, removeStored, writeStored } from '../lib/storage'
-import type { DownloadRecord, MediaItem, Preferences } from '../types'
+import { readStored, writeStored } from '../lib/storage'
+import type { Creator, DownloadRecord, LocalCollection, MediaItem, Preferences } from '../types'
 
 type ToastTone = 'default' | 'success' | 'error'
 
@@ -21,30 +21,40 @@ interface ToastMessage {
 
 interface AppContextValue {
   saved: MediaItem[]
+  follows: Creator[]
+  collections: LocalCollection[]
   downloads: DownloadRecord[]
   activeMedia: MediaItem | null
-  profileName: string
   preferences: Preferences
   toast: ToastMessage | null
   isSaved: (id: string) => boolean
   toggleSaved: (item: MediaItem) => void
+  isFollowing: (username: string) => boolean
+  toggleFollow: (creator: Creator) => void
+  createCollection: (name: string, description?: string) => void
+  deleteCollection: (id: string) => void
+  addToCollection: (collectionId: string, item: MediaItem) => void
+  collectionItems: (collectionId: string) => MediaItem[]
   requestDownload: (item: MediaItem) => Promise<void>
   clearDownloads: () => void
   openPlayer: (item: MediaItem) => void
   closePlayer: () => void
-  setProfileName: (name: string) => void
-  clearProfile: () => void
   updatePreferences: (patch: Partial<Preferences>) => void
   notify: (text: string, tone?: ToastTone) => void
 }
 
 const AppContext = createContext<AppContextValue | null>(null)
 
-const SAVED_KEY = 'x-sutra.saved.v1'
-const DOWNLOADS_KEY = 'x-sutra.downloads.v1'
-const PROFILE_KEY = 'x-sutra.profile.v1'
-const PREFERENCES_KEY = 'x-sutra.preferences.v1'
-const defaultPreferences: Preferences = { quality: 'hd', autoplay: false }
+const SAVED_KEY = 'x-sutra.saved.real.v2'
+const FOLLOWS_KEY = 'x-sutra.follows.real.v2'
+const COLLECTIONS_KEY = 'x-sutra.collections.local.v2'
+const DOWNLOADS_KEY = 'x-sutra.downloads.real.v2'
+const PREFERENCES_KEY = 'x-sutra.preferences.v2'
+const defaultPreferences: Preferences = { quality: 'hd', autoplay: false, muted: false, blockedTags: [] }
+
+function readRealSaved(): MediaItem[] {
+  return readStored<MediaItem[]>(SAVED_KEY, []).filter((item) => item?.id && !item.id.startsWith('xs-demo-'))
+}
 
 function fileNameFor(item: MediaItem): string {
   const clean = `${item.creator}-${item.title}`
@@ -69,12 +79,7 @@ function triggerBrowserDownload(url: string, filename: string): void {
 async function saveVideo(url: string, filename: string): Promise<void> {
   if (Capacitor.isNativePlatform()) {
     const { Directory, Filesystem } = await import('@capacitor/filesystem')
-    await Filesystem.downloadFile({
-      url,
-      path: filename,
-      directory: Directory.Documents,
-      recursive: true
-    })
+    await Filesystem.downloadFile({ url, path: filename, directory: Directory.Documents, recursive: true })
     return
   }
 
@@ -86,28 +91,26 @@ async function saveVideo(url: string, filename: string): Promise<void> {
     triggerBrowserDownload(objectUrl, filename)
     window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1500)
   } catch {
-    // A cross-origin host may not allow a blob fetch. Opening the public file is
-    // still a useful browser fallback and works with Android's download handler.
+    // Some public media hosts disallow blob fetches. Let the browser/native
+    // handler open the public file instead of inventing a fake completion.
     triggerBrowserDownload(url, filename)
   }
 }
 
 export function AppProvider({ children }: { children: ReactNode }): React.JSX.Element {
-  const [saved, setSaved] = useState<MediaItem[]>(() => readStored(SAVED_KEY, []))
+  const [saved, setSaved] = useState<MediaItem[]>(readRealSaved)
+  const [follows, setFollows] = useState<Creator[]>(() => readStored(FOLLOWS_KEY, []))
+  const [collections, setCollections] = useState<LocalCollection[]>(() => readStored(COLLECTIONS_KEY, []))
   const [downloads, setDownloads] = useState<DownloadRecord[]>(() => readStored(DOWNLOADS_KEY, []))
-  const [profileName, setProfileNameState] = useState<string>(() => readStored(PROFILE_KEY, ''))
-  const [preferences, setPreferences] = useState<Preferences>(() => readStored(PREFERENCES_KEY, defaultPreferences))
+  const [preferences, setPreferences] = useState<Preferences>(() => ({ ...defaultPreferences, ...readStored(PREFERENCES_KEY, defaultPreferences) }))
   const [activeMedia, setActiveMedia] = useState<MediaItem | null>(null)
   const [toast, setToast] = useState<ToastMessage | null>(null)
 
   useEffect(() => writeStored(SAVED_KEY, saved), [saved])
+  useEffect(() => writeStored(FOLLOWS_KEY, follows), [follows])
+  useEffect(() => writeStored(COLLECTIONS_KEY, collections), [collections])
   useEffect(() => writeStored(DOWNLOADS_KEY, downloads), [downloads])
   useEffect(() => writeStored(PREFERENCES_KEY, preferences), [preferences])
-  useEffect(() => {
-    if (profileName) writeStored(PROFILE_KEY, profileName)
-    else removeStored(PROFILE_KEY)
-  }, [profileName])
-
   useEffect(() => {
     if (!toast) return
     const timeout = window.setTimeout(() => setToast(null), 3200)
@@ -122,8 +125,7 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
 
   const toggleSaved = useCallback((item: MediaItem) => {
     setSaved((current) => {
-      const exists = current.some((savedItem) => savedItem.id === item.id)
-      if (exists) {
+      if (current.some((savedItem) => savedItem.id === item.id)) {
         notify('Removed from your local library')
         return current.filter((savedItem) => savedItem.id !== item.id)
       }
@@ -132,52 +134,93 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
     })
   }, [notify])
 
-  const requestDownload = useCallback(async (item: MediaItem) => {
-    const url = preferences.quality === 'sd'
-      ? item.videoUrlSd ?? item.videoUrl
-      : item.videoUrl ?? item.videoUrlSd
+  const isFollowing = useCallback((username: string) => follows.some((creator) => creator.username === username), [follows])
 
+  const toggleFollow = useCallback((creator: Creator) => {
+    setFollows((current) => {
+      if (current.some((entry) => entry.username === creator.username)) {
+        notify(`Unfollowed @${creator.username}`)
+        return current.filter((entry) => entry.username !== creator.username)
+      }
+      notify(`Following @${creator.username} locally`, 'success')
+      return [creator, ...current]
+    })
+  }, [notify])
+
+  const createCollection = useCallback((name: string, description = '') => {
+    const clean = name.trim().slice(0, 48)
+    if (!clean) {
+      notify('Name your collection first', 'error')
+      return
+    }
+    setCollections((current) => [{
+      id: `local-${Date.now()}`,
+      name: clean,
+      description: description.trim().slice(0, 120),
+      itemIds: [],
+      createdAt: new Date().toISOString()
+    }, ...current])
+    notify(`Created ${clean}`, 'success')
+  }, [notify])
+
+  const deleteCollection = useCallback((id: string) => {
+    setCollections((current) => current.filter((collection) => collection.id !== id))
+    notify('Collection removed')
+  }, [notify])
+
+  const addToCollection = useCallback((collectionId: string, item: MediaItem) => {
+    setSaved((current) => current.some((savedItem) => savedItem.id === item.id) ? current : [item, ...current])
+    setCollections((current) => current.map((collection) => {
+      if (collection.id !== collectionId || collection.itemIds.includes(item.id)) return collection
+      return { ...collection, itemIds: [...collection.itemIds, item.id] }
+    }))
+    notify('Added to collection', 'success')
+  }, [notify])
+
+  const collectionItems = useCallback((collectionId: string) => {
+    const collection = collections.find((entry) => entry.id === collectionId)
+    if (!collection) return []
+    return collection.itemIds.map((id) => saved.find((item) => item.id === id)).filter((item): item is MediaItem => Boolean(item))
+  }, [collections, saved])
+
+  const requestDownload = useCallback(async (item: MediaItem) => {
+    const url = preferences.quality === 'sd' ? item.videoUrlSd ?? item.videoUrl : item.videoUrl ?? item.videoUrlSd
     if (!url) {
-      notify('A downloadable video file is not available for this item', 'error')
+      notify('This public clip does not expose a downloadable video URL', 'error')
       return
     }
 
     const recordId = `${item.id}-${Date.now()}`
-    const record: DownloadRecord = {
-      id: recordId,
-      item,
-      status: 'queued',
-      createdAt: new Date().toISOString()
-    }
-    setDownloads((current) => [record, ...current])
+    setDownloads((current) => [{ id: recordId, item, status: 'queued', createdAt: new Date().toISOString() }, ...current])
 
     try {
-      setDownloads((current) => current.map((entry) =>
-        entry.id === recordId ? { ...entry, status: 'downloading' } : entry
-      ))
+      setDownloads((current) => current.map((entry) => entry.id === recordId ? { ...entry, status: 'downloading' } : entry))
       await saveVideo(url, fileNameFor(item))
-      setDownloads((current) => current.map((entry) =>
-        entry.id === recordId ? { ...entry, status: 'done' } : entry
-      ))
-      notify('Download started — check your Downloads folder', 'success')
+      setDownloads((current) => current.map((entry) => entry.id === recordId ? { ...entry, status: 'done' } : entry))
+      notify('Download sent to your device/browser', 'success')
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unable to download this item'
-      setDownloads((current) => current.map((entry) =>
-        entry.id === recordId ? { ...entry, status: 'failed', error: message } : entry
-      ))
+      const message = error instanceof Error ? error.message : 'Unable to start download'
+      setDownloads((current) => current.map((entry) => entry.id === recordId ? { ...entry, status: 'failed', error: message } : entry))
       notify('The download could not be started', 'error')
     }
   }, [notify, preferences.quality])
 
   const value = useMemo<AppContextValue>(() => ({
     saved,
+    follows,
+    collections,
     downloads,
     activeMedia,
-    profileName,
     preferences,
     toast,
     isSaved,
     toggleSaved,
+    isFollowing,
+    toggleFollow,
+    createCollection,
+    deleteCollection,
+    addToCollection,
+    collectionItems,
     requestDownload,
     clearDownloads: () => {
       setDownloads([])
@@ -185,18 +228,9 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
     },
     openPlayer: setActiveMedia,
     closePlayer: () => setActiveMedia(null),
-    setProfileName: (name) => {
-      const clean = name.trim().slice(0, 32)
-      setProfileNameState(clean)
-      if (clean) notify(`Welcome, ${clean}`, 'success')
-    },
-    clearProfile: () => {
-      setProfileNameState('')
-      notify('Local profile removed')
-    },
     updatePreferences: (patch) => setPreferences((current) => ({ ...current, ...patch })),
     notify
-  }), [activeMedia, downloads, isSaved, notify, preferences, profileName, requestDownload, saved, toast, toggleSaved])
+  }), [activeMedia, addToCollection, collectionItems, collections, createCollection, deleteCollection, downloads, follows, isFollowing, isSaved, notify, preferences, requestDownload, saved, toast, toggleFollow, toggleSaved])
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }

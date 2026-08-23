@@ -1,30 +1,28 @@
-import type { TabId } from '../types'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { CompassIcon, DownloadIcon, HomeIcon, LibraryIcon, UserIcon } from './icons'
 
-const tabs: Array<{ id: TabId; label: string; Icon: typeof HomeIcon }> = [
-  { id: 'home', label: 'Home', Icon: HomeIcon },
-  { id: 'discover', label: 'Discover', Icon: CompassIcon },
-  { id: 'library', label: 'Library', Icon: LibraryIcon },
-  { id: 'downloads', label: 'Downloads', Icon: DownloadIcon },
-  { id: 'you', label: 'You', Icon: UserIcon }
+const tabs = [
+  { path: '/', label: 'Home', Icon: HomeIcon, match: (pathname: string) => pathname === '/' },
+  { path: '/discover', label: 'Discover', Icon: CompassIcon, match: (pathname: string) => /^\/(discover|search|creator|tag|niche)/.test(pathname) },
+  { path: '/library', label: 'Library', Icon: LibraryIcon, match: (pathname: string) => /^\/(library|collection)/.test(pathname) },
+  { path: '/downloads', label: 'Downloads', Icon: DownloadIcon, match: (pathname: string) => pathname.startsWith('/downloads') },
+  { path: '/you', label: 'You', Icon: UserIcon, match: (pathname: string) => /^\/(you|settings)/.test(pathname) }
 ]
 
-interface BottomNavProps {
-  activeTab: TabId
-  onChange: (tab: TabId) => void
-}
+export function BottomNav(): React.JSX.Element {
+  const navigate = useNavigate()
+  const { pathname } = useLocation()
 
-export function BottomNav({ activeTab, onChange }: BottomNavProps): React.JSX.Element {
   return (
     <nav className="bottom-nav" aria-label="Main navigation">
-      {tabs.map(({ id, label, Icon }) => {
-        const selected = id === activeTab
+      {tabs.map(({ path, label, Icon, match }) => {
+        const selected = match(pathname)
         return (
           <button
-            key={id}
+            key={path}
             className={`nav-tab${selected ? ' is-active' : ''}`}
             type="button"
-            onClick={() => onChange(id)}
+            onClick={() => navigate(path)}
             aria-current={selected ? 'page' : undefined}
           >
             <span className="nav-icon"><Icon size={20} /></span>

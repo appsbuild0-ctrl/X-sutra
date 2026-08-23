@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { compactNumber, durationLabel } from '../lib/format'
 import type { MediaItem } from '../types'
 import { useApp } from '../context/AppContext'
@@ -11,6 +12,7 @@ interface MediaCardProps {
 
 export function MediaCard({ item, priority = false }: MediaCardProps): React.JSX.Element {
   const { isSaved, openPlayer, toggleSaved } = useApp()
+  const navigate = useNavigate()
   const [imageFailed, setImageFailed] = useState(false)
   const saved = isSaved(item.id)
   const showImage = Boolean(item.thumbnail) && !imageFailed
@@ -18,32 +20,27 @@ export function MediaCard({ item, priority = false }: MediaCardProps): React.JSX
   return (
     <article className="media-card">
       <button
-        className="media-card__visual"
+        className={`media-card__visual${showImage ? '' : ' media-card__visual--empty'}`}
         type="button"
         onClick={() => openPlayer(item)}
-        aria-label={`Play ${item.title}`}
-        style={!showImage ? { background: item.gradient } : undefined}
+        aria-label={`Open ${item.title}`}
       >
-        {showImage && (
-          <img
-            src={item.thumbnail}
-            alt=""
-            loading={priority ? 'eager' : 'lazy'}
-            onError={() => setImageFailed(true)}
-          />
+        {showImage ? (
+          <img src={item.thumbnail} alt="" loading={priority ? 'eager' : 'lazy'} onError={() => setImageFailed(true)} />
+        ) : (
+          <span className="media-card__missing">No public preview</span>
         )}
-        {!showImage && <span className="media-card__art" aria-hidden="true"><i /><i /><i /></span>}
         <span className="media-card__shade" aria-hidden="true" />
         <span className="media-card__play" aria-hidden="true"><PlayIcon size={18} /></span>
         <span className="media-card__duration">{durationLabel(item.duration)}</span>
-        {item.isDemo && <span className="media-card__demo">Preview</span>}
+        {item.hasAudio && <span className="media-card__audio">Audio</span>}
       </button>
 
       <div className="media-card__info">
-        <button className="media-card__copy" type="button" onClick={() => openPlayer(item)}>
-          <span className="media-card__title">{item.title}</span>
-          <span className="media-card__creator">@{item.creator}</span>
-        </button>
+        <div className="media-card__copy">
+          <button className="media-card__title" type="button" onClick={() => openPlayer(item)}>{item.title}</button>
+          <button className="media-card__creator" type="button" onClick={() => navigate(`/creator/${encodeURIComponent(item.creator)}`)}>@{item.creator}</button>
+        </div>
         <button
           className={`save-button${saved ? ' is-saved' : ''}`}
           type="button"

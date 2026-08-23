@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "X-sutra — a private, local-first Android media browser.",
+  "description": "X-sutra — a real public-media browser with local controls.",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
@@ -17,7 +17,8 @@
     "@capacitor/core": "^6.2.1",
     "@capacitor/filesystem": "^6.0.3",
     "react": "^18.3.1",
-    "react-dom": "^18.3.1"
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.30.6"
   },
   "devDependencies": {
     "@capacitor/cli": "^6.2.1",

@@ -1,38 +1,74 @@
 export type TabId = 'home' | 'discover' | 'library' | 'downloads' | 'you'
-
-export type FeedMode = 'for-you' | 'trending'
+export type FeedMode = 'trending' | 'latest'
+export type FeedOrder = 'latest' | 'best' | 'top' | 'trending'
 export type DownloadStatus = 'queued' | 'downloading' | 'done' | 'failed'
 
 export interface MediaItem {
   id: string
   title: string
+  description: string
   creator: string
   thumbnail?: string
   previewUrl?: string
   videoUrl?: string
   videoUrlSd?: string
-  sourceUrl?: string
-  duration?: number
-  likes?: number
-  views?: number
+  sourceUrl: string
+  duration: number
+  likes: number
+  views: number
+  width: number
+  height: number
+  createdAt: number
+  hasAudio: boolean
   tags: string[]
-  width?: number
-  height?: number
-  gradient?: string
-  isDemo?: boolean
+  niches: string[]
+}
+
+export interface PageResult<T> {
+  items: T[]
+  page: number
+  pages: number
+  total: number
 }
 
 export interface Creator {
   username: string
   displayName: string
   avatar?: string
-  followers?: number
-  verified?: boolean
+  profileUrl?: string
+  followers: number
+  gifs: number
+  views: number
+  verified: boolean
+}
+
+export interface CreatorProfile extends Creator {
+  following: number
+  likes: number
 }
 
 export interface Niche {
   id: string
   name: string
+  description: string
+  gifs: number
+  subscribers: number
+  thumbnail?: string
+  cover?: string
+  owner?: string
+}
+
+export interface TagSuggestion {
+  text: string
+  gifs: number
+}
+
+export interface LocalCollection {
+  id: string
+  name: string
+  description: string
+  itemIds: string[]
+  createdAt: string
 }
 
 export interface DownloadRecord {
@@ -46,4 +82,6 @@ export interface DownloadRecord {
 export interface Preferences {
   quality: 'hd' | 'sd'
   autoplay: boolean
+  muted: boolean
+  blockedTags: string[]
 }

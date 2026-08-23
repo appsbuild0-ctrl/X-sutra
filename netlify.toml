@@ -1,6 +1,18 @@
 [build]
   command = "npm run build"
   publish = "dist"
+  functions = "netlify/functions"
 
 [build.environment]
   NODE_VERSION = "22"
+
+[[redirects]]
+  from = "/api/redgifs"
+  to = "/.netlify/functions/redgifs"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
