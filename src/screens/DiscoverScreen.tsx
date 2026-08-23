@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { CreatorAvatar } from '../components/CreatorAvatar'
 import { LiveError, ScreenNotice } from '../components/LiveState'
 import { MediaGrid } from '../components/MediaGrid'
+import { PullToRefresh } from '../components/PullToRefresh'
 import { ScreenHeader } from '../components/ScreenHeader'
 import { ChevronRightIcon, RefreshIcon, SearchIcon } from '../components/icons'
 import { compactNumber } from '../lib/format'
@@ -18,7 +19,11 @@ export function DiscoverScreen(): React.JSX.Element {
   const [categories, setCategories] = useState<string[]>([])
   const [metaLoading, setMetaLoading] = useState(true)
   const [metaError, setMetaError] = useState<string | null>(null)
-  const feed = usePagedMedia(useCallback((page: number) => publicMediaApi.latest(page), []), [])
+  const [firstApiPage, setFirstApiPage] = useState(1)
+  const feed = usePagedMedia(useCallback(async (logicalPage: number) => {
+    const response = await publicMediaApi.latest(firstApiPage + logicalPage - 1)
+    return { ...response, page: logicalPage, pages: Math.max(logicalPage, response.pages > firstApiPage ? response.pages - firstApiPage + 1 : logicalPage) }
+  }, [firstApiPage]), [firstApiPage])
 
   const loadMetadata = useCallback(async () => {
     setMetaLoading(true)
@@ -47,13 +52,14 @@ export function DiscoverScreen(): React.JSX.Element {
     if (clean) navigate(`/search/${encodeURIComponent(clean)}`)
   }
 
-  const refresh = () => {
-    void loadMetadata()
-    void feed.reload()
+  const refresh = async () => {
+    setFirstApiPage((current) => current >= 7 ? 1 : current + 1)
+    await loadMetadata()
   }
 
   return (
-    <section className="screen">
+    <PullToRefresh onRefresh={refresh}>
+      <section className="screen">
       <ScreenHeader
         title="Discover"
         eyebrow="Live public index"
@@ -128,6 +134,7 @@ export function DiscoverScreen(): React.JSX.Element {
       {feed.error ? <LiveError message={feed.error} onRetry={feed.reload} /> : (
         <MediaGrid items={feed.items} loading={feed.loading} canLoadMore={feed.canLoadMore} loadingMore={feed.loadingMore} onLoadMore={() => void feed.loadMore()} empty={<div className="empty-state"><strong>No fresh public clips found.</strong></div>} />
       )}
-    </section>
+      </section>
+    </PullToRefresh>
   )
 }
