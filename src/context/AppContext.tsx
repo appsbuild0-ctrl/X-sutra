@@ -53,7 +53,9 @@ const PREFERENCES_KEY = 'x-sutra.preferences.v2'
 const defaultPreferences: Preferences = { quality: 'hd', autoplay: false, muted: false, blockedTags: [] }
 
 function readRealSaved(): MediaItem[] {
-  return readStored<MediaItem[]>(SAVED_KEY, []).filter((item) => item?.id && !item.id.startsWith('xs-demo-'))
+  return readStored<MediaItem[]>(SAVED_KEY, [])
+    .filter((item) => item?.id && !item.id.startsWith('xs-demo-'))
+    .map((item) => ({ ...item, thumbnailUrls: item.thumbnailUrls ?? (item.thumbnail ? [item.thumbnail] : []) }))
 }
 
 function fileNameFor(item: MediaItem): string {

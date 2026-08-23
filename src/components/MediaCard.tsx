@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { compactNumber, durationLabel } from '../lib/format'
 import type { MediaItem } from '../types'
@@ -10,25 +10,63 @@ interface MediaCardProps {
   priority?: boolean
 }
 
+/** Real-media card with ordered source fallback instead of a generated placeholder. */
 export function MediaCard({ item, priority = false }: MediaCardProps): React.JSX.Element {
   const { isSaved, openPlayer, toggleSaved } = useApp()
   const navigate = useNavigate()
-  const [imageFailed, setImageFailed] = useState(false)
+  const [thumbnailIndex, setThumbnailIndex] = useState(0)
+  const [imageExhausted, setImageExhausted] = useState(false)
+  const [previewFailed, setPreviewFailed] = useState(false)
   const saved = isSaved(item.id)
-  const showImage = Boolean(item.thumbnail) && !imageFailed
+
+  const thumbnails = useMemo(() => {
+    const candidates = item.thumbnailUrls?.length ? item.thumbnailUrls : (item.thumbnail ? [item.thumbnail] : [])
+    return [...new Set(candidates.filter(Boolean))]
+  }, [item.thumbnail, item.thumbnailUrls])
+  const activeThumbnail = !imageExhausted ? thumbnails[thumbnailIndex] : undefined
+  const previewSource = item.previewUrl ?? item.videoUrlSd ?? item.videoUrl
+
+  useEffect(() => {
+    setThumbnailIndex(0)
+    setImageExhausted(false)
+    setPreviewFailed(false)
+  }, [item.id])
+
+  const nextThumbnail = () => {
+    if (thumbnailIndex + 1 < thumbnails.length) setThumbnailIndex((current) => current + 1)
+    else setImageExhausted(true)
+  }
 
   return (
     <article className="media-card">
       <button
-        className={`media-card__visual${showImage ? '' : ' media-card__visual--empty'}`}
+        className={`media-card__visual${activeThumbnail || (previewSource && !previewFailed) ? '' : ' media-card__visual--empty'}`}
         type="button"
         onClick={() => openPlayer(item)}
         aria-label={`Open ${item.title}`}
       >
-        {showImage ? (
-          <img src={item.thumbnail} alt="" loading={priority ? 'eager' : 'lazy'} onError={() => setImageFailed(true)} />
+        {activeThumbnail ? (
+          <img
+            key={activeThumbnail}
+            src={activeThumbnail}
+            alt=""
+            loading={priority ? 'eager' : 'lazy'}
+            referrerPolicy="no-referrer"
+            onError={nextThumbnail}
+          />
+        ) : previewSource && !previewFailed ? (
+          <video
+            key={previewSource}
+            src={previewSource}
+            muted
+            autoPlay
+            loop
+            playsInline
+            preload="metadata"
+            onError={() => setPreviewFailed(true)}
+          />
         ) : (
-          <span className="media-card__missing">No public preview</span>
+          <span className="media-card__missing">Source preview unavailable</span>
         )}
         <span className="media-card__shade" aria-hidden="true" />
         <span className="media-card__play" aria-hidden="true"><PlayIcon size={18} /></span>

@@ -94,14 +94,21 @@ function mediaFromRaw(value: unknown): MediaItem {
   const tags = stringList(raw.tags)
   const description = text(raw.description) || text(raw.title)
   const title = description || tags.slice(0, 3).join(' · ') || `Clip ${id}`
+  const thumbnailUrls = [...new Set([
+    text(urls.poster),
+    text(urls.thumbnail),
+    text(urls.vthumbnail),
+    text(raw.thumbnail)
+  ].filter(Boolean))]
 
   return {
     id,
     title,
     description,
     creator: text(raw.userName) || text(raw.username) || text(raw.user) || 'creator',
-    thumbnail: text(urls.poster) || text(urls.thumbnail) || text(urls.vthumbnail) || text(raw.thumbnail) || undefined,
-    previewUrl: text(urls.vthumbnail) || text(urls.silent) || text(urls.gif) || undefined,
+    thumbnail: thumbnailUrls[0],
+    thumbnailUrls,
+    previewUrl: text(urls.silent) || text(urls.vthumbnail) || text(urls.gif) || undefined,
     videoUrl: text(urls.hd) || text(urls.sd) || text(urls.gif) || undefined,
     videoUrlSd: text(urls.sd) || undefined,
     sourceUrl: `https://www.redgifs.com/watch/${encodeURIComponent(id)}`,

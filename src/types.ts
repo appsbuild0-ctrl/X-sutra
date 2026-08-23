@@ -9,6 +9,8 @@ export interface MediaItem {
   description: string
   creator: string
   thumbnail?: string
+  /** Ordered real image/video thumbnail candidates returned by the public API. */
+  thumbnailUrls: string[]
   previewUrl?: string
   videoUrl?: string
   videoUrlSd?: string
