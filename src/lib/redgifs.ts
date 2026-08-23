@@ -6,6 +6,12 @@ import type { Creator, CreatorProfile, FeedOrder, MediaItem, Niche, PageResult, 
  * That avoids exposing a user token and avoids browser CORS failures.
  */
 const PROXY_PATH = '/api/redgifs'
+const DIRECT_API_ORIGIN = 'https://api.redgifs.com'
+// `npm run build:direct` creates a ready static Netlify Drop build. The normal
+// Netlify Git build uses the same-origin serverless proxy instead.
+const USE_DIRECT_PUBLIC_API = import.meta.env.MODE === 'direct'
+let directToken = ''
+let directTokenExpiry = 0
 
 type RawRecord = Record<string, unknown>
 
@@ -38,11 +44,40 @@ function queryPath(pathname: string, params: Record<string, string | number | bo
   return `${url.pathname}${url.search}`
 }
 
+async function directTemporaryToken(force = false): Promise<string> {
+  if (!force && directToken && Date.now() < directTokenExpiry) return directToken
+  const response = await fetch(`${DIRECT_API_ORIGIN}/v2/auth/temporary`, { headers: { Accept: 'application/json' } })
+  if (!response.ok) throw new Error(`Temporary public token request failed (${response.status})`)
+  const data = await response.json() as { token?: string }
+  if (!data.token) throw new Error('Temporary public token response was empty')
+  directToken = data.token
+  directTokenExpiry = Date.now() + 40 * 60 * 1000
+  return directToken
+}
+
+async function directRequest<T>(path: string, retry = true): Promise<T> {
+  const token = await directTemporaryToken(!retry)
+  const response = await fetch(`${DIRECT_API_ORIGIN}${path}`, {
+    headers: { Accept: 'application/json', Authorization: `Bearer ${token}` }
+  })
+  if (response.status === 401 && retry) {
+    directToken = ''
+    directTokenExpiry = 0
+    return directRequest<T>(path, false)
+  }
+  if (!response.ok) {
+    const body = await response.text().catch(() => '')
+    throw new Error(`Live public data request failed (${response.status})${body ? ` — ${body.slice(0, 180)}` : ''}`)
+  }
+  return response.json() as Promise<T>
+}
+
 async function request<T>(pathname: string, params?: Record<string, string | number | boolean | undefined>): Promise<T> {
   const path = queryPath(pathname, params)
+  if (USE_DIRECT_PUBLIC_API) return directRequest<T>(path)
+
   const url = new URL(PROXY_PATH, window.location.origin)
   url.searchParams.set('path', path)
-
   const response = await fetch(url.toString(), { headers: { Accept: 'application/json' } })
   if (!response.ok) {
     const body = await response.text().catch(() => '')

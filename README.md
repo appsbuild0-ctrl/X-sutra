@@ -32,7 +32,11 @@ npm run dev
 
 The Vite server listens on `0.0.0.0:5173`.
 
-## Netlify deployment
+## Direct Netlify Drop ZIP
+
+`X-sutra-netlify-drop.zip` is the simple upload-ready static package. Drag the ZIP directly onto [Netlify Drop](https://app.netlify.com/drop) without unzipping or entering build settings. It uses the public V2 API directly and never substitutes demo content when a live request fails.
+
+## Git-connected Netlify deployment
 
 The repository includes `netlify.toml` with the required settings:
 
