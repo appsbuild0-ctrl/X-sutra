@@ -5,14 +5,15 @@
 ## What works
 
 - Android-ready React + Capacitor project
-- Hash-routed pages: **Home**, **Discover**, **Search**, **Creator**, **Tag**, **Niche**, **Library**, **Collection**, **Downloads**, **You**, and **Settings**
+- Hash-routed pages: **Home**, **Discover**, **Search**, **Creator**, **Tag**, **Niche**, **Library**, **Collection**, **Downloads**, **You**, **Login**, and **Settings**
 - Real public RedGifs V2 feeds: Trending, Latest, search, tag results, creator clips, creator profiles, niche clips, live suggestions, categories, and related niches
 - Real public thumbnails and browser/native video playback in a full-screen player
 - Public watch-link / clip-ID resolver and device/browser download flow using the current media URL returned by the API
 - Browser response validation rejects HTML/error documents instead of renaming them as video files; CORS-only fallbacks are reported as opened, not completed
 - Local-only likes, saved clips, follows, collections, download history, autoplay/mute preferences, and blocked-tag filtering
+- Optional device-local login page (`#/login`) with sign-in / create-account modes and a show/hide password eye toggle
+- Local accounts store only a SHA-256 password hash on the device; the raw password is never persisted or transmitted
 - No demo/fake feed data and no external account password/token capture
-- Login/authentication is intentionally not included yet; it can be added later as a separate flow
 
 ## How live API data works
 

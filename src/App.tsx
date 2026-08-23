@@ -10,6 +10,7 @@ import { DiscoverScreen } from './screens/DiscoverScreen'
 import { DownloadsScreen } from './screens/DownloadsScreen'
 import { HomeScreen } from './screens/HomeScreen'
 import { LibraryScreen } from './screens/LibraryScreen'
+import { LoginScreen } from './screens/LoginScreen'
 import { NicheScreen } from './screens/NicheScreen'
 import { SearchScreen } from './screens/SearchScreen'
 import { SettingsScreen } from './screens/SettingsScreen'
@@ -38,6 +39,7 @@ function XsApp(): React.JSX.Element {
           <Route path="/collection/:id" element={<CollectionScreen />} />
           <Route path="/downloads" element={<DownloadsScreen />} />
           <Route path="/you" element={<YouScreen />} />
+          <Route path="/login" element={<LoginScreen />} />
           <Route path="/settings" element={<SettingsScreen />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

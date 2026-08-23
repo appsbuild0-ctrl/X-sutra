@@ -90,3 +90,14 @@ export interface Preferences {
   muted: boolean
   blockedTags: string[]
 }
+
+/** Device-local account used by the optional login flow. Nothing is transmitted anywhere. */
+export interface LocalAccount {
+  name: string
+  email: string
+  /** SHA-256 digest of the password; the raw password is never stored. */
+  passwordHash: string
+  createdAt: string
+}
+
+export type AuthResult = { ok: true } | { ok: false; error: string }

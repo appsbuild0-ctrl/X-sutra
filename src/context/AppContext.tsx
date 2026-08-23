@@ -9,8 +9,8 @@ import {
 } from 'react'
 import { saveMediaFile } from '../lib/download'
 import { publicMediaApi } from '../lib/redgifs'
-import { readStored, writeStored } from '../lib/storage'
-import type { Creator, DownloadRecord, LocalCollection, MediaItem, Preferences } from '../types'
+import { readStored, writeStored, removeStored } from '../lib/storage'
+import type { AuthResult, Creator, DownloadRecord, LocalAccount, LocalCollection, MediaItem, Preferences } from '../types'
 
 type ToastTone = 'default' | 'success' | 'error'
 
@@ -30,6 +30,10 @@ interface AppContextValue {
   playerQueue: MediaItem[]
   playerIndex: number
   preferences: Preferences
+  account: LocalAccount | null
+  signIn: (email: string, password: string) => Promise<AuthResult>
+  signUp: (name: string, email: string, password: string) => Promise<AuthResult>
+  signOut: () => void
   toast: ToastMessage | null
   isSaved: (id: string) => boolean
   toggleSaved: (item: MediaItem) => void
@@ -58,7 +62,29 @@ const FOLLOWS_KEY = 'x-sutra.follows.real.v2'
 const COLLECTIONS_KEY = 'x-sutra.collections.local.v2'
 const DOWNLOADS_KEY = 'x-sutra.downloads.real.v2'
 const PREFERENCES_KEY = 'x-sutra.preferences.v2'
+const ACCOUNT_KEY = 'x-sutra.account.local.v1'
+const SESSION_KEY = 'x-sutra.session.local.v1'
 const defaultPreferences: Preferences = { quality: 'hd', autoplay: true, muted: true, blockedTags: [] }
+
+/** Device-local digest; the raw password is never persisted or transmitted anywhere. */
+async function sha256(text: string): Promise<string> {
+  const bytes = new TextEncoder().encode(text)
+  const digest = await crypto.subtle.digest('SHA-256', bytes)
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
+function readSessionAccount(): LocalAccount | null {
+  const session = readStored<LocalAccount | null>(SESSION_KEY, null)
+  if (!session?.email) return null
+  const stored = readStored<LocalAccount | null>(ACCOUNT_KEY, null)
+  return stored?.email === session.email ? stored : null
+}
+
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
+
+export function validEmail(email: string): boolean {
+  return emailPattern.test(email.trim().toLowerCase())
+}
 
 function readRealSaved(): MediaItem[] {
   return readStored<MediaItem[]>(SAVED_KEY, [])
@@ -89,6 +115,7 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
   const [playerQueue, setPlayerQueue] = useState<MediaItem[]>([])
   const [playerIndex, setPlayerIndex] = useState(0)
   const [toast, setToast] = useState<ToastMessage | null>(null)
+  const [account, setAccount] = useState<LocalAccount | null>(readSessionAccount)
 
   useEffect(() => writeStored(SAVED_KEY, saved), [saved])
   useEffect(() => writeStored(LIKED_KEY, liked), [liked])
@@ -105,6 +132,40 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
   const notify = useCallback((text: string, tone: ToastTone = 'default') => {
     setToast({ id: Date.now(), text, tone })
   }, [])
+
+  const signUp = useCallback(async (name: string, email: string, password: string): Promise<AuthResult> => {
+    const cleanName = name.trim().slice(0, 40)
+    const cleanEmail = email.trim().toLowerCase()
+    if (!cleanName) return { ok: false, error: 'Enter your name' }
+    if (!validEmail(cleanEmail)) return { ok: false, error: 'Enter a valid email address' }
+    if (password.length < 4) return { ok: false, error: 'Password must be at least 4 characters' }
+    const existing = readStored<LocalAccount | null>(ACCOUNT_KEY, null)
+    if (existing) return { ok: false, error: `This device already has a local account (${existing.email}). Sign in instead.` }
+    const record: LocalAccount = { name: cleanName, email: cleanEmail, passwordHash: await sha256(password), createdAt: new Date().toISOString() }
+    writeStored(ACCOUNT_KEY, record)
+    writeStored(SESSION_KEY, record)
+    setAccount(record)
+    notify(`Welcome, ${cleanName}`, 'success')
+    return { ok: true }
+  }, [notify])
+
+  const signIn = useCallback(async (email: string, password: string): Promise<AuthResult> => {
+    const cleanEmail = email.trim().toLowerCase()
+    const stored = readStored<LocalAccount | null>(ACCOUNT_KEY, null)
+    if (!stored) return { ok: false, error: 'No local account on this device yet. Create one first.' }
+    if (stored.email !== cleanEmail) return { ok: false, error: 'That email does not match this device account' }
+    if (stored.passwordHash !== await sha256(password)) return { ok: false, error: 'Incorrect password' }
+    writeStored(SESSION_KEY, stored)
+    setAccount(stored)
+    notify(`Signed in as ${stored.name}`, 'success')
+    return { ok: true }
+  }, [notify])
+
+  const signOut = useCallback(() => {
+    removeStored(SESSION_KEY)
+    setAccount(null)
+    notify('Signed out. Data stays on this device')
+  }, [notify])
 
   const isSaved = useCallback((id: string) => saved.some((item) => item.id === id), [saved])
 
@@ -247,6 +308,10 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
     playerQueue,
     playerIndex,
     preferences,
+    account,
+    signIn,
+    signUp,
+    signOut,
     toast,
     isSaved,
     toggleSaved,
@@ -272,7 +337,7 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
     },
     updatePreferences: (patch) => setPreferences((current) => ({ ...current, ...patch })),
     notify
-  }), [activeMedia, addToCollection, collectionItems, collections, createCollection, deleteCollection, downloads, follows, isFollowing, isLiked, isSaved, liked, notify, openPlayer, playerIndex, playerQueue, preferences, requestDownload, saved, stepPlayer, toast, toggleFollow, toggleLike, toggleSaved])
+  }), [account, activeMedia, addToCollection, collectionItems, collections, createCollection, deleteCollection, downloads, follows, isFollowing, isLiked, isSaved, liked, notify, openPlayer, playerIndex, playerQueue, preferences, requestDownload, saved, signIn, signOut, signUp, stepPlayer, toast, toggleFollow, toggleLike, toggleSaved])
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }
