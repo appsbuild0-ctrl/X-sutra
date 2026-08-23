@@ -10,4 +10,3 @@ android/build/
 android/app/build/
 
 # One-off static deployment bundle (shared outside Git)
-/X-sutra-netlify-drop.zip
