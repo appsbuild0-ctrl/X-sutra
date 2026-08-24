@@ -20,6 +20,8 @@ export interface HotpicAlbumCard {
   title: string
   cover: string
   url: string
+  owner?: string
+  hasVideo?: boolean
 }
 
 export interface HotpicProfile {
@@ -75,5 +77,12 @@ export const hotpicApi = {
   },
   async album(id: string): Promise<HotpicAlbum> {
     return getJson<HotpicAlbum>({ path: 'album', id })
+  },
+  async feed(tag = 'Desi', page = 1): Promise<{ users: Creator[]; albums: HotpicAlbumCard[] }> {
+    const data = await getJson<{ users?: Creator[]; albums?: HotpicAlbumCard[] }>({ path: 'feed', tag, page: String(page) })
+    return {
+      users: Array.isArray(data.users) ? data.users : [],
+      albums: Array.isArray(data.albums) ? data.albums : []
+    }
   }
 }

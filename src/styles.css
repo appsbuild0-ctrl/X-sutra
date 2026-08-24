@@ -1026,3 +1026,28 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .ott-model strong, .ott-model small { display: block; max-width: 92px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ott-model strong { font-size: 12px; }
 .ott-model small { color: #9aa0ad; font-size: 10px; }
+.hp-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.hp-card { padding: 0; color: #f4f6fb; background: transparent; text-align: left; }
+.hp-card__media {
+  position: relative;
+  display: block;
+  aspect-ratio: 3/4;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #16181f center / cover no-repeat;
+}
+.hp-card__play {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: rgba(0,0,0,.45);
+}
+.hp-card strong, .hp-card small { display: block; margin-top: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hp-card strong { font-size: 12px; }
+.hp-card small { color: #9aa0ad; font-size: 10px; }

@@ -47,23 +47,34 @@ function parseUsers(html) {
   return [...users.values()]
 }
 
+function parseFeed(html) {
+  const albums = []
+  const seen = new Set()
+  const simple = /href="https?:\/\/hotpic\.vip\/album\/([^"#?]+)"[^>]*title="([^"]*)"[\s\S]{0,500}?src="(https:\/\/cdn[^"]+)"/gi
+  let match
+  while ((match = simple.exec(html))) {
+    if (seen.has(match[1])) continue
+    seen.add(match[1])
+    const chunk = match[0]
+    const owner = html.slice(match.index, match.index + 900).match(/hotpic\.vip\/u\/([^"'/#?]+)/i)?.[1] || ''
+    albums.push({
+      id: match[1],
+      title: decode(match[2]),
+      cover: match[3],
+      url: `${ORIGIN}/album/${match[1]}`,
+      owner: decodeURIComponent(owner),
+      hasVideo: /m-play|play_circle|\.mp4/i.test(chunk)
+    })
+  }
+  return albums
+}
+
 function parseProfile(html, username) {
   const name = html.match(/<h[12][^>]*>\s*([^<]{2,80})\s*<\/h[12]>/i)?.[1]?.trim()
     || html.match(/@([A-Za-z0-9._-]{2,40})/)?.[1]
     || username
   const albums = Number(html.match(/(\d+)\s*Albums/i)?.[1] || 0)
   const joined = html.match(/Joined\s+([A-Za-z]+ \d{1,2}, \d{4})/i)?.[1] || ''
-  const list = []
-  const card = /href="https?:\/\/hotpic\.vip\/album\/([^"#?]+)"[^>]*title="([^"]*)"[\s\S]{0,400}?src="(https:\/\/cdn[^"]+)"/gi
-  let match
-  while ((match = card.exec(html))) {
-    list.push({
-      id: match[1],
-      title: decode(match[2]),
-      cover: match[3],
-      url: `${ORIGIN}/album/${match[1]}`
-    })
-  }
   return {
     username,
     displayName: decode(name),
@@ -71,7 +82,7 @@ function parseProfile(html, username) {
     profileUrl: `${ORIGIN}/u/${encodeURIComponent(username)}`,
     albums,
     joined,
-    items: list
+    items: parseFeed(html)
   }
 }
 
@@ -99,7 +110,6 @@ function parseAlbum(html, id) {
       thumbnailUrls: [thumb],
       previewUrl: isVideo ? undefined : fullFromThumb(thumb),
       videoUrl: isVideo ? `${ORIGIN}/i/${itemId}` : undefined,
-      videoUrlSd: undefined,
       sourceUrl: `${ORIGIN}/i/${itemId}`,
       duration: 0,
       likes: 0,
@@ -142,9 +152,11 @@ export const handler = async (event) => {
   try {
     const params = event.queryStringParameters || {}
     const kind = params.path || 'desi'
-    if (kind === 'desi' || kind === 'models') {
-      const html = await load('/t/Desi')
-      return json(200, { users: parseUsers(html).slice(0, 24) })
+    if (kind === 'desi' || kind === 'models' || kind === 'feed') {
+      const tag = String(params.tag || 'Desi').replace(/[^A-Za-z0-9-]/g, '') || 'Desi'
+      const page = Math.max(1, Number(params.page) || 1)
+      const html = await load(page > 1 ? `/t/${tag}?page=${page}` : `/t/${tag}`)
+      return json(200, { users: parseUsers(html).slice(0, 24), albums: parseFeed(html) })
     }
     if (kind === 'user') {
       const username = String(params.u || '').trim()
