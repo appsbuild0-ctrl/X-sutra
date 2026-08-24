@@ -39,6 +39,7 @@ function extensionFor(url: string, contentType = ''): string {
 }
 
 function fileNameFor(item: MediaItem, url: string, contentType = ''): string {
+  if (Capacitor.isNativePlatform()) return `X-Sutra_${Date.now()}.${extensionFor(url, contentType)}`
   const clean = `${item.creator}-${item.title}`
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
@@ -98,12 +99,12 @@ export async function saveMediaBlob(item: MediaItem, rawUrl: string): Promise<vo
 
   if (Capacitor.isNativePlatform()) {
     const { Directory, Filesystem } = await import('@capacitor/filesystem')
-    await Filesystem.downloadFile({
-      url,
-      path: fileNameFor(item, url),
-      directory: Directory.Documents,
-      recursive: true
-    })
+    const name = fileNameFor(item, url)
+    try {
+      await Filesystem.downloadFile({ url, path: `Movies/${name}`, directory: Directory.ExternalStorage, recursive: true })
+    } catch {
+      await Filesystem.downloadFile({ url, path: name, directory: Directory.Documents, recursive: true })
+    }
     return
   }
 

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { BrandMark, EyeIcon, EyeOffIcon, ShieldIcon } from '../components/icons'
+import { PayQrModal, PlanCards, type PlanId } from '../components/PlanPay'
 import { useApp, validUsername } from '../context/AppContext'
 
 type LoginMode = 'signin' | 'signup'
@@ -15,6 +16,7 @@ export function LoginScreen(): React.JSX.Element {
   const [showPassword, setShowPassword] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [plan, setPlan] = useState<PlanId | null>(null)
 
   const creating = mode === 'signup'
 
@@ -72,7 +74,10 @@ export function LoginScreen(): React.JSX.Element {
           <p className="login-card__lead">You are signed in as <strong>{account.name}</strong> (@{account.username}).</p>
           <button className="primary-button primary-button--wide" type="button" onClick={() => navigate(account.role === 'admin' ? '/admin' : '/you')}>{account.role === 'admin' ? 'Open admin panel' : 'Go to your profile'}</button>
           <button className="secondary-button" type="button" onClick={signOut}>Sign out</button>
+          <p className="eyebrow" style={{ marginTop: 18 }}>Plans</p>
+          <PlanCards onPick={setPlan} />
         </div>
+        {plan && <PayQrModal plan={plan} onClose={() => setPlan(null)} />}
       </section>
     )
   }
@@ -167,7 +172,10 @@ export function LoginScreen(): React.JSX.Element {
         <p className="login-note login-note--admin">
           <ShieldIcon size={13} /> Admin access: username <strong>admin</strong> · password <strong>admin123</strong> — opens the admin panel directly.
         </p>
+        <p className="eyebrow" style={{ marginTop: 18 }}>Plans</p>
+        <PlanCards onPick={setPlan} />
       </div>
+      {plan && <PayQrModal plan={plan} onClose={() => setPlan(null)} />}
     </section>
   )
 }

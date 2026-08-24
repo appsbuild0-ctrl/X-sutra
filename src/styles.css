@@ -1062,4 +1062,23 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .dl-gate__plans button { min-height: 52px; border-radius: 12px; color: #2a1a05; background: linear-gradient(140deg, #ffd47e, #f5a03c); font-weight: 800; }
 .dl-gate__pay { display: flex; align-items: center; gap: 12px; }
 .dl-gate__pay img { width: 160px; height: 160px; object-fit: contain; border-radius: 12px; background: #fff; }
-.dl-gate__timer { margin-left: auto; font-family: 'DM Mono', monospace; font-size: 22px; color: var(--gold); }
+.dl-gate__timer { margin-left: auto; font-family: 'DM Mono', monospace; font-size: 16px; color: var(--gold); }
+.dl-option, .dl-contact {
+  display: grid; width: 100%; gap: 3px; padding: 13px 14px; border: 1px solid rgba(255,196,107,.22);
+  border-radius: 14px; color: var(--text); background: rgba(255,255,255,.04); text-align: left;
+}
+.dl-option--gold { background: linear-gradient(140deg, rgba(255,212,126,.18), rgba(245,160,60,.08)); }
+.dl-option small, .dl-contact small { color: var(--muted); font-size: 11px; }
+.dl-contact { grid-template-columns: 28px 1fr; align-items: center; gap: 10px; }
+.plan-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+.plan-card {
+  min-height: 92px; padding: 14px; border: 1px solid rgba(255,196,107,.35); border-radius: 16px;
+  color: #2a1a05; background: linear-gradient(145deg, #ffd47e, #f5a03c); text-align: left;
+}
+.plan-card--vip { color: #eef5ff; background: linear-gradient(145deg, #4f8cff, #2559cf); border-color: rgba(99,148,255,.5); }
+.plan-card strong, .plan-card small { display: block; }
+.plan-card strong { font-size: 16px; }
+.plan-card small { margin-top: 6px; opacity: .85; }
+.pay-modal { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 18px; background: rgba(5,4,6,.78); }
+.pay-modal__card { width: min(100%, 380px); display: grid; gap: 10px; padding: 18px; border: 1px solid rgba(255,196,107,.28); border-radius: 18px; background: #161218; }
+.pay-modal__card img { width: min(100%, 220px); margin: 0 auto; border-radius: 12px; background: #fff; }

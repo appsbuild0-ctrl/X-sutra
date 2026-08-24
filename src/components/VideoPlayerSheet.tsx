@@ -456,7 +456,8 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
         <DownloadGate
           item={current}
           onClose={() => setDownloadOpen(false)}
-          onNormalDownload={(item) => { void requestDownload(item) }}
+          onNormalDownload={(item) => requestDownload(item)}
+          onBuyNow={() => { setDownloadOpen(false); closePlayer(); navigate('/login') }}
         />
       )}
     </div>

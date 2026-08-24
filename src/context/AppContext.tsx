@@ -47,7 +47,7 @@ interface AppContextValue {
   deleteCollection: (id: string) => void
   addToCollection: (collectionId: string, item: MediaItem) => void
   collectionItems: (collectionId: string) => MediaItem[]
-  requestDownload: (item: MediaItem) => Promise<void>
+  requestDownload: (item: MediaItem) => Promise<boolean>
   clearDownloads: () => void
   openPlayer: (item: MediaItem, queue?: MediaItem[]) => void
   stepPlayer: (direction: -1 | 1) => void
@@ -335,10 +335,12 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
       setDownloads((current) => current.map((entry) => entry.id === recordId ? { ...entry, status } : entry))
       if (status === 'done') notify('Saved to your device', 'success')
       else notify('The actual media URL was opened; use your browser to save it')
+      return status === 'done' || status === 'opened'
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to start download'
       setDownloads((current) => current.map((entry) => entry.id === recordId ? { ...entry, status: 'failed', error: message } : entry))
       notify(message, 'error')
+      return false
     }
   }, [notify, preferences.quality])
 
