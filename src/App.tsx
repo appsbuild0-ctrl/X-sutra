@@ -12,9 +12,15 @@ import { DownloadsScreen } from './screens/DownloadsScreen'
 import { HomeScreen } from './screens/HomeScreen'
 import { LibraryScreen } from './screens/LibraryScreen'
 import { LoginScreen } from './screens/LoginScreen'
+import { PremiumNav } from './components/PremiumNav'
 import { PremiumAlbumScreen } from './screens/PremiumAlbumScreen'
+import { PremiumAnnouncementsScreen } from './screens/PremiumAnnouncementsScreen'
 import { PremiumChannelScreen } from './screens/PremiumChannelScreen'
+import { PremiumDownloadsScreen } from './screens/PremiumDownloadsScreen'
 import { PremiumScreen } from './screens/PremiumScreen'
+import { PremiumSearchScreen } from './screens/PremiumSearchScreen'
+import { PremiumUploadScreen } from './screens/PremiumUploadScreen'
+import { PremiumVideosScreen } from './screens/PremiumVideosScreen'
 import { NicheScreen } from './screens/NicheScreen'
 import { SearchScreen } from './screens/SearchScreen'
 import { SettingsScreen } from './screens/SettingsScreen'
@@ -28,8 +34,10 @@ function ScrollToTop(): null {
 }
 
 function XsApp(): React.JSX.Element {
+  const location = useLocation()
+  const inPremium = location.pathname.startsWith('/premium')
   return (
-    <div className="app-frame">
+    <div className={`app-frame${inPremium ? ' app-frame--ott' : ''}`}>
       <ScrollToTop />
       <main className="app-content">
         <Routes>
@@ -45,6 +53,11 @@ function XsApp(): React.JSX.Element {
           <Route path="/you" element={<YouScreen />} />
           <Route path="/login" element={<LoginScreen />} />
           <Route path="/premium" element={<PremiumScreen />} />
+          <Route path="/premium/search" element={<PremiumSearchScreen />} />
+          <Route path="/premium/upload" element={<PremiumUploadScreen />} />
+          <Route path="/premium/downloads" element={<PremiumDownloadsScreen />} />
+          <Route path="/premium/announcements" element={<PremiumAnnouncementsScreen />} />
+          <Route path="/premium/videos" element={<PremiumVideosScreen />} />
           <Route path="/premium/channel/:id" element={<PremiumChannelScreen />} />
           <Route path="/premium/album/:id" element={<PremiumAlbumScreen />} />
           <Route path="/admin" element={<AdminPanelScreen />} />
@@ -52,7 +65,7 @@ function XsApp(): React.JSX.Element {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
-      <BottomNav />
+      {inPremium ? <PremiumNav /> : <BottomNav />}
       <VideoPlayerSheet />
       <ToastHost />
     </div>
