@@ -34,6 +34,7 @@ function emptyCatalog() {
     channels: [],
     albums: [],
     media: [],
+    heroes: [],
     announcements: []
   }
 }
@@ -85,6 +86,7 @@ function normalizeCatalog(raw) {
   catalog.channels = Array.isArray(raw.channels) ? raw.channels : []
   catalog.albums = Array.isArray(raw.albums) ? raw.albums : []
   catalog.media = Array.isArray(raw.media) ? raw.media : []
+  catalog.heroes = Array.isArray(raw.heroes) ? raw.heroes : []
   catalog.announcements = Array.isArray(raw.announcements) ? raw.announcements : []
   return catalog
 }
@@ -95,6 +97,7 @@ export async function writeCatalog(catalog) {
     channels: (catalog.channels || []).slice(0, 80),
     albums: (catalog.albums || []).slice(0, 200),
     media: (catalog.media || []).slice(0, 4000),
+    heroes: (catalog.heroes || []).slice(0, 40),
     announcements: (catalog.announcements || []).slice(0, 200)
   }
   const payload = JSON.stringify(next)
@@ -111,13 +114,14 @@ export function nid(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
 }
 
-export function announce(catalog, title, detail, kind) {
+export function announce(catalog, title, detail, kind, target = '') {
   if (!catalog.settings.announcements) return
   catalog.announcements.unshift({
     id: nid('ann'),
     title,
     detail: String(detail || '').slice(0, 240),
     kind,
+    target: String(target || ''),
     createdAt: new Date().toISOString()
   })
 }
@@ -128,6 +132,7 @@ export function publicCatalog(catalog) {
   const albums = catalog.albums.filter((album) => album.published !== false && (!album.channelId || channelIds.has(album.channelId)))
   const albumIds = new Set(albums.map((album) => album.id))
   const media = catalog.media.filter((item) => {
+    if (item.role === 'hero') return false
     if (item.channelId && !channelIds.has(item.channelId)) return false
     if (item.albumId && !albumIds.has(item.albumId)) return false
     return true
@@ -137,6 +142,7 @@ export function publicCatalog(catalog) {
     channels,
     albums,
     media,
+    heroes: (catalog.heroes || []).filter((item) => item.published !== false),
     announcements: catalog.settings.announcements ? catalog.announcements : []
   }
 }

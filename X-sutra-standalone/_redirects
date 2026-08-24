@@ -3,6 +3,7 @@
 /api/media  /.netlify/functions/media  200
 /api/premium  /.netlify/functions/premium  200
 /api/premium-scan  /.netlify/functions/premium-scan  200
+/api/premium-file  /.netlify/functions/premium-file  200
 # Tier 2: static rewrite fallback for deployments without functions.
 /api/redgifs/*  https://api.redgifs.com/:splat  200!
 /*  /index.html  200

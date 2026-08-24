@@ -46,6 +46,19 @@ export interface PremiumMedia {
   albumId: string
   sourcePage: string
   createdAt: string
+  filename?: string
+  size?: number
+  hash?: string
+  role?: 'content' | 'hero'
+}
+
+export interface PremiumHero {
+  id: string
+  url: string
+  thumbnail: string
+  title: string
+  createdAt: string
+  published?: boolean
 }
 
 export interface PremiumAnnouncement {
@@ -53,6 +66,7 @@ export interface PremiumAnnouncement {
   title: string
   detail: string
   kind: string
+  target?: string
   createdAt: string
 }
 
@@ -61,6 +75,7 @@ export interface PremiumCatalog {
   channels: PremiumChannel[]
   albums: PremiumAlbum[]
   media: PremiumMedia[]
+  heroes: PremiumHero[]
   announcements: PremiumAnnouncement[]
 }
 
@@ -98,6 +113,7 @@ export const emptyCatalog = (): PremiumCatalog => ({
   channels: [],
   albums: [],
   media: [],
+  heroes: [],
   announcements: []
 })
 
@@ -112,6 +128,7 @@ export async function fetchPremiumCatalog(): Promise<PremiumCatalog> {
       channels: Array.isArray(data.channels) ? data.channels : [],
       albums: Array.isArray(data.albums) ? data.albums : [],
       media: Array.isArray(data.media) ? data.media : [],
+      heroes: Array.isArray(data.heroes) ? data.heroes : [],
       announcements: Array.isArray(data.announcements) ? data.announcements : []
     }
   } catch {
@@ -216,4 +233,52 @@ export async function importInBatches(
     onProgress(Math.min(index + chunk.length, items.length), items.length, added, skipped, failed.length)
   }
   return { added, skipped, failed }
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = ''
+  const chunk = 0x8000
+  for (let index = 0; index < bytes.length; index += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(index, index + chunk))
+  }
+  return btoa(binary)
+}
+
+export async function hashFile(file: File): Promise<string> {
+  const slice = await file.slice(0, 65536).arrayBuffer()
+  const digest = await crypto.subtle.digest('SHA-256', slice)
+  const hex = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
+  return `${hex}:${file.size}:${file.name}`
+}
+
+export async function uploadPremiumFile(file: File): Promise<{ ok: boolean; url?: string; id?: string; error?: string }> {
+  const id = `file-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  const buffer = new Uint8Array(await file.arrayBuffer())
+  const chunkSize = 240_000
+  const total = Math.max(1, Math.ceil(buffer.length / chunkSize))
+  try {
+    for (let index = 0; index < total; index += 1) {
+      const data = bytesToBase64(buffer.subarray(index * chunkSize, (index + 1) * chunkSize))
+      const response = await fetch('/api/premium-file', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          password: ADMIN_KEY,
+          action: 'chunk',
+          id,
+          index,
+          total,
+          contentType: file.type || 'application/octet-stream',
+          filename: file.name,
+          data
+        })
+      })
+      const payload = await response.json() as { error?: string; url?: string }
+      if (!response.ok) return { ok: false, error: payload.error ?? `Upload failed (${response.status})` }
+      if (index + 1 === total) return { ok: true, url: payload.url, id }
+    }
+    return { ok: true, url: `/api/premium-file?id=${id}`, id }
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'Upload failed' }
+  }
 }

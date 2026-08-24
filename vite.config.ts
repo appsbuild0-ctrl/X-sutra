@@ -72,17 +72,19 @@ function premiumDevApi(): Plugin {
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
         const path = req.url?.split('?')[0] ?? ''
-        if (path !== '/api/premium' && path !== '/api/premium-scan') return next()
+        if (path !== '/api/premium' && path !== '/api/premium-scan' && path !== '/api/premium-file') return next()
         process.env.PREMIUM_LOCAL_FILE ||= '.premium-data.json'
+        process.env.PREMIUM_MEDIA_DIR ||= '.premium-media'
         try {
           const body = req.method === 'POST' ? await readBody(req) : ''
-          const event = { httpMethod: req.method, body, headers: req.headers }
-          const handlerPath = path === '/api/premium-scan' ? './netlify/functions/premium-scan.mjs' : './netlify/functions/premium.mjs'
-          const mod = await import(/* @vite-ignore */ handlerPath) as { handler: (event: unknown) => Promise<{ statusCode: number; body: string }> }
+          const requestUrl = new URL(req.url ?? '/', 'http://localhost')
+          const event = { httpMethod: req.method, body, headers: req.headers, queryStringParameters: Object.fromEntries(requestUrl.searchParams), rawUrl: requestUrl.href }
+          const handlerPath = path === '/api/premium-scan' ? './netlify/functions/premium-scan.mjs' : path === '/api/premium-file' ? './netlify/functions/premium-file.mjs' : './netlify/functions/premium.mjs'
+          const mod = await import(/* @vite-ignore */ handlerPath) as { handler: (event: unknown) => Promise<{ statusCode: number; body?: string; headers?: Record<string, string>; isBase64Encoded?: boolean }> }
           const result = await mod.handler(event)
           res.statusCode = result.statusCode
-          res.setHeader('Content-Type', 'application/json; charset=utf-8')
-          res.end(result.body)
+          for (const [key, value] of Object.entries(result.headers ?? { 'Content-Type': 'application/json; charset=utf-8' })) res.setHeader(key, value)
+          res.end(result.isBase64Encoded && result.body ? Buffer.from(result.body, 'base64') : result.body ?? '')
         } catch (error) {
           res.statusCode = 500
           res.setHeader('Content-Type', 'application/json')

@@ -118,10 +118,10 @@ export const handler = async (event) => {
       for (const raw of items.slice(0, 40)) {
         const url = String(raw.url || '').trim()
         const type = raw.type === 'image' ? 'image' : 'video'
-        if (!/^https?:\/\/[^\s]{8,800}$/i.test(url)) continue
+        if (!/^https?:\/\/[^\s]{8,800}$/i.test(url) && !url.startsWith('/api/premium-file?id=')) continue
         if (type === 'image' && !catalog.settings.imageUpload) continue
         if (type === 'video' && !catalog.settings.videoUpload) continue
-        if (!allowDupes && existing.has(url)) {
+        if (!allowDupes && (existing.has(url) || (raw.hash && catalog.media.some((item) => item.hash === raw.hash)))) {
           skipped += 1
           continue
         }
@@ -136,6 +136,16 @@ export const handler = async (event) => {
           albumId: String(body.albumId || ''),
           sourcePage: String(raw.sourcePage || ''),
           createdAt: new Date().toISOString()
+        }
+        if (raw.role === 'hero') {
+          catalog.heroes.unshift({
+            id: entry.id,
+            url: entry.url,
+            thumbnail: entry.thumbnail || entry.url,
+            title: entry.title,
+            createdAt: entry.createdAt,
+            published: true
+          })
         }
         catalog.media.unshift(entry)
         existing.add(url)

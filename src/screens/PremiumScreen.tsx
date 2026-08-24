@@ -13,8 +13,8 @@ import type { MediaItem } from '../types'
 const TABS = [
   { id: 'home', label: 'HOME' },
   { id: 'reels', label: 'REELS' },
+  { id: 'albums', label: 'ALBUMS' },
   { id: 'discover', label: 'DISCOVER' },
-  { id: 'categories', label: 'CATEGORIES' },
   { id: 'announcements', label: 'ANNOUNCEMENTS' }
 ] as const
 
@@ -34,6 +34,7 @@ export function PremiumScreen(): React.JSX.Element {
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [newVideos, setNewVideos] = useState<MediaItem[]>([])
+  const [heroIndex, setHeroIndex] = useState(0)
 
   useEffect(() => {
     let live = true
@@ -44,6 +45,13 @@ export function PremiumScreen(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
+    const heroes = catalog?.heroes ?? []
+    if (heroes.length < 2) return
+    const timer = window.setInterval(() => setHeroIndex((current) => (current + 1) % heroes.length), 5000)
+    return () => window.clearInterval(timer)
+  }, [catalog?.heroes])
+
+  useEffect(() => {
     if (!catalog?.settings.newVideoNotifications) {
       setNewVideos([])
       return
@@ -52,8 +60,7 @@ export function PremiumScreen(): React.JSX.Element {
     void publicMediaApi.latest(1).then((page) => {
       if (!live) return
       const seen = new Set(readStored<string[]>(SEEN_KEY, []))
-      const fresh = page.items.filter((item) => !seen.has(item.id))
-      setNewVideos(fresh)
+      setNewVideos(page.items.filter((item) => !seen.has(item.id)))
     }).catch(() => { if (live) setNewVideos([]) })
     return () => { live = false }
   }, [catalog?.settings.newVideoNotifications])
@@ -62,9 +69,10 @@ export function PremiumScreen(): React.JSX.Element {
   const images = useMemo(() => (catalog?.media ?? []).filter((item) => item.type === 'image'), [catalog])
   const albums = catalog?.albums ?? []
   const channels = catalog?.channels ?? []
+  const heroes = catalog?.heroes ?? []
   const results = useMemo(() => searchPremium(catalog ?? emptyCatalog(), query), [catalog, query])
-
   const setTab = (next: TabId) => setParams(next === 'home' ? {} : { tab: next })
+  const hero = heroes[heroIndex] ?? heroes[0]
 
   const openNewVideos = () => {
     const seen = new Set(readStored<string[]>(SEEN_KEY, []))
@@ -78,6 +86,25 @@ export function PremiumScreen(): React.JSX.Element {
     <section className="screen screen--premium">
       <ScreenHeader title="Premium" eyebrow="Exclusive section" actions={<button className="round-button" type="button" onClick={() => navigate(-1)} aria-label="Go back">‹</button>} />
 
+      {hero && (
+        <div className="premium-hero-stage" style={{ backgroundImage: `url(${hero.thumbnail || hero.url})` }}>
+          <div>
+            <p className="eyebrow">Premium poster</p>
+            <h2>{hero.title || 'X-sutra Premium'}</h2>
+          </div>
+          {heroes.length > 1 && <small>{heroIndex + 1}/{heroes.length}</small>}
+        </div>
+      )}
+
+      <div className="section-heading"><div><p className="eyebrow">Categories</p><h3>Channels</h3></div></div>
+      {channels.length ? (
+        <div className="niche-row" aria-label="Premium channels">
+          {channels.map((channel) => (
+            <button key={channel.id} type="button" className="niche-chip" onClick={() => navigate(`/premium/channel/${channel.id}`)}>{channel.name}</button>
+          ))}
+        </div>
+      ) : <p className="form-help">No premium channels yet.</p>}
+
       <div className="premium-tabs" role="tablist" aria-label="Premium sections">
         {TABS.map((entry) => (
           <button key={entry.id} className={tab === entry.id ? 'is-active' : ''} type="button" role="tab" aria-selected={tab === entry.id} onClick={() => setTab(entry.id)}>
@@ -87,7 +114,7 @@ export function PremiumScreen(): React.JSX.Element {
       </div>
 
       {error && <LiveError message={error} onRetry={() => { setError(null); void fetchPremiumCatalog().then(setCatalog) }} />}
-      {!catalog && !error && <div className="media-grid" aria-label="Loading premium">{Array.from({ length: 4 }, (_, index) => <div className="media-skeleton" key={index} />)}</div>}
+      {!catalog && !error && <div className="media-grid">{Array.from({ length: 4 }, (_, index) => <div className="media-skeleton" key={index} />)}</div>}
 
       {catalog && tab === 'home' && (
         <>
@@ -95,17 +122,10 @@ export function PremiumScreen(): React.JSX.Element {
             <button className="premium-notice" type="button" onClick={openNewVideos}>
               <span>🔔 New Videos</span>
               <strong>{newVideos.length} new video{newVideos.length === 1 ? '' : 's'} available</strong>
-              <small>From the live public feed — tap to watch</small>
+              <small>Public feed — not copied into Premium</small>
             </button>
           )}
-          {catalog.announcements[0] && (
-            <button className="premium-notice premium-notice--soft" type="button" onClick={() => setTab('announcements')}>
-              <span>📢 Latest</span>
-              <strong>{catalog.announcements[0].title}</strong>
-              <small>{catalog.announcements[0].detail}</small>
-            </button>
-          )}
-          <div className="section-heading section-heading--spaced"><div><p className="eyebrow">Latest</p><h3>Premium albums</h3></div><span>{albums.length}</span></div>
+          <div className="section-heading section-heading--spaced"><div><p className="eyebrow">Latest</p><h3>Premium albums</h3></div></div>
           {albums.length ? (
             <div className="premium-album-grid">
               {albums.slice(0, 8).map((album) => (
@@ -117,85 +137,74 @@ export function PremiumScreen(): React.JSX.Element {
               ))}
             </div>
           ) : <p className="form-help">No premium albums yet.</p>}
-          <div className="section-heading section-heading--spaced"><div><p className="eyebrow">Latest</p><h3>Premium images</h3></div><span>{images.length}</span></div>
+          <div className="section-heading section-heading--spaced"><div><p className="eyebrow">Latest</p><h3>Premium images</h3></div></div>
           <ImageStrip items={images.slice(0, 8)} />
-          <div className="section-heading section-heading--spaced"><div><p className="eyebrow">Latest</p><h3>Premium videos</h3></div><span>{videos.length}</span></div>
+          <div className="section-heading section-heading--spaced"><div><p className="eyebrow">Latest</p><h3>Premium videos</h3></div></div>
           <MediaGrid items={videos.slice(0, 8).map(premiumMediaToItem)} empty={<p className="form-help">No premium videos yet.</p>} />
         </>
       )}
 
       {catalog && tab === 'reels' && (
-        <MediaGrid
-          items={videos.map(premiumMediaToItem)}
-          empty={<div className="empty-state"><strong>No premium reels yet.</strong><span>Admin can import or publish videos into Premium.</span></div>}
-        />
+        <MediaGrid items={videos.map(premiumMediaToItem)} empty={<div className="empty-state"><strong>No premium reels yet.</strong></div>} />
+      )}
+
+      {catalog && tab === 'albums' && (
+        albums.length ? (
+          <div className="premium-album-grid">
+            {albums.map((album) => (
+              <button key={album.id} className="premium-album" type="button" onClick={() => navigate(`/premium/album/${album.id}`)}>
+                <span className="premium-album__cover" style={album.cover ? { backgroundImage: `url(${album.cover})` } : undefined} />
+                <strong>{album.name}</strong>
+                <small>{album.description || album.tags.join(', ')}</small>
+              </button>
+            ))}
+          </div>
+        ) : <div className="empty-state"><strong>No premium albums yet.</strong></div>
       )}
 
       {catalog && tab === 'discover' && (
         <>
           <form className="search-field" onSubmit={(event) => event.preventDefault()}>
             <SearchIcon size={20} />
-            <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search albums, videos, categories..." aria-label="Search Premium" />
+            <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search Premium..." aria-label="Search Premium" />
           </form>
-          {query.trim() && !results.albums.length && !results.media.length && !results.channels.length && (
-            <div className="empty-state"><strong>No results found</strong></div>
-          )}
-          {results.channels.length > 0 && (
-            <>
-              <div className="section-heading section-heading--spaced"><div><p className="eyebrow">Channels</p><h3>Matches</h3></div></div>
-              <div className="category-grid">{results.channels.map((channel) => <button type="button" key={channel.id} onClick={() => navigate(`/premium/channel/${channel.id}`)}>{channel.name}</button>)}</div>
-            </>
-          )}
+          {query.trim() && !results.albums.length && !results.media.length && !results.channels.length && <div className="empty-state"><strong>No results found</strong></div>}
+          {results.channels.length > 0 && <div className="category-grid">{results.channels.map((channel) => <button type="button" key={channel.id} onClick={() => navigate(`/premium/channel/${channel.id}`)}>{channel.name}</button>)}</div>}
           {results.albums.length > 0 && (
-            <>
-              <div className="section-heading section-heading--spaced"><div><p className="eyebrow">Albums</p><h3>Matches</h3></div></div>
-              <div className="premium-album-grid">
-                {results.albums.map((album) => (
-                  <button key={album.id} className="premium-album" type="button" onClick={() => navigate(`/premium/album/${album.id}`)}>
-                    <span className="premium-album__cover" style={album.cover ? { backgroundImage: `url(${album.cover})` } : undefined} />
-                    <strong>{album.name}</strong>
-                    <small>{album.description}</small>
-                  </button>
-                ))}
-              </div>
-            </>
+            <div className="premium-album-grid">
+              {results.albums.map((album) => (
+                <button key={album.id} className="premium-album" type="button" onClick={() => navigate(`/premium/album/${album.id}`)}>
+                  <span className="premium-album__cover" style={album.cover ? { backgroundImage: `url(${album.cover})` } : undefined} />
+                  <strong>{album.name}</strong>
+                  <small>{album.description}</small>
+                </button>
+              ))}
+            </div>
           )}
-          {results.media.length > 0 && (
-            <>
-              <div className="section-heading section-heading--spaced"><div><p className="eyebrow">Media</p><h3>Matches</h3></div></div>
-              <MediaGrid items={results.media.filter((item) => item.type === 'video').map(premiumMediaToItem)} empty={null} />
-              <ImageStrip items={results.media.filter((item) => item.type === 'image')} />
-            </>
-          )}
+          <MediaGrid items={results.media.filter((item) => item.type === 'video').map(premiumMediaToItem)} empty={null} />
+          <ImageStrip items={results.media.filter((item) => item.type === 'image')} />
         </>
-      )}
-
-      {catalog && tab === 'categories' && (
-        channels.length ? (
-          <div className="premium-channel-list">
-            {channels.map((channel) => (
-              <button key={channel.id} className="premium-channel" type="button" onClick={() => navigate(`/premium/channel/${channel.id}`)}>
-                <span className="premium-channel__cover" style={channel.cover ? { backgroundImage: `url(${channel.cover})` } : undefined} />
-                <span>
-                  <strong>{channel.name}</strong>
-                  <small>{channel.description || channel.type}</small>
-                </span>
-                <i>›</i>
-              </button>
-            ))}
-          </div>
-        ) : <div className="empty-state"><strong>No channels yet.</strong><span>Admin creates channels inside Premium management.</span></div>
       )}
 
       {catalog && tab === 'announcements' && (
         catalog.announcements.length ? (
           <div className="premium-announcements">
             {catalog.announcements.map((item) => (
-              <article key={item.id} className="premium-announcement">
+              <button
+                key={item.id}
+                className="premium-announcement"
+                type="button"
+                onClick={() => {
+                  if (item.kind === 'album' && item.target) navigate(`/premium/album/${item.target}`)
+                  else if (item.kind === 'channel' && item.target) navigate(`/premium/channel/${item.target}`)
+                  else if (item.kind === 'video') setTab('reels')
+                  else if (item.kind === 'photos') setTab('home')
+                }}
+              >
                 <strong>📢 {item.title}</strong>
                 <p>{item.detail}</p>
                 <small>{new Date(item.createdAt).toLocaleString('en-IN')}</small>
-              </article>
+              </button>
             ))}
           </div>
         ) : <div className="empty-state"><strong>No announcements yet.</strong></div>
