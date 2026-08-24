@@ -26,8 +26,9 @@ function ScrollToTop(): null {
 }
 
 function XsApp(): React.JSX.Element {
+  const location = useLocation()
   return (
-    <div className="app-frame">
+    <div className={`app-frame${location.pathname === '/premium' ? ' app-frame--channel' : ''}`}>
       <ScrollToTop />
       <main className="app-content">
         <Routes>
@@ -48,7 +49,7 @@ function XsApp(): React.JSX.Element {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
-      <BottomNav />
+      {location.pathname !== '/premium' && <BottomNav />}
       <VideoPlayerSheet />
       <ToastHost />
     </div>
