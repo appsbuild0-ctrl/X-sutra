@@ -1,10 +1,13 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { CreatorAvatar } from '../components/CreatorAvatar'
 import { LiveError } from '../components/LiveState'
+import { MediaGrid } from '../components/MediaGrid'
 import { PlayIcon, SearchIcon } from '../components/icons'
 import { useApp } from '../context/AppContext'
+import { usePagedMedia } from '../hooks/usePagedMedia'
 import { hotpicApi, type HotpicAlbumCard } from '../lib/hotpic'
+import { publicMediaApi } from '../lib/redgifs'
 import type { Creator } from '../types'
 
 function CardGrid({ cards, onOpen }: { cards: HotpicAlbumCard[]; onOpen: (card: HotpicAlbumCard) => void }): React.JSX.Element | null {
@@ -30,8 +33,8 @@ export function PremiumScreen(): React.JSX.Element {
   const [models, setModels] = useState<Creator[]>([])
   const [albums, setAlbums] = useState<HotpicAlbumCard[]>([])
   const [pics, setPics] = useState<HotpicAlbumCard[]>([])
-  const [videos, setVideos] = useState<HotpicAlbumCard[]>([])
   const [page, setPage] = useState(1)
+  const desi = usePagedMedia(useCallback((nextPage: number) => publicMediaApi.tag('desi', nextPage, 'latest'), []), [])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -51,7 +54,6 @@ export function PremiumScreen(): React.JSX.Element {
       if (!append) setModels(feed.users)
       setAlbums((current) => append ? merge(current, feed.albums) : feed.albums)
       setPics((current) => append ? merge(current, feed.pics) : feed.pics)
-      setVideos((current) => append ? merge(current, feed.videos) : feed.videos)
       setPage(nextPage)
     } catch (reason) {
       if (!append) {
@@ -72,7 +74,7 @@ export function PremiumScreen(): React.JSX.Element {
       return
     }
     const item = hotpicApi.cardToMedia(card)
-    const queue = (card.kind === 'video' ? videos : pics).map(hotpicApi.cardToMedia)
+    const queue = pics.map(hotpicApi.cardToMedia)
     openPlayer(item, queue.length ? queue : [item])
   }
 
@@ -109,14 +111,18 @@ export function PremiumScreen(): React.JSX.Element {
       {!loading && pics.length === 0 && <p className="form-help">No public pics on this page.</p>}
       <CardGrid cards={pics} onOpen={openCard} />
 
-      <div className="ott-row-head"><h3>Videos</h3></div>
-      {!loading && videos.length === 0 && <p className="form-help">No public videos on this page.</p>}
-      <CardGrid cards={videos} onOpen={openCard} />
+      <div className="ott-row-head">
+        <h3>Videos · RedGifs Desi</h3>
+        <button type="button" onClick={() => navigate('/premium/videos')} aria-label="All Desi videos">›</button>
+      </div>
+      {desi.error
+        ? <LiveError message={desi.error} onRetry={desi.reload} title="Desi videos could not load." />
+        : <MediaGrid items={desi.items} loading={desi.loading} canLoadMore={desi.canLoadMore} loadingMore={desi.loadingMore} onLoadMore={() => void desi.loadMore()} empty={<div className="empty-state"><strong>No public Desi clips right now.</strong></div>} />}
 
-      {(albums.length > 0 || pics.length > 0 || videos.length > 0) && (
+      {(albums.length > 0 || pics.length > 0) && (
         <div className="load-more-wrap">
           <button className="secondary-button" type="button" disabled={loadingMore} onClick={() => void load(page + 1, true)}>
-            {loadingMore ? 'Loading…' : 'Load more below'}
+            {loadingMore ? 'Loading…' : 'Load more albums & pics'}
           </button>
         </div>
       )}
