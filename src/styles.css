@@ -1051,3 +1051,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .hp-card strong, .hp-card small { display: block; margin-top: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hp-card strong { font-size: 12px; }
 .hp-card small { color: #9aa0ad; font-size: 10px; }
+
+.player-dl { position: relative; display: grid; place-items: center; }
+.player-dl i { position: absolute; top: -7px; right: -8px; font-style: normal; font-size: 11px; line-height: 1; filter: drop-shadow(0 1px 2px rgba(0,0,0,.6)); }
+.dl-gate { position: absolute; inset: 0; z-index: 20; display: grid; place-items: end center; padding: 18px 16px calc(22px + env(safe-area-inset-bottom, 0px)); background: rgba(5,4,6,.72); }
+.dl-gate__card { width: min(100%, 420px); display: grid; gap: 10px; padding: 18px 16px 16px; border: 1px solid rgba(255,196,107,.28); border-radius: 18px; background: #161218; }
+.dl-gate__card h2 { margin: 0 0 4px; font-family: 'Fraunces', serif; font-size: 22px; }
+.dl-gate__card p { margin: 0 0 4px; color: var(--text-soft); font-size: 12px; }
+.dl-gate__plans { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.dl-gate__plans button { min-height: 52px; border-radius: 12px; color: #2a1a05; background: linear-gradient(140deg, #ffd47e, #f5a03c); font-weight: 800; }
+.dl-gate__pay { display: flex; align-items: center; gap: 12px; }
+.dl-gate__pay img { width: 160px; height: 160px; object-fit: contain; border-radius: 12px; background: #fff; }
+.dl-gate__timer { margin-left: auto; font-family: 'DM Mono', monospace; font-size: 22px; color: var(--gold); }

@@ -88,4 +88,5 @@ try {
   throw new Error(`Could not create ${zipPath}. Install the standard "zip" command and retry.`, { cause: error })
 }
 
+await copyFile(zipPath, resolve(root, 'X-sutra-drop-NOPREMIUM.zip'))
 console.log('Updated X-sutra-standalone/index.html and X-sutra-netlify-drop.zip')

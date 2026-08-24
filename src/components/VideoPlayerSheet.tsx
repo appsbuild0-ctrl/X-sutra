@@ -16,6 +16,7 @@ import {
   UserIcon,
   VolumeIcon
 } from './icons'
+import { DownloadGate } from './DownloadGate'
 import type { MediaItem } from '../types'
 
 const SWIPE_COMMIT = 0.18
@@ -62,6 +63,7 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
   const [drag, setDrag] = useState(0)
   const [heartBurst, setHeartBurst] = useState(false)
   const [activeSourceIndex, setActiveSourceIndex] = useState(0)
+  const [downloadOpen, setDownloadOpen] = useState(false)
 
   const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map())
   const itemsRef = useRef(items)
@@ -122,6 +124,7 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
     setProgress(0)
     setActiveSourceIndex(0)
     refreshAttempted.current = false
+    setDownloadOpen(false)
     setLiked(isLiked(current.id))
     setSaved(isSaved(current.id))
     setFollowing(isFollowing(current.creator))
@@ -408,8 +411,11 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
         <RailBtn label={saved ? 'Saved' : 'Save'} on={saved} onClick={() => { if (!current) return; toggleSaved(current); setSaved(!saved) }}>
           <BookmarkIcon filled={saved} size={24} style={saved ? { fill: 'var(--p-ember)', stroke: 'var(--p-ember)' } : undefined} />
         </RailBtn>
-        <RailBtn label="Download" onClick={() => { if (current) void requestDownload(current) }}>
-          <DownloadIcon size={24} />
+        <RailBtn label="Download" onClick={() => setDownloadOpen(true)}>
+          <span className="player-dl">
+            <DownloadIcon size={24} />
+            <i>👑</i>
+          </span>
         </RailBtn>
       </div>
 
@@ -446,7 +452,13 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
       </div>
 
       <div className="player-scrub"><i style={{ width: `${Math.round(progress * 100)}%` }} /></div>
-
+      {downloadOpen && current && (
+        <DownloadGate
+          item={current}
+          onClose={() => setDownloadOpen(false)}
+          onNormalDownload={(item) => { void requestDownload(item) }}
+        />
+      )}
     </div>
   )
 }

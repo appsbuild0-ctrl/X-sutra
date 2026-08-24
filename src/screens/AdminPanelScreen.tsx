@@ -1,14 +1,17 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ScreenHeader } from '../components/ScreenHeader'
 import { DownloadIcon, HeartIcon, LibraryIcon, ShieldIcon, TrashIcon, UserIcon } from '../components/icons'
 import { useApp } from '../context/AppContext'
 import { useOnlineMembers } from '../hooks/useOnlineMembers'
+import { clearPayQr, fileToDataUrl, readPayQr, writePayQr } from '../lib/payQr'
 
 
 export function AdminPanelScreen(): React.JSX.Element {
   const navigate = useNavigate()
   const { account, saved, liked, follows, collections, downloads, clearLocalData, clearDownloads, preferences, updatePreferences, signOut, notify } = useApp()
   const onlineMembers = useOnlineMembers()
+  const [qr, setQr] = useState(readPayQr)
 
   if (account?.role !== 'admin') {
     return (
@@ -53,6 +56,22 @@ export function AdminPanelScreen(): React.JSX.Element {
         <div><LibraryIcon size={18} /><strong>{collections.length}</strong><span>Collections</span></div>
         <div><DownloadIcon size={18} /><strong>{downloads.length}</strong><span>Downloads</span></div>
         <div><ShieldIcon size={18} /><strong>{preferences.blockedTags.length}</strong><span>Blocked tags</span></div>
+      </div>
+      <div className="section-heading section-heading--spaced"><div><p className="eyebrow">Payments</p><h3>QR code</h3></div></div>
+      <div className="settings-card" style={{ padding: 14, marginBottom: 18 }}>
+        {qr ? <img src={qr} alt="Payment QR" style={{ width: '100%', maxWidth: 220, margin: '0 auto 12px', borderRadius: 12 }} /> : <p className="form-help">Koi QR uploaded nahi.</p>}
+        <label className="primary-button primary-button--wide">
+          Upload QR
+          <input className="sr-only" type="file" accept="image/*" onChange={async (event) => {
+            const file = event.target.files?.[0]
+            if (!file) return
+            const data = await fileToDataUrl(file)
+            writePayQr(data)
+            setQr(data)
+            notify('QR saved', 'success')
+          }} />
+        </label>
+        {qr && <button className="secondary-button" type="button" style={{ width: '100%', marginTop: 8 }} onClick={() => { clearPayQr(); setQr(''); notify('QR removed') }}>Remove QR</button>}
       </div>
       <div className="section-heading section-heading--spaced"><div><p className="eyebrow">Controls</p><h3>Admin actions</h3></div></div>
       <div className="quick-link-list">
