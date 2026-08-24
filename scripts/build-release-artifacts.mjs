@@ -53,6 +53,7 @@ await writeFile(
     '/api/premium-scan  /.netlify/functions/premium-scan  200',
     '/api/premium-file  /.netlify/functions/premium-file  200',
     '/api/hotpic  /.netlify/functions/hotpic  200',
+    '/api/hotpic-html/*  https://hotpic.vip/:splat  200!',
     '# Tier 2: static rewrite fallback for deployments without functions.',
     '/api/redgifs/*  https://api.redgifs.com/:splat  200!',
     '/*  /index.html  200',

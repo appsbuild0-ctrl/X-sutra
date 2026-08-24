@@ -18,6 +18,8 @@ const redirects = `# Tier 1: bundled function proxy with the app User-Agent.
 /api/premium-scan  /.netlify/functions/premium-scan  200
 /api/premium-file  /.netlify/functions/premium-file  200
 /api/hotpic  /.netlify/functions/hotpic  200
+# Drop sites often have no functions — proxy public Hotpic HTML same-origin.
+/api/hotpic-html/*  https://hotpic.vip/:splat  200!
 # Tier 2: static rewrite fallback for deployments without functions.
 /api/redgifs/*  https://api.redgifs.com/:splat  200!
 # Hash routing is used by X-sutra, but this keeps any future direct paths safe.

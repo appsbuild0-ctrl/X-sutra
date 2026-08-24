@@ -28,14 +28,14 @@ async function load(path) {
 
 function parseUsers(html) {
   const users = new Map()
-  const re = /href="https?:\/\/hotpic\.vip\/u\/([^"#?]+)"/gi
+  const re = /(?:href|src)=["'](?:https?:\/\/(?:www\.)?hotpic\.(?:vip|cc|one))?\/u\/([^"'#?]+)/gi
   let match
   while ((match = re.exec(html))) {
     const username = decodeURIComponent(match[1])
     if (!username || users.has(username)) continue
     users.set(username, {
       username,
-      displayName: username,
+      displayName: username.replace(/\./g, ' '),
       avatar: `${ORIGIN}/images/user/${encodeURIComponent(username)}.jpg`,
       profileUrl: `${ORIGIN}/u/${encodeURIComponent(username)}`,
       followers: 0,
@@ -50,20 +50,24 @@ function parseUsers(html) {
 function parseFeed(html) {
   const albums = []
   const seen = new Set()
-  const simple = /href="https?:\/\/hotpic\.vip\/album\/([^"#?]+)"[^>]*title="([^"]*)"[\s\S]{0,500}?src="(https:\/\/cdn[^"]+)"/gi
+  const re = /\/album\/([A-Za-z0-9_-]{4,})/gi
   let match
-  while ((match = simple.exec(html))) {
+  while ((match = re.exec(html))) {
     if (seen.has(match[1])) continue
     seen.add(match[1])
-    const chunk = match[0]
-    const owner = html.slice(match.index, match.index + 900).match(/hotpic\.vip\/u\/([^"'/#?]+)/i)?.[1] || ''
+    const window = html.slice(Math.max(0, match.index - 240), match.index + 1400)
+    const title = decode(window.match(/title=["']([^"']+)["']/i)?.[1] || `Album ${match[1]}`)
+    const cover = window.match(/src=["'](https?:\/\/cdn[^"']+)["']/i)?.[1]
+      || window.match(/src=["'](https?:\/\/[^"']+\.(?:webp|jpe?g|png)[^"']*)["']/i)?.[1]
+      || ''
+    const owner = decodeURIComponent(window.match(/\/u\/([^"'/#?]+)/i)?.[1] || '')
     albums.push({
       id: match[1],
-      title: decode(match[2]),
-      cover: match[3],
+      title,
+      cover,
       url: `${ORIGIN}/album/${match[1]}`,
-      owner: decodeURIComponent(owner),
-      hasVideo: /m-play|play_circle|\.mp4/i.test(chunk)
+      owner,
+      hasVideo: /m-play|play_circle|\.mp4|video/i.test(window)
     })
   }
   return albums
@@ -92,9 +96,9 @@ function fullFromThumb(thumb) {
 
 function parseAlbum(html, id) {
   const title = html.match(/<h1[^>]*>([^<]+)<\/h1>/i)?.[1]?.trim() || `Album ${id}`
-  const owner = html.match(/hotpic\.vip\/u\/([^"'/]+)/i)?.[1] || 'hotpic'
+  const owner = html.match(/hotpic\.vip\/u\/([^"'/]+)/i)?.[1] || html.match(/\/u\/([^"'/]+)/i)?.[1] || 'hotpic'
   const media = []
-  const image = /href="https?:\/\/hotpic\.vip\/i\/([^"#?]+)"[^>]*title="([^"]*)"[\s\S]{0,200}?src="(https:\/\/cdn[^"]+)"/gi
+  const image = /\/i\/([A-Za-z0-9_-]+)[^>]{0,220}title=["']([^"']*)["'][\s\S]{0,280}?src=["'](https?:\/\/[^"']+)["']/gi
   let match
   while ((match = image.exec(html))) {
     const itemId = match[1]
@@ -122,28 +126,32 @@ function parseAlbum(html, id) {
       niches: []
     })
   }
-  const videoOnly = /href="https?:\/\/hotpic\.vip\/i\/([^"#?]+)"[^>]*title="([^"]+\.(?:mp4|mov|avi|webm))"/gi
-  while ((match = videoOnly.exec(html))) {
-    if (media.some((item) => item.id === `hp-${match[1]}`)) continue
-    media.push({
-      id: `hp-${match[1]}`,
-      title: decode(match[2]),
-      description: title,
-      creator: owner,
-      thumbnail: '',
-      thumbnailUrls: [],
-      videoUrl: `${ORIGIN}/i/${match[1]}`,
-      sourceUrl: `${ORIGIN}/i/${match[1]}`,
-      duration: 0,
-      likes: 0,
-      views: 0,
-      width: 0,
-      height: 0,
-      createdAt: Date.now(),
-      hasAudio: true,
-      tags: [],
-      niches: []
-    })
+  if (!media.length) {
+    const loose = /\/i\/([A-Za-z0-9_-]+)/gi
+    while ((match = loose.exec(html))) {
+      if (media.some((item) => item.id === `hp-${match[1]}`)) continue
+      const window = html.slice(match.index, match.index + 500)
+      const thumb = window.match(/src=["'](https?:\/\/[^"']+)["']/i)?.[1] || ''
+      media.push({
+        id: `hp-${match[1]}`,
+        title: match[1],
+        description: title,
+        creator: owner,
+        thumbnail: thumb,
+        thumbnailUrls: thumb ? [thumb] : [],
+        previewUrl: thumb ? fullFromThumb(thumb) : undefined,
+        sourceUrl: `${ORIGIN}/i/${match[1]}`,
+        duration: 0,
+        likes: 0,
+        views: 0,
+        width: 0,
+        height: 0,
+        createdAt: Date.now(),
+        hasAudio: false,
+        tags: [],
+        niches: []
+      })
+    }
   }
   return { id, title, owner, items: media }
 }

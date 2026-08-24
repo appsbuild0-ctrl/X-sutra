@@ -72,6 +72,29 @@ function premiumDevApi(): Plugin {
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
         const path = req.url?.split('?')[0] ?? ''
+        if (path.startsWith('/api/hotpic-html')) {
+          try {
+            const target = new URL((req.url ?? '').replace('/api/hotpic-html', '') || '/t/Desi', 'https://hotpic.vip')
+            if (!/(^|\.)hotpic\.(vip|cc|one)$/i.test(target.hostname)) {
+              res.statusCode = 400
+              res.setHeader('Content-Type', 'text/plain')
+              res.end('Unsupported host')
+              return
+            }
+            const upstream = await fetch(target, {
+              headers: { Accept: 'text/html', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', Referer: 'https://hotpic.vip/' }
+            })
+            const body = await upstream.text()
+            res.statusCode = upstream.status
+            res.setHeader('Content-Type', 'text/html; charset=utf-8')
+            res.end(body)
+          } catch (error) {
+            res.statusCode = 502
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ error: error instanceof Error ? error.message : 'Hotpic HTML proxy failed' }))
+          }
+          return
+        }
         if (path !== '/api/premium' && path !== '/api/premium-scan' && path !== '/api/premium-file' && path !== '/api/hotpic') return next()
         process.env.PREMIUM_LOCAL_FILE ||= '.premium-data.json'
         process.env.PREMIUM_MEDIA_DIR ||= '.premium-media'

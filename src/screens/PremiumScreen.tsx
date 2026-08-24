@@ -22,9 +22,10 @@ export function PremiumScreen(): React.JSX.Element {
     setError(null)
     try {
       const feed = await hotpicApi.feed('Desi', nextPage)
-      if (!append) setModels(feed.users)
+      if (!append) setModels(feed.users.length ? feed.users : await hotpicApi.topModels())
       setAlbums((current) => append ? [...current, ...feed.albums.filter((album) => !current.some((entry) => entry.id === album.id))] : feed.albums)
       setPage(nextPage)
+      if (!feed.albums.length && !append) setError(null)
     } catch (reason) {
       if (!append) {
         const fallback = await hotpicApi.topModels()
@@ -64,7 +65,7 @@ export function PremiumScreen(): React.JSX.Element {
 
       <div className="ott-row-head"><h3>Pics & videos</h3></div>
       {loading && <div className="media-grid">{Array.from({ length: 6 }, (_, index) => <div className="media-skeleton" key={index} />)}</div>}
-      {!loading && albums.length === 0 && <p className="form-help">No Hotpic albums loaded. Open Premium on a Netlify deploy so /api/hotpic can fetch the public Desi page.</p>}
+      {!loading && albums.length === 0 && <p className="form-help">No public Hotpic albums on this page yet. Pull Try again or open another account.</p>}
       <div className="hp-grid">
         {albums.map((album) => (
           <button key={album.id} className="hp-card" type="button" onClick={() => navigate(`/premium/hotpic/${album.id}`)}>
