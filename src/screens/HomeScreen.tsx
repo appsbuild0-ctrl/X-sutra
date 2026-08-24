@@ -1,12 +1,16 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { LiveError, ScreenNotice } from '../components/LiveState'
 import { MediaGrid } from '../components/MediaGrid'
 import { PullToRefresh } from '../components/PullToRefresh'
 import { ScreenHeader } from '../components/ScreenHeader'
-import { RefreshIcon, SparkIcon } from '../components/icons'
+import { SparkIcon } from '../components/icons'
 import { useApp } from '../context/AppContext'
+import { roleLabel } from '../lib/roles'
+import { useOnlineMembers } from '../hooks/useOnlineMembers'
 import { usePagedMedia } from '../hooks/usePagedMedia'
-import { publicMediaApi } from '../lib/redgifs'
+import { defaultHub, loadHub, markNotificationsRead, openHubLink, relativeTime, unreadCount, type AdminHub } from '../lib/adminHub'
+import { isRedgifsVideo, publicMediaApi } from '../lib/redgifs'
 import type { FeedOrder, MediaItem, PageResult } from '../types'
 
 type HomeFeed = 'latest' | 'trending' | 'likes' | 'views' | 'longest'
@@ -33,20 +37,25 @@ function normalizePage(result: PageResult<MediaItem>, logicalPage: number, first
 }
 
 export function HomeScreen(): React.JSX.Element {
-  const { preferences } = useApp()
+  const navigate = useNavigate()
+  const { preferences, account } = useApp()
   const [mode, setMode] = useState<HomeFeed>('trending')
-  // Cycling a real API starting page makes every pull refresh retrieve a fresh
-  // public batch rather than re-showing a generated/local list.
   const [firstApiPage, setFirstApiPage] = useState(1)
+  const [hub, setHub] = useState<AdminHub>(defaultHub)
+  const [notesOpen, setNotesOpen] = useState(false)
+  const onlineMembers = useOnlineMembers()
   const selected = HOME_FEEDS.find((feed) => feed.id === mode) ?? HOME_FEEDS[0]
+  const card = hub.homeCard
+  const notes = hub.notifications.filter((item) => item.active)
+  const unread = unreadCount(hub)
+
+  useEffect(() => { void loadHub().then(setHub) }, [])
 
   const loadFeed = useCallback(async (logicalPage: number) => {
     const apiPage = firstApiPage + logicalPage - 1
     let result: PageResult<MediaItem>
     if (mode === 'trending') result = await publicMediaApi.trending(apiPage)
     else {
-      // Valid V2 orders are top/top7/top28/latest/score/trending. We sort the
-      // returned real batch by views/duration in rankRealItems below.
       const order: FeedOrder = mode === 'likes' ? 'top' : mode === 'views' ? 'score' : 'latest'
       result = await publicMediaApi.latest(apiPage, order)
     }
@@ -54,24 +63,70 @@ export function HomeScreen(): React.JSX.Element {
   }, [firstApiPage, mode])
   const feed = usePagedMedia(loadFeed, [mode, firstApiPage])
 
+  useEffect(() => {
+    const timer = window.setInterval(() => { void feed.mergeFresh() }, 60_000)
+    return () => window.clearInterval(timer)
+  }, [feed.mergeFresh])
+
   const visibleItems = useMemo(() => {
     const blocked = new Set(preferences.blockedTags.map((tag) => tag.toLowerCase()))
-    return feed.items.filter((item) => !item.tags.some((tag) => blocked.has(tag.toLowerCase())))
-  }, [feed.items, preferences.blockedTags])
+    const hidden = new Set(hub.hiddenVideos)
+    return feed.items.filter((item) => isRedgifsVideo(item) && !hidden.has(item.id) && !item.tags.some((tag) => blocked.has(tag.toLowerCase())))
+  }, [feed.items, preferences.blockedTags, hub.hiddenVideos])
 
   const refreshRealFeed = useCallback(async () => {
     setFirstApiPage((current) => current >= 7 ? 1 : current + 1)
+    void loadHub().then(setHub)
   }, [])
+
+  const openNotes = () => {
+    setNotesOpen((open) => !open)
+    markNotificationsRead(hub)
+  }
 
   return (
     <PullToRefresh onRefresh={refreshRealFeed}>
       <section className="screen screen--home">
-        <ScreenHeader title="X-sutra" eyebrow="Public media browser" actions={<button className="round-button" type="button" onClick={() => void refreshRealFeed()} aria-label="Load a fresh public batch"><RefreshIcon size={20} /></button>} />
+        <ScreenHeader showMark title="X-sutra" actions={
+          <div className="home-header-actions">
+            <button className="notify-bell" type="button" onClick={openNotes} aria-label="Notifications">
+              🔔{unread > 0 && <i>{unread}</i>}
+            </button>
+            <button className="home-cta home-cta--login" type="button" onClick={() => navigate(account ? (account.role === 'admin' ? '/admin' : '/you') : '/login')}>{account ? roleLabel(account.role) : 'Login'}</button>
+          </div>
+        } />
 
-        <div className="home-intro">
-          <div><p className="home-intro__kicker"><SparkIcon size={16} /> Real public feed</p><h2>{mode === 'trending' ? 'What’s moving now.' : `${selected.title}.`}</h2><p>Swipe down for another real source batch. Scroll continuously for more public videos.</p></div>
-          <span className="live-pill"><i /> Live V2</span>
-        </div>
+        {notesOpen && (
+          <div className="notify-panel">
+            <p className="eyebrow">Notifications</p>
+            {!notes.length && <p className="form-help">No notifications yet.</p>}
+            {notes.map((item) => (
+              <button key={item.id} className="notify-item" type="button" onClick={() => item.link ? openHubLink(item.link, navigate) : undefined}>
+                <strong>{item.title}</strong>
+                <small>{item.message}</small>
+                <em>{relativeTime(item.createdAt)}</em>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {card.enabled && (
+          <div className="home-intro" style={card.image ? { backgroundImage: `${card.overlay ? 'linear-gradient(180deg, rgba(8,6,6,.25), rgba(8,6,6,.78)), ' : ''}url(${card.image})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}>
+            <div>
+              <p className="home-intro__kicker"><SparkIcon size={16} /> {card.label}</p>
+              <h2>{card.title}</h2>
+              <p>{card.description}</p>
+              <div className="home-header-actions" style={{ marginTop: 14 }}>
+                {card.buttonText && <button className="primary-button" type="button" onClick={() => openHubLink(card.buttonUrl, navigate)}>{card.buttonText}</button>}
+                {card.secondaryText && <button className="secondary-button" type="button" onClick={() => openHubLink(card.secondaryUrl, navigate)}>{card.secondaryText}</button>}
+              </div>
+            </div>
+            <div className="home-intro__pills">
+              <span className="online-pill"><i />{card.online || `${onlineMembers.toLocaleString('en-IN')} online`}</span>
+              <span className="live-pill"><i /> Live V2</span>
+            </div>
+          </div>
+        )}
 
         <div className="home-feed-tabs" role="tablist" aria-label="Home feed selection">
           {HOME_FEEDS.map((feedOption) => <button key={feedOption.id} className={mode === feedOption.id ? 'is-active' : ''} type="button" role="tab" aria-selected={mode === feedOption.id} onClick={() => { setMode(feedOption.id); setFirstApiPage(1) }}>{feedOption.label}</button>)}

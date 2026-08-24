@@ -1,4 +1,5 @@
 import { Capacitor, CapacitorHttp } from '@capacitor/core'
+import { grgGif, grgTrending, grgUserFeed } from './getredgifs'
 import type { Creator, CreatorProfile, FeedOrder, MediaItem, Niche, PageResult, TagSuggestion } from '../types'
 
 /**
@@ -7,15 +8,25 @@ import type { Creator, CreatorProfile, FeedOrder, MediaItem, Niche, PageResult, 
  * preserve the public temporary-token flow without a browser CORS failure.
  */
 const ORIGIN = 'https://api.redgifs.com'
-const USER_AGENT = 'Mozilla/5.0 (compatible; X-sutra/1.0; public-media-client)'
+const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+// Same request fingerprint as the working backend proxy: the redgifs.com
+// Referer/Origin pair is what makes the API return clean media URLs.
+const SOURCE_HEADERS: Record<string, string> = {
+  Accept: 'application/json',
+  'User-Agent': USER_AGENT,
+  Referer: 'https://www.redgifs.com/',
+  Origin: 'https://www.redgifs.com'
+}
 const PROXY_PATH = '/api/redgifs'
-const DROP_PROXY_PREFIX = '/api/redgifs'
-// `npm run build:drop` creates a static Netlify Drop build. Netlify's 200
-// rewrite proxies this prefix to the source API, so browser CORS is avoided.
-const USE_DROP_PROXY = import.meta.env.MODE === 'drop'
-const USE_NATIVE_HTTP = Capacitor.isNativePlatform()
-let directToken = ''
-let directTokenExpiry = 0
+// Web transport tiering: the bundled Netlify Function is preferred (it sends
+// the app User-Agent, so the API returns clean media URLs). Deployments
+// without functions (plain drag-and-drop sites) automatically fall back to
+// the same-origin rewrite proxy, which forwards the browser User-Agent —
+// feeds keep working everywhere; watermarks may return only on fallback.
+type ProxyMode = 'function' | 'rewrite'
+let proxyMode: ProxyMode = 'function'
+let rewriteToken = ''
+let rewriteTokenExpiry = 0
 let nativeToken = ''
 let nativeTokenExpiry = 0
 
@@ -57,40 +68,47 @@ function uniqueUrls(values: string[]): string[] {
     .filter((value) => /^https?:\/\//i.test(value)))]
 }
 
+/**
+ * Any RedGifs media URL (signed, watermarked, or CDN-mirrored) contains the
+ * permanent file name. The clean original variants live at fixed, unsigned
+ * media.redgifs.com paths (proven by the public no-login source):
+ *   <Name>.mp4 · <Name>-mobile.mp4 · <Name>-silent.mp4 · <Name>-mobile.jpg
+ */
+export function mediaNameFromUrl(url: string): string | null {
+  const match = url.match(/(?:media|files|thumbs\d*)\.redgifs\.com\/(?:[^/?#]+\/)?([A-Za-z0-9][A-Za-z0-9_-]*?)\.(?:mp4|webm|m4s|jpe?g|png)(?:[?#]|$)/i)
+  if (!match) return null
+  return match[1].replace(/-(?:mobile|silent|poster|watermarked)$/i, '')
+}
+
+export function cleanMediaSet(name: string): { hd: string; sd: string; silent: string; thumb: string; poster: string } {
+  const base = 'https://media.redgifs.com'
+  return {
+    hd: `${base}/${name}.mp4`,
+    sd: `${base}/${name}-mobile.mp4`,
+    silent: `${base}/${name}-silent.mp4`,
+    thumb: `${base}/${name}-mobile.jpg`,
+    poster: `${base}/${name}-poster.jpg`
+  }
+}
+
+/**
+ * RedGifs hands browser-like clients media URLs that point at its watermarked
+ * file variant (an own /Watermarked/ path segment). The original file is
+ * served from the same path without that segment, so derive the clean twin
+ * and try it first; the API-provided URL stays as the fallback.
+ */
+export function cleanVariantOf(url: string): string | null {
+  if (!/\/Watermarked(\/|$)/i.test(url)) return null
+  const stripped = url.replace(/\/Watermarked(?=\/)/i, '')
+  return stripped !== url ? stripped : null
+}
+
 function queryPath(pathname: string, params: Record<string, string | number | boolean | undefined> = {}): string {
   const url = new URL(pathname, ORIGIN)
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== '') url.searchParams.set(key, String(value))
   }
   return `${url.pathname}${url.search}`
-}
-
-async function dropProxyTemporaryToken(force = false): Promise<string> {
-  if (!force && directToken && Date.now() < directTokenExpiry) return directToken
-  const response = await fetch(`${DROP_PROXY_PREFIX}/v2/auth/temporary`, { headers: { Accept: 'application/json' } })
-  if (!response.ok) throw new Error(`Temporary public token request failed (${response.status})`)
-  const data = await response.json() as { token?: string }
-  if (!data.token) throw new Error('Temporary public token response was empty')
-  directToken = data.token
-  directTokenExpiry = Date.now() + 40 * 60 * 1000
-  return directToken
-}
-
-async function dropProxyRequest<T>(path: string, retry = true): Promise<T> {
-  const token = await dropProxyTemporaryToken(!retry)
-  const response = await fetch(`${DROP_PROXY_PREFIX}${path}`, {
-    headers: { Accept: 'application/json', Authorization: `Bearer ${token}` }
-  })
-  if (response.status === 401 && retry) {
-    directToken = ''
-    directTokenExpiry = 0
-    return dropProxyRequest<T>(path, false)
-  }
-  if (!response.ok) {
-    const body = await response.text().catch(() => '')
-    throw new Error(`Live public data request failed (${response.status})${body ? ` — ${body.slice(0, 180)}` : ''}`)
-  }
-  return response.json() as Promise<T>
 }
 
 function responseData<T>(data: unknown): T {
@@ -106,7 +124,7 @@ async function nativeTemporaryToken(force = false): Promise<string> {
   if (!force && nativeToken && Date.now() < nativeTokenExpiry) return nativeToken
   const response = await CapacitorHttp.get({
     url: `${ORIGIN}/v2/auth/temporary`,
-    headers: { Accept: 'application/json', 'User-Agent': USER_AGENT }
+    headers: { ...SOURCE_HEADERS }
   })
   if (response.status < 200 || response.status >= 300) {
     throw new Error(`Temporary public token request failed (${response.status})`)
@@ -124,9 +142,8 @@ async function nativeRequest<T>(path: string, retry = true): Promise<T> {
   const response = await CapacitorHttp.get({
     url: `${ORIGIN}${path}`,
     headers: {
-      Accept: 'application/json',
-      Authorization: `Bearer ${token}`,
-      'User-Agent': USER_AGENT
+      ...SOURCE_HEADERS,
+      Authorization: `Bearer ${token}`
     }
   })
   if (response.status === 401 && retry) {
@@ -141,20 +158,58 @@ async function nativeRequest<T>(path: string, retry = true): Promise<T> {
   return responseData<T>(response.data)
 }
 
-async function request<T>(pathname: string, params?: Record<string, string | number | boolean | undefined>): Promise<T> {
-  const path = queryPath(pathname, params)
-  if (USE_NATIVE_HTTP) return nativeRequest<T>(path)
-  if (USE_DROP_PROXY) return dropProxyRequest<T>(path)
+async function rewriteTemporaryToken(force = false): Promise<string> {
+  if (!force && rewriteToken && Date.now() < rewriteTokenExpiry) return rewriteToken
+  const response = await fetch(`${PROXY_PATH}/v2/auth/temporary`, { headers: { Accept: 'application/json' } })
+  if (!response.ok) throw new Error(`Temporary public token request failed (${response.status})`)
+  const data = await response.json() as { token?: string }
+  if (!data.token) throw new Error('Temporary public token response was empty')
+  rewriteToken = data.token
+  rewriteTokenExpiry = Date.now() + 40 * 60 * 1000
+  return rewriteToken
+}
 
+async function rewriteRequest<T>(path: string, retry = true): Promise<T> {
+  const token = await rewriteTemporaryToken(!retry)
+  const response = await fetch(`${PROXY_PATH}${path}`, {
+    headers: { Accept: 'application/json', Authorization: `Bearer ${token}` }
+  })
+  if (response.status === 401 && retry) {
+    rewriteToken = ''
+    rewriteTokenExpiry = 0
+    return rewriteRequest<T>(path, false)
+  }
+  if (!response.ok) {
+    const body = await response.text().catch(() => '')
+    throw new Error(`Live public data request failed (${response.status})${body ? ` — ${body.slice(0, 180)}` : ''}`)
+  }
+  return response.json() as Promise<T>
+}
+
+async function functionRequest<T>(path: string): Promise<T> {
   const url = new URL(PROXY_PATH, window.location.origin)
   url.searchParams.set('path', path)
   const response = await fetch(url.toString(), { headers: { Accept: 'application/json' } })
-  if (!response.ok) {
-    const body = await response.text().catch(() => '')
-    const detail = body ? ` — ${body.slice(0, 180)}` : ''
-    throw new Error(`Live public data request failed (${response.status})${detail}`)
-  }
+  // A missing function (plain static deploy) is answered with 404 or the SPA
+  // shell HTML — both mean "no function here", never valid feed data.
+  if (!response.ok) throw new Error(`Function proxy unavailable (${response.status})`)
+  const contentType = response.headers.get('content-type') ?? ''
+  if (!contentType.includes('json')) throw new Error('Function proxy returned a non-JSON body')
   return response.json() as Promise<T>
+}
+
+async function request<T>(pathname: string, params?: Record<string, string | number | boolean | undefined>): Promise<T> {
+  const path = queryPath(pathname, params)
+  if (Capacitor.isNativePlatform()) return nativeRequest<T>(path)
+
+  if (proxyMode === 'function') {
+    try {
+      return await functionRequest<T>(path)
+    } catch {
+      proxyMode = 'rewrite'
+    }
+  }
+  return rewriteRequest<T>(path)
 }
 
 function mediaFromRaw(value: unknown): MediaItem {
@@ -185,10 +240,25 @@ function mediaFromRaw(value: unknown): MediaItem {
     text(raw.thumbnail), text(raw.thumbnailUrl), text(raw.poster), text(raw.posterUrl),
     ...imageUrls, ...allUrls
   ])
-  const preferredVideos = uniqueUrls([
+  const rawVideoCandidates = uniqueUrls([
     text(urls.hd), text(urls.sd), text(urls.silent), text(urls.gif),
     text(raw.videoUrl), text(raw.previewUrl), ...videoUrls
   ])
+  // Derive the permanent clean media set from the file name found in ANY of
+  // the API-provided URLs; the originals stay as last-resort fallbacks.
+  const mediaName = rawVideoCandidates.concat(thumbnailUrls).map((url) => mediaNameFromUrl(url)).find((name): name is string => Boolean(name))
+  const cleanSet = mediaName ? cleanMediaSet(mediaName) : null
+  const cleanFirst: string[] = cleanSet ? [cleanSet.hd, cleanSet.sd, cleanSet.silent] : []
+  const watermarked: string[] = []
+  for (const url of rawVideoCandidates) {
+    const clean = cleanVariantOf(url)
+    if (clean) {
+      cleanFirst.push(clean)
+      watermarked.push(url)
+    } else if (/\/Watermarked(\/|$)/i.test(url)) watermarked.push(url)
+    else cleanFirst.push(url)
+  }
+  const preferredVideos = uniqueUrls([...cleanFirst, ...watermarked])
 
   return {
     id,
@@ -196,10 +266,11 @@ function mediaFromRaw(value: unknown): MediaItem {
     description,
     creator: text(raw.userName) || text(raw.username) || text(raw.user) || 'creator',
     thumbnail: thumbnailUrls[0],
-    thumbnailUrls,
-    previewUrl: text(urls.silent) || videoUrls[0] || preferredVideos[0],
-    videoUrl: text(urls.hd) || preferredVideos[0],
-    videoUrlSd: text(urls.sd) || preferredVideos[1],
+    thumbnailUrls: cleanSet ? uniqueUrls([...thumbnailUrls, cleanSet.thumb, cleanSet.poster]) : thumbnailUrls,
+    previewUrl: cleanSet ? cleanSet.silent : text(urls.silent) || videoUrls[0] || preferredVideos[0],
+    videoUrl: preferredVideos[0],
+    videoUrlSd: preferredVideos.find((url, index) => index > 0 && /\.(?:mp4|webm)/i.test(url)) ?? preferredVideos[1],
+    watermarkedUrls: watermarked,
     sourceUrl: `https://www.redgifs.com/watch/${encodeURIComponent(id)}`,
     duration: number(raw.duration),
     likes: number(raw.likes) || number(raw.likesCount),
@@ -264,6 +335,14 @@ function nicheFromRaw(value: unknown): Niche | null {
 
 export const publicMediaApi = {
   async trending(page = 1): Promise<PageResult<MediaItem>> {
+    // The public no-login source provides the first trending batch with
+    // permanent clean media URLs; deeper pages use the direct API flow.
+    if (page === 1) {
+      try {
+        const items = await grgTrending()
+        if (items.length) return { items, page: 1, pages: 2, total: items.length }
+      } catch { /* fall through to the API flow */ }
+    }
     return mediaPage(await request('/v2/feeds/trending/popular', { page, count: 48 }))
   },
 
@@ -280,6 +359,10 @@ export const publicMediaApi = {
   },
 
   async getById(id: string): Promise<MediaItem> {
+    try {
+      const resolved = await grgGif(id)
+      if (resolved) return resolved
+    } catch { /* fall through to the API flow */ }
     const raw = record(await request('/v2/gifs/' + encodeURIComponent(id)))
     return mediaFromRaw(raw.gif ?? raw)
   },
@@ -306,6 +389,10 @@ export const publicMediaApi = {
   },
 
   async creator(username: string, page = 1, order: FeedOrder = 'latest'): Promise<PageResult<MediaItem>> {
+    try {
+      const feed = await grgUserFeed(username, page)
+      if (feed) return { items: feed.items, page, pages: page + (feed.hasMore ? 1 : 0), total: feed.items.length }
+    } catch { /* fall through to the API flow */ }
     return mediaPage(await request(`/v2/users/${encodeURIComponent(username)}/search`, { page, count: 48, order }))
   },
 
@@ -361,6 +448,12 @@ export const publicMediaApi = {
     const rows = Array.isArray(raw.niches) ? raw.niches : Array.isArray(raw) ? raw : []
     return rows.map(nicheFromRaw).filter((item): item is Niche => item !== null)
   }
+}
+
+export function isRedgifsVideo(item: MediaItem): boolean {
+  if (item.videoUrl || item.videoUrlSd) return true
+  if (item.duration > 0 || item.hasAudio) return true
+  return /\.(?:mp4|webm|m3u8)(?:[?#]|$)/i.test(item.previewUrl ?? '')
 }
 
 export function redgifsIdFromLink(input: string): string | null {

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { compactNumber, durationLabel } from '../lib/format'
+import { hotpicApi } from '../lib/hotpic'
 import { publicMediaApi } from '../lib/redgifs'
 import type { MediaItem } from '../types'
 import { useApp } from '../context/AppContext'
@@ -79,7 +80,8 @@ export function MediaCard({ item, queue, priority = false }: MediaCardProps): Re
     return () => observer.disconnect()
   }, [priority, item.id])
 
-  const requiresDetail = !item.videoUrl || item.thumbnailUrls.length === 0
+  const isPremium = item.id.startsWith('pm-') || item.id.startsWith('premium-') || item.id.startsWith('hp-') || item.creator === 'premium'
+  const requiresDetail = !isPremium && (!item.videoUrl || item.thumbnailUrls.length === 0)
   useEffect(() => {
     if (!inView || resolved || !requiresDetail) return
     let cancelled = false
@@ -91,11 +93,13 @@ export function MediaCard({ item, queue, priority = false }: MediaCardProps): Re
   const saved = isSaved(display.id)
   const thumbnails = useMemo(() => [...new Set((display.thumbnailUrls?.length ? display.thumbnailUrls : (display.thumbnail ? [display.thumbnail] : [])).filter(Boolean))], [display.thumbnail, display.thumbnailUrls])
   const activeThumbnail = !imageExhausted ? thumbnails[thumbnailIndex] : undefined
-  const previewSource = display.previewUrl ?? display.videoUrlSd ?? display.videoUrl
-  const embedUrl = `https://www.redgifs.com/ifr/${encodeURIComponent(display.id)}?autoplay=1`
+  const previewSource = /\.(?:mp4|webm|mov|m4v)(?:[?#]|$)/i.test(display.previewUrl ?? display.videoUrlSd ?? display.videoUrl ?? '')
+    ? (display.previewUrl ?? display.videoUrlSd ?? display.videoUrl)
+    : undefined
+  const embedUrl = isPremium ? '' : `https://www.redgifs.com/ifr/${encodeURIComponent(display.id)}?autoplay=1`
 
   useEffect(() => {
-    if (!imageExhausted || resolved || !inView) return
+    if (!imageExhausted || resolved || !inView || isPremium) return
     let cancelled = false
     void hydrateMedia(item).then((full) => { if (!cancelled) setResolved(full) }).catch(() => undefined)
     return () => { cancelled = true }
@@ -109,7 +113,11 @@ export function MediaCard({ item, queue, priority = false }: MediaCardProps): Re
   const open = async () => {
     setOpening(true)
     try {
-      const full = resolved ?? await hydrateMedia(item).catch(() => item)
+      const full = item.id.startsWith('hp-')
+        ? await hotpicApi.resolve(item)
+        : isPremium
+          ? item
+          : (resolved ?? await hydrateMedia(item).catch(() => item))
       const fullQueue = (queue?.length ? queue : [item]).map((entry) => entry.id === full.id ? full : (detailCache.get(entry.id) ?? entry))
       openPlayer(full, fullQueue)
     } finally {
@@ -126,13 +134,13 @@ export function MediaCard({ item, queue, priority = false }: MediaCardProps): Re
         aria-label={`Open ${display.title}`}
       >
         {activeThumbnail ? (
-          <img key={activeThumbnail} src={activeThumbnail} alt="" loading={priority ? 'eager' : 'lazy'} onError={nextThumbnail} />
-        ) : previewSource && !previewFailed ? (
-          <video key={previewSource} src={previewSource} muted autoPlay loop playsInline preload="metadata" onError={() => setPreviewFailed(true)} />
-        ) : inView ? (
-          <iframe className="media-card__embed" src={embedUrl} title="Public video preview" loading="lazy" allow="autoplay; fullscreen" tabIndex={-1} aria-hidden="true" />
+          <img key={activeThumbnail} src={activeThumbnail} alt="" loading={priority ? 'eager' : 'lazy'} decoding="async" onError={nextThumbnail} />
+        ) : previewSource && inView && !previewFailed ? (
+          <video key={previewSource} src={previewSource} muted playsInline preload="metadata" poster={display.thumbnail} onError={() => setPreviewFailed(true)} />
+        ) : previewFailed ? (
+          <span className="media-card__missing">Video unavailable</span>
         ) : (
-          <span className="media-card__missing">{opening ? 'Opening source…' : 'Loading source preview…'}</span>
+          <span className="media-card__missing">{opening ? 'Opening…' : 'Preview'}</span>
         )}
         <span className="media-card__shade" aria-hidden="true" />
         <span className="media-card__play" aria-hidden="true"><PlayIcon size={18} /></span>

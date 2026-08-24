@@ -7,10 +7,13 @@ import {
   useState,
   type ReactNode
 } from 'react'
-import { saveMediaFile } from '../lib/download'
+import { openMediaInBrowser, saveMediaBlob } from '../lib/download'
+import { playbackCandidates } from '../lib/media'
+import { hotpicApi } from '../lib/hotpic'
 import { publicMediaApi } from '../lib/redgifs'
-import { readStored, writeStored } from '../lib/storage'
-import type { Creator, DownloadRecord, LocalCollection, MediaItem, Preferences } from '../types'
+import { createUser, onAccountsChange, readSession, verifyLogin, writeSession } from '../lib/accounts'
+import { readStored, writeStored, removeStored } from '../lib/storage'
+import type { AuthResult, Creator, DownloadRecord, DownloadStatus, LocalAccount, LocalCollection, MediaItem, Preferences } from '../types'
 
 type ToastTone = 'default' | 'success' | 'error'
 
@@ -30,6 +33,10 @@ interface AppContextValue {
   playerQueue: MediaItem[]
   playerIndex: number
   preferences: Preferences
+  account: LocalAccount | null
+  signIn: (username: string, password: string) => Promise<AuthResult>
+  signUp: (name: string, username: string, password: string) => Promise<AuthResult>
+  signOut: () => void
   toast: ToastMessage | null
   isSaved: (id: string) => boolean
   toggleSaved: (item: MediaItem) => void
@@ -41,11 +48,15 @@ interface AppContextValue {
   deleteCollection: (id: string) => void
   addToCollection: (collectionId: string, item: MediaItem) => void
   collectionItems: (collectionId: string) => MediaItem[]
-  requestDownload: (item: MediaItem) => Promise<void>
+  requestDownload: (item: MediaItem) => Promise<boolean>
   clearDownloads: () => void
   openPlayer: (item: MediaItem, queue?: MediaItem[]) => void
   stepPlayer: (direction: -1 | 1) => void
   closePlayer: () => void
+  /** Re-fetches the playing clip's detail so the player gets fresh direct media URLs. */
+  refreshActiveMedia: () => Promise<MediaItem | null>
+  /** Admin action: wipes all local library/history data on this device. */
+  clearLocalData: () => void
   updatePreferences: (patch: Partial<Preferences>) => void
   notify: (text: string, tone?: ToastTone) => void
 }
@@ -58,7 +69,14 @@ const FOLLOWS_KEY = 'x-sutra.follows.real.v2'
 const COLLECTIONS_KEY = 'x-sutra.collections.local.v2'
 const DOWNLOADS_KEY = 'x-sutra.downloads.real.v2'
 const PREFERENCES_KEY = 'x-sutra.preferences.v2'
+const SESSION_KEY = 'x-sutra.session.local.v1'
 const defaultPreferences: Preferences = { quality: 'hd', autoplay: true, muted: true, blockedTags: [] }
+
+const usernamePattern = /^[a-z0-9._]{3,20}$/i
+
+export function validUsername(username: string): boolean {
+  return usernamePattern.test(username.trim())
+}
 
 function readRealSaved(): MediaItem[] {
   return readStored<MediaItem[]>(SAVED_KEY, [])
@@ -74,7 +92,8 @@ function mergeMediaDetail(item: MediaItem, detail: MediaItem): MediaItem {
     thumbnailUrls: detail.thumbnailUrls.length ? detail.thumbnailUrls : item.thumbnailUrls,
     previewUrl: detail.previewUrl ?? item.previewUrl,
     videoUrl: detail.videoUrl ?? item.videoUrl,
-    videoUrlSd: detail.videoUrlSd ?? item.videoUrlSd
+    videoUrlSd: detail.videoUrlSd ?? item.videoUrlSd,
+    watermarkedUrls: detail.watermarkedUrls?.length ? detail.watermarkedUrls : item.watermarkedUrls
   }
 }
 
@@ -89,6 +108,14 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
   const [playerQueue, setPlayerQueue] = useState<MediaItem[]>([])
   const [playerIndex, setPlayerIndex] = useState(0)
   const [toast, setToast] = useState<ToastMessage | null>(null)
+  const [account, setAccount] = useState<LocalAccount | null>(readSession)
+
+  useEffect(() => onAccountsChange(() => {
+    setAccount((current) => {
+      if (!current) return current
+      return readSession()
+    })
+  }), [])
 
   useEffect(() => writeStored(SAVED_KEY, saved), [saved])
   useEffect(() => writeStored(LIKED_KEY, liked), [liked])
@@ -105,6 +132,30 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
   const notify = useCallback((text: string, tone: ToastTone = 'default') => {
     setToast({ id: Date.now(), text, tone })
   }, [])
+
+  const signUp = useCallback(async (name: string, username: string, password: string): Promise<AuthResult> => {
+    const result = await createUser({ name, username, password, role: 'creator' })
+    if (!result.ok || !result.user) return { ok: false, error: result.ok ? 'Could not create account' : result.error }
+    writeSession(result.user)
+    setAccount(result.user)
+    notify(`Welcome, ${result.user.name}`, 'success')
+    return { ok: true }
+  }, [notify])
+
+  const signIn = useCallback(async (username: string, password: string): Promise<AuthResult> => {
+    const result = await verifyLogin(username, password)
+    if (!result.ok || !result.user) return { ok: false, error: result.ok ? 'Sign in failed' : result.error }
+    writeSession(result.user)
+    setAccount(result.user)
+    notify(`Signed in as ${result.user.name}`, 'success')
+    return { ok: true }
+  }, [notify])
+
+  const signOut = useCallback(() => {
+    removeStored(SESSION_KEY)
+    setAccount(null)
+    notify('Signed out. Data stays on this device')
+  }, [notify])
 
   const isSaved = useCallback((id: string) => saved.some((item) => item.id === id), [saved])
 
@@ -194,28 +245,52 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
       // the detail refresh is temporarily unavailable.
       let resolved = item
       try {
-        resolved = mergeMediaDetail(item, await publicMediaApi.getById(item.id))
+        resolved = item.id.startsWith('hp-')
+          ? await hotpicApi.resolve(item)
+          : mergeMediaDetail(item, await publicMediaApi.getById(item.id))
       } catch (error) {
         if (!item.videoUrl && !item.videoUrlSd) throw error
       }
 
-      const mediaUrl = preferences.quality === 'sd'
+      const primaryUrl = preferences.quality === 'sd'
         ? resolved.videoUrlSd ?? resolved.videoUrl
         : resolved.videoUrl ?? resolved.videoUrlSd
-      if (!mediaUrl) throw new Error('This public clip does not expose a downloadable video URL')
+      if (!primaryUrl) throw new Error('This public clip does not expose a downloadable video URL')
 
-      setDownloads((current) => current.map((entry) => entry.id === recordId
-        ? { ...entry, item: resolved, mediaUrl }
-        : entry))
-      const disposition = await saveMediaFile(resolved, mediaUrl)
-      const status = disposition === 'saved' ? 'done' : 'opened'
+      // Proxied clean URLs first, direct clean next, watermarked originals
+      // last — one dead candidate never fails the download.
+      const urlChain = playbackCandidates(resolved)
+
+      let mediaUrl = urlChain[0]
+      let saved = false
+      let lastError: unknown = null
+      for (const candidate of urlChain) {
+        try {
+          await saveMediaBlob(resolved, candidate)
+          mediaUrl = candidate
+          saved = true
+          break
+        } catch (error) {
+          lastError = error
+        }
+      }
+      let disposition: DownloadStatus = 'done'
+      if (!saved) {
+        // Every fetchable candidate failed (e.g. CORS): hand the direct
+        // source URL to the browser instead of failing the download.
+        openMediaInBrowser(resolved, urlChain[0])
+        disposition = 'opened'
+      }
+      const status: DownloadStatus = disposition
       setDownloads((current) => current.map((entry) => entry.id === recordId ? { ...entry, status } : entry))
-      if (disposition === 'saved') notify('Verified media download started', 'success')
+      if (status === 'done') notify('Saved to your device', 'success')
       else notify('The actual media URL was opened; use your browser to save it')
+      return status === 'done' || status === 'opened'
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to start download'
       setDownloads((current) => current.map((entry) => entry.id === recordId ? { ...entry, status: 'failed', error: message } : entry))
       notify(message, 'error')
+      return false
     }
   }, [notify, preferences.quality])
 
@@ -237,6 +312,35 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
     })
   }, [playerQueue])
 
+  const refreshActiveMedia = useCallback(async (): Promise<MediaItem | null> => {
+    if (!activeMedia) return null
+    try {
+      if (activeMedia.id.startsWith('hp-') || activeMedia.id.startsWith('pm-') || activeMedia.id.startsWith('premium-')) {
+        const detail = activeMedia.id.startsWith('hp-') ? await hotpicApi.resolve(activeMedia) : activeMedia
+        const merged = mergeMediaDetail(activeMedia, detail)
+        setPlayerQueue((current) => current.map((entry, index) => index === playerIndex ? merged : entry))
+        setActiveMedia((current) => current && current.id === merged.id ? merged : current)
+        return merged
+      }
+      const detail = await publicMediaApi.getById(activeMedia.id)
+      const merged = mergeMediaDetail(activeMedia, detail)
+      setPlayerQueue((current) => current.map((entry, index) => index === playerIndex ? merged : entry))
+      setActiveMedia((current) => current && current.id === merged.id ? merged : current)
+      return merged
+    } catch {
+      return null
+    }
+  }, [activeMedia, playerIndex])
+
+  const clearLocalData = useCallback(() => {
+    setSaved([])
+    setLiked([])
+    setFollows([])
+    setCollections([])
+    setDownloads([])
+    notify('All local data cleared', 'success')
+  }, [notify])
+
   const value = useMemo<AppContextValue>(() => ({
     saved,
     liked,
@@ -247,6 +351,10 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
     playerQueue,
     playerIndex,
     preferences,
+    account,
+    signIn,
+    signUp,
+    signOut,
     toast,
     isSaved,
     toggleSaved,
@@ -265,6 +373,8 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
     },
     openPlayer,
     stepPlayer,
+    refreshActiveMedia,
+    clearLocalData,
     closePlayer: () => {
       setActiveMedia(null)
       setPlayerQueue([])
@@ -272,7 +382,7 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
     },
     updatePreferences: (patch) => setPreferences((current) => ({ ...current, ...patch })),
     notify
-  }), [activeMedia, addToCollection, collectionItems, collections, createCollection, deleteCollection, downloads, follows, isFollowing, isLiked, isSaved, liked, notify, openPlayer, playerIndex, playerQueue, preferences, requestDownload, saved, stepPlayer, toast, toggleFollow, toggleLike, toggleSaved])
+  }), [account, activeMedia, addToCollection, collectionItems, collections, createCollection, deleteCollection, downloads, follows, isFollowing, isLiked, isSaved, liked, notify, openPlayer, playerIndex, playerQueue, clearLocalData, preferences, refreshActiveMedia, requestDownload, saved, signIn, signOut, signUp, stepPlayer, toast, toggleFollow, toggleLike, toggleSaved])
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }

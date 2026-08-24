@@ -3,7 +3,15 @@ import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 
 const ORIGIN = 'https://api.redgifs.com'
-const USER_AGENT = 'Mozilla/5.0 (compatible; X-sutra/1.0; public-media-client)'
+const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+// Same fingerprint as the working backend proxy: redgifs.com Referer/Origin
+// is what returns clean (non-watermarked) media URLs from the API.
+const BASE_HEADERS: Record<string, string> = {
+  Accept: 'application/json',
+  'User-Agent': USER_AGENT,
+  Referer: 'https://www.redgifs.com/',
+  Origin: 'https://www.redgifs.com'
+}
 
 function allowedTarget(rawPath: string): URL | null {
   try {
@@ -29,13 +37,13 @@ async function servePublicMedia(req: IncomingMessage, res: ServerResponse): Prom
   }
 
   try {
-    const tokenResponse = await fetch(`${ORIGIN}/v2/auth/temporary`, { headers: { Accept: 'application/json', 'User-Agent': USER_AGENT } })
+    const tokenResponse = await fetch(`${ORIGIN}/v2/auth/temporary`, { headers: { ...BASE_HEADERS } })
     if (!tokenResponse.ok) throw new Error(`Temporary token request failed (${tokenResponse.status})`)
     const { token } = await tokenResponse.json() as { token?: string }
     if (!token) throw new Error('Temporary token response was empty')
 
     const apiResponse = await fetch(target, {
-      headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, 'User-Agent': USER_AGENT }
+      headers: { ...BASE_HEADERS, Authorization: `Bearer ${token}` }
     })
     const body = await apiResponse.text()
     res.statusCode = apiResponse.status
@@ -46,6 +54,73 @@ async function servePublicMedia(req: IncomingMessage, res: ServerResponse): Prom
     res.statusCode = 502
     res.setHeader('Content-Type', 'application/json; charset=utf-8')
     res.end(JSON.stringify({ error: error instanceof Error ? error.message : 'Unable to retrieve public media data.' }))
+  }
+}
+
+function readBody(req: IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = []
+    req.on('data', (chunk) => chunks.push(Buffer.from(chunk)))
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
+    req.on('error', reject)
+  })
+}
+
+function premiumDevApi(): Plugin {
+  return {
+    name: 'x-sutra-premium-dev-api',
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        const path = req.url?.split('?')[0] ?? ''
+        if (path.startsWith('/api/hotpic-html')) {
+          try {
+            const target = new URL((req.url ?? '').replace('/api/hotpic-html', '') || '/t/Desi', 'https://hotpic.vip')
+            if (!/(^|\.)hotpic\.(vip|cc|one)$/i.test(target.hostname)) {
+              res.statusCode = 400
+              res.setHeader('Content-Type', 'text/plain')
+              res.end('Unsupported host')
+              return
+            }
+            const upstream = await fetch(target, {
+              headers: { Accept: 'text/html', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', Referer: 'https://hotpic.vip/' }
+            })
+            const body = await upstream.text()
+            res.statusCode = upstream.status
+            res.setHeader('Content-Type', 'text/html; charset=utf-8')
+            res.end(body)
+          } catch (error) {
+            res.statusCode = 502
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ error: error instanceof Error ? error.message : 'Hotpic HTML proxy failed' }))
+          }
+          return
+        }
+        if (path !== '/api/premium' && path !== '/api/premium-scan' && path !== '/api/premium-file' && path !== '/api/hotpic') return next()
+        process.env.PREMIUM_LOCAL_FILE ||= '.premium-data.json'
+        process.env.PREMIUM_MEDIA_DIR ||= '.premium-media'
+        try {
+          const body = req.method === 'POST' ? await readBody(req) : ''
+          const requestUrl = new URL(req.url ?? '/', 'http://localhost')
+          const event = { httpMethod: req.method, body, headers: req.headers, queryStringParameters: Object.fromEntries(requestUrl.searchParams), rawUrl: requestUrl.href }
+          const handlerPath = path === '/api/hotpic'
+            ? './netlify/functions/hotpic.mjs'
+            : path === '/api/premium-scan'
+              ? './netlify/functions/premium-scan.mjs'
+              : path === '/api/premium-file'
+                ? './netlify/functions/premium-file.mjs'
+                : './netlify/functions/premium.mjs'
+          const mod = await import(/* @vite-ignore */ handlerPath) as { handler: (event: unknown) => Promise<{ statusCode: number; body?: string; headers?: Record<string, string>; isBase64Encoded?: boolean }> }
+          const result = await mod.handler(event)
+          res.statusCode = result.statusCode
+          for (const [key, value] of Object.entries(result.headers ?? { 'Content-Type': 'application/json; charset=utf-8' })) res.setHeader(key, value)
+          res.end(result.isBase64Encoded && result.body ? Buffer.from(result.body, 'base64') : result.body ?? '')
+        } catch (error) {
+          res.statusCode = 500
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify({ error: error instanceof Error ? error.message : 'Premium API failed' }))
+        }
+      })
+    }
   }
 }
 
@@ -61,7 +136,7 @@ function publicMediaProxy(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), publicMediaProxy()],
+  plugins: [react(), publicMediaProxy(), premiumDevApi()],
   server: {
     host: '0.0.0.0',
     port: 5173,
