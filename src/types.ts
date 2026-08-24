@@ -93,6 +93,8 @@ export interface Preferences {
   blockedTags: string[]
 }
 
+export type UserRole = 'normal' | 'creator' | 'premium' | 'vip' | 'admin'
+
 /** Device-local account used by the optional login flow. Nothing is transmitted anywhere. */
 export interface LocalAccount {
   name: string
@@ -100,8 +102,8 @@ export interface LocalAccount {
   /** SHA-256 digest of the password; the raw password is never stored. */
   passwordHash: string
   createdAt: string
-  /** 'admin' marks the built-in device administrator account. */
-  role?: 'admin' | 'user'
+  role: UserRole
+  status?: 'on' | 'off'
 }
 
 export type AuthResult = { ok: true } | { ok: false; error: string }

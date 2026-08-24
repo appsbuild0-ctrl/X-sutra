@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom'
 import { ScreenHeader } from '../components/ScreenHeader'
 import { DownloadIcon, HeartIcon, LibraryIcon, SettingsIcon, ShieldIcon, UserIcon } from '../components/icons'
 import { useApp } from '../context/AppContext'
+import { roleLabel } from '../lib/roles'
 
 export function YouScreen(): React.JSX.Element {
   const navigate = useNavigate()
@@ -15,7 +16,7 @@ export function YouScreen(): React.JSX.Element {
         <div className="guest-card">
           <span className="guest-card__avatar"><UserIcon size={27} /></span>
           <div>
-            <p className="eyebrow">Local account</p>
+            <p className="eyebrow">{roleLabel(account.role)}</p>
             <h2>{account.name}</h2>
             <p>Signed in on this device. Your saves, follows and preferences stay local.</p>
             <div className="guest-card__actions">

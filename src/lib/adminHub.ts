@@ -37,7 +37,7 @@ export interface HubNotification {
 
 export interface HubUser {
   username: string
-  role: 'normal' | 'premium' | 'vip' | 'admin'
+  role: import('../types').UserRole
   status: 'on' | 'off'
   createdAt: string
 }

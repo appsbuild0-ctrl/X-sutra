@@ -11,6 +11,7 @@ import { openMediaInBrowser, saveMediaBlob } from '../lib/download'
 import { playbackCandidates } from '../lib/media'
 import { hotpicApi } from '../lib/hotpic'
 import { publicMediaApi } from '../lib/redgifs'
+import { createUser, onAccountsChange, readSession, verifyLogin, writeSession } from '../lib/accounts'
 import { readStored, writeStored, removeStored } from '../lib/storage'
 import type { AuthResult, Creator, DownloadRecord, DownloadStatus, LocalAccount, LocalCollection, MediaItem, Preferences } from '../types'
 
@@ -68,38 +69,8 @@ const FOLLOWS_KEY = 'x-sutra.follows.real.v2'
 const COLLECTIONS_KEY = 'x-sutra.collections.local.v2'
 const DOWNLOADS_KEY = 'x-sutra.downloads.real.v2'
 const PREFERENCES_KEY = 'x-sutra.preferences.v2'
-const ACCOUNT_KEY = 'x-sutra.account.local.v1'
 const SESSION_KEY = 'x-sutra.session.local.v1'
 const defaultPreferences: Preferences = { quality: 'hd', autoplay: true, muted: true, blockedTags: [] }
-
-/** Device-local digest; the raw password is never persisted or transmitted anywhere. */
-async function sha256(text: string): Promise<string> {
-  try {
-    if (globalThis.crypto?.subtle) {
-      const bytes = new TextEncoder().encode(text)
-      const digest = await crypto.subtle.digest('SHA-256', bytes)
-      return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
-    }
-  } catch {
-    // Insecure contexts (file://, some WebViews) have no SubtleCrypto.
-  }
-  let hash = 5381
-  for (let index = 0; index < text.length; index += 1) hash = ((hash << 5) + hash) ^ text.charCodeAt(index)
-  return `fb:${(hash >>> 0).toString(16)}:${text.length}`
-}
-
-function isAdminPassword(password: string): boolean {
-  return password === 'admin123' || password === 'admin'
-}
-
-function readSessionAccount(): LocalAccount | null {
-  const session = readStored<LocalAccount | null>(SESSION_KEY, null)
-  if (!session?.username) return null
-  // The built-in admin session has no paired stored record.
-  if (session.role === 'admin') return session
-  const stored = readStored<LocalAccount | null>(ACCOUNT_KEY, null)
-  return stored?.username === session.username ? stored : null
-}
 
 const usernamePattern = /^[a-z0-9._]{3,20}$/i
 
@@ -137,7 +108,14 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
   const [playerQueue, setPlayerQueue] = useState<MediaItem[]>([])
   const [playerIndex, setPlayerIndex] = useState(0)
   const [toast, setToast] = useState<ToastMessage | null>(null)
-  const [account, setAccount] = useState<LocalAccount | null>(readSessionAccount)
+  const [account, setAccount] = useState<LocalAccount | null>(readSession)
+
+  useEffect(() => onAccountsChange(() => {
+    setAccount((current) => {
+      if (!current) return current
+      return readSession()
+    })
+  }), [])
 
   useEffect(() => writeStored(SAVED_KEY, saved), [saved])
   useEffect(() => writeStored(LIKED_KEY, liked), [liked])
@@ -156,49 +134,21 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
   }, [])
 
   const signUp = useCallback(async (name: string, username: string, password: string): Promise<AuthResult> => {
-    try {
-      const cleanName = name.trim().slice(0, 40)
-      const cleanUsername = username.trim().toLowerCase()
-      if (!cleanName) return { ok: false, error: 'Enter your name' }
-      if (cleanUsername === 'admin') return { ok: false, error: 'That username is reserved' }
-      if (!validUsername(cleanUsername)) return { ok: false, error: 'Username: 3-20 letters, numbers, dot or underscore' }
-      if (password.length < 4) return { ok: false, error: 'Password must be at least 4 characters' }
-      const existing = readStored<LocalAccount | null>(ACCOUNT_KEY, null)
-      if (existing) return { ok: false, error: `This device already has a local account (${existing.username}). Sign in instead.` }
-      const record: LocalAccount = { name: cleanName, username: cleanUsername, passwordHash: await sha256(password), createdAt: new Date().toISOString(), role: 'user' }
-      writeStored(ACCOUNT_KEY, record)
-      writeStored(SESSION_KEY, record)
-      setAccount(record)
-      notify(`Welcome, ${cleanName}`, 'success')
-      return { ok: true }
-    } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : 'Could not create account' }
-    }
+    const result = await createUser({ name, username, password, role: 'creator' })
+    if (!result.ok || !result.user) return { ok: false, error: result.ok ? 'Could not create account' : result.error }
+    writeSession(result.user)
+    setAccount(result.user)
+    notify(`Welcome, ${result.user.name}`, 'success')
+    return { ok: true }
   }, [notify])
 
   const signIn = useCallback(async (username: string, password: string): Promise<AuthResult> => {
-    try {
-      const cleanUsername = username.trim().toLowerCase()
-      // Built-in administrator: admin / admin123 (also accept "admin" — older UI said that).
-      if (cleanUsername === 'admin') {
-        if (!isAdminPassword(password)) return { ok: false, error: 'Incorrect password' }
-        const admin: LocalAccount = { name: 'Admin', username: 'admin', passwordHash: '', createdAt: new Date().toISOString(), role: 'admin' }
-        writeStored(SESSION_KEY, admin)
-        setAccount(admin)
-        notify('Signed in as Admin', 'success')
-        return { ok: true }
-      }
-      const stored = readStored<LocalAccount | null>(ACCOUNT_KEY, null)
-      if (!stored) return { ok: false, error: 'No local account on this device yet. Create one first.' }
-      if (stored.username !== cleanUsername) return { ok: false, error: 'That username does not match this device account' }
-      if (stored.passwordHash !== await sha256(password)) return { ok: false, error: 'Incorrect password' }
-      writeStored(SESSION_KEY, stored)
-      setAccount(stored)
-      notify(`Signed in as ${stored.name}`, 'success')
-      return { ok: true }
-    } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : 'Sign in failed' }
-    }
+    const result = await verifyLogin(username, password)
+    if (!result.ok || !result.user) return { ok: false, error: result.ok ? 'Sign in failed' : result.error }
+    writeSession(result.user)
+    setAccount(result.user)
+    notify(`Signed in as ${result.user.name}`, 'success')
+    return { ok: true }
   }, [notify])
 
   const signOut = useCallback(() => {

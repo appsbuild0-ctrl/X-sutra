@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useApp } from '../context/AppContext'
+import { hasPremiumAccess } from '../lib/roles'
 import type { MediaItem } from '../types'
 import { DiscordIcon, TelegramIcon } from './icons'
 
@@ -25,6 +27,8 @@ export function DownloadGate({
   onBuyNow?: () => void
 }): React.JSX.Element {
   const navigate = useNavigate()
+  const { account } = useApp()
+  const instant = hasPremiumAccess(account?.role)
   const [view, setView] = useState<GateView>('pick')
   const [seconds, setSeconds] = useState(20)
 
@@ -37,17 +41,15 @@ export function DownloadGate({
     return () => window.clearInterval(timer)
   }, [view])
 
+  const runDownload = (): void => {
+    setView('saving')
+    void onNormalDownload(item).then((ok) => setView(ok ? 'done' : 'failed')).catch(() => setView('failed'))
+  }
+
   useEffect(() => {
     if (view !== 'wait' || seconds > 0) return
-    let live = true
-    setView('saving')
-    void onNormalDownload(item).then((ok) => {
-      if (live) setView(ok ? 'done' : 'failed')
-    }).catch(() => {
-      if (live) setView('failed')
-    })
-    return () => { live = false }
-  }, [view, seconds, item, onNormalDownload])
+    runDownload()
+  }, [view, seconds])
 
   const openDiscord = async (): Promise<void> => {
     try { await navigator.clipboard.writeText(`${CONTACT_MESSAGE}\n@${DISCORD_USER}`) } catch { /* clipboard optional */ }
@@ -65,9 +67,9 @@ export function DownloadGate({
           <>
             <p className="eyebrow">Download panel</p>
             <h2>Download</h2>
-            <button className="dl-option" type="button" onClick={() => setView('wait')}>
+            <button className="dl-option" type="button" onClick={() => instant ? runDownload() : setView('wait')}>
               <strong>Normal Download</strong>
-              <small>Free Download • 20 sec wait</small>
+              <small>{instant ? '⭐ Instant for Premium / VIP' : 'Free Download • 20 sec wait'}</small>
             </button>
             <button className="dl-option dl-option--gold" type="button" onClick={() => setView('premium')}>
               <strong>Premium Download ⭐</strong>

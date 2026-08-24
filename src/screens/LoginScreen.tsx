@@ -4,6 +4,7 @@ import { CrownMark } from '../components/CrownMark'
 import { EyeIcon, EyeOffIcon, ShieldIcon } from '../components/icons'
 import { PayQrModal, PlanCards, type PlanId } from '../components/PlanPay'
 import { useApp, validUsername } from '../context/AppContext'
+import { roleLabel } from '../lib/roles'
 
 type LoginMode = 'signin' | 'signup'
 

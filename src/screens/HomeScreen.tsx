@@ -6,6 +6,7 @@ import { PullToRefresh } from '../components/PullToRefresh'
 import { ScreenHeader } from '../components/ScreenHeader'
 import { SparkIcon } from '../components/icons'
 import { useApp } from '../context/AppContext'
+import { roleLabel } from '../lib/roles'
 import { useOnlineMembers } from '../hooks/useOnlineMembers'
 import { usePagedMedia } from '../hooks/usePagedMedia'
 import { defaultHub, loadHub, markNotificationsRead, openHubLink, relativeTime, unreadCount, type AdminHub } from '../lib/adminHub'
@@ -86,7 +87,7 @@ export function HomeScreen(): React.JSX.Element {
             <button className="notify-bell" type="button" onClick={openNotes} aria-label="Notifications">
               🔔{unread > 0 && <i>{unread}</i>}
             </button>
-            <button className="home-cta home-cta--login" type="button" onClick={() => navigate(account ? (account.role === 'admin' ? '/admin' : '/you') : '/login')}>{account ? (account.role === 'admin' ? 'Admin' : `@${account.username}`) : 'Login'}</button>
+            <button className="home-cta home-cta--login" type="button" onClick={() => navigate(account ? (account.role === 'admin' ? '/admin' : '/you') : '/login')}>{account ? roleLabel(account.role) : 'Login'}</button>
           </div>
         } />
 

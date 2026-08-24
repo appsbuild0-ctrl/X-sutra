@@ -4,7 +4,10 @@ import { ScreenHeader } from '../components/ScreenHeader'
 import { DownloadIcon, HeartIcon, LibraryIcon, SettingsIcon, ShieldIcon, TrashIcon, UserIcon } from '../components/icons'
 import { useApp } from '../context/AppContext'
 import { useOnlineMembers } from '../hooks/useOnlineMembers'
-import { cacheHub, defaultHub, loadHub, saveHub, type AdminHub, type HubNotification, type HubUser } from '../lib/adminHub'
+import { createUser, deleteUser, onAccountsChange, patchUser, publicUsers, resetUserPassword } from '../lib/accounts'
+import { cacheHub, defaultHub, loadHub, saveHub, type AdminHub, type HubNotification } from '../lib/adminHub'
+import { roleLabel } from '../lib/roles'
+import type { UserRole } from '../types'
 import { fetchPremiumCatalog, premiumAdmin, type PremiumCatalog } from '../lib/premium'
 import { fileToDataUrl, writePayQr, clearPayQr } from '../lib/payQr'
 
@@ -45,7 +48,7 @@ export function AdminPanelScreen(): React.JSX.Element {
     <section className="screen screen--admin">
       <ScreenHeader title="Admin" eyebrow="X-sutra control" actions={<button className="round-button" type="button" onClick={() => navigate('/you')}>‹</button>} />
       {tab === 'dash' && <Dash hub={hub} catalog={catalog} />}
-      {tab === 'users' && <Users hub={hub} persist={persist} />}
+      {tab === 'users' && <Users />}
       {tab === 'videos' && <Videos catalog={catalog} setCatalog={setCatalog} hub={hub} persist={persist} />}
       {tab === 'settings' && <Settings hub={hub} persist={persist} />}
       <nav className="admin-tabs" aria-label="Admin sections">
@@ -59,9 +62,10 @@ export function AdminPanelScreen(): React.JSX.Element {
 
 function Dash({ hub, catalog }: { hub: AdminHub; catalog: PremiumCatalog | null }): React.JSX.Element {
   const online = useOnlineMembers()
-  const users = hub.users.length
-  const premium = hub.users.filter((user) => user.role === 'premium').length
-  const vip = hub.users.filter((user) => user.role === 'vip').length
+  const roster = publicUsers()
+  const users = Math.max(hub.users.length, roster.length)
+  const premium = roster.filter((user) => user.role === 'premium').length
+  const vip = roster.filter((user) => user.role === 'vip').length
   const videos = catalog?.media.filter((item) => item.type === 'video').length ?? 0
   return (
     <>
@@ -78,31 +82,81 @@ function Dash({ hub, catalog }: { hub: AdminHub; catalog: PremiumCatalog | null 
   )
 }
 
-function Users({ hub, persist }: { hub: AdminHub; persist: (hub: AdminHub) => Promise<void> }): React.JSX.Element {
-  const change = async (username: string, patch: Partial<HubUser>) => {
-    await persist({ ...hub, users: hub.users.map((user) => user.username === username ? { ...user, ...patch } : user) })
+function Users(): React.JSX.Element {
+  const { notify } = useApp()
+  const [roster, setRoster] = useState(publicUsers)
+  const [username, setUsername] = useState('')
+  const [password, setPassword] = useState('')
+  const [role, setRole] = useState<UserRole>('creator')
+  const [error, setError] = useState('')
+  useEffect(() => onAccountsChange(() => setRoster(publicUsers())), [])
+
+  const create = async (forced?: UserRole) => {
+    setError('')
+    const result = await createUser({ username, password, role: forced || role })
+    if (!result.ok) {
+      setError(result.error)
+      return
+    }
+    setUsername('')
+    setPassword('')
+    setRoster(publicUsers())
+    notify(`Account @${result.user?.username} created`, 'success')
   }
+
   return (
-    <div className="settings-card">
-      {hub.users.map((user) => (
-        <div className="setting-row" key={user.username} style={{ flexWrap: 'wrap', gap: 8 }}>
-          <span><strong>{user.username}</strong><small>{user.role} · {user.status} · {user.createdAt.slice(0, 10)}</small></span>
-          <select value={user.role} onChange={(event) => void change(user.username, { role: event.target.value as HubUser['role'] })}>
-            <option value="normal">Normal</option>
-            <option value="premium">Premium ⭐</option>
-            <option value="vip">VIP 💎</option>
-            <option value="admin">Admin 👑</option>
-          </select>
-          <button className="text-button" type="button" onClick={() => void change(user.username, { status: user.status === 'on' ? 'off' : 'on' })}>{user.status === 'on' ? 'Disable' : 'Enable'}</button>
-          {user.username !== 'admin' && (
-            <button className="text-button" type="button" onClick={() => {
-              if (!window.confirm('Are you sure you want to delete this user?')) return
-              void persist({ ...hub, users: hub.users.filter((entry) => entry.username !== user.username) })
-            }}><TrashIcon size={16} /></button>
-          )}
+    <>
+      <div className="premium-post-form settings-card" style={{ padding: 14, marginBottom: 12 }}>
+        <strong>Create User</strong>
+        <input value={username} onChange={(event) => setUsername(event.target.value)} placeholder="Username" autoCapitalize="none" />
+        <input value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Password" type="password" autoComplete="new-password" />
+        <select value={role} onChange={(event) => setRole(event.target.value as UserRole)}>
+          <option value="normal">👤 Normal</option>
+          <option value="creator">🪪 Creator</option>
+          <option value="premium">⭐ Premium</option>
+          <option value="vip">💎 VIP</option>
+        </select>
+        {error && <p className="login-error" role="alert">{error}</p>}
+        <button className="primary-button" type="button" onClick={() => void create()}>Create Account</button>
+        <div className="home-header-actions">
+          <button className="secondary-button" type="button" onClick={() => void create('premium')}>Create Premium ⭐</button>
+          <button className="secondary-button" type="button" onClick={() => void create('vip')}>Create VIP 💎</button>
         </div>
-      ))}
-    </div>
+      </div>
+      <div className="settings-card">
+        {roster.map((user) => (
+          <div className="setting-row" key={user.username} style={{ flexWrap: 'wrap', gap: 8 }}>
+            <span><strong>{user.username}</strong><small>{roleLabel(user.role)} · {user.status === 'off' ? 'Disabled' : 'Active'} · {user.createdAt.slice(0, 10)}</small></span>
+            {user.username !== 'admin' && (
+              <>
+                <select value={user.role} onChange={(event) => {
+                  const result = patchUser(user.username, { role: event.target.value as UserRole })
+                  if (!result.ok) notify(result.error, 'error')
+                  else { setRoster(publicUsers()); notify('Role updated', 'success') }
+                }}>
+                  <option value="normal">👤 Normal</option>
+                  <option value="creator">🪪 Creator</option>
+                  <option value="premium">⭐ Premium</option>
+                  <option value="vip">💎 VIP</option>
+                </select>
+                <button className="text-button" type="button" onClick={() => { patchUser(user.username, { status: user.status === 'on' ? 'off' : 'on' }); setRoster(publicUsers()) }}>{user.status === 'off' ? 'Enable' : 'Disable'}</button>
+                <button className="text-button" type="button" onClick={async () => {
+                  const next = window.prompt('New password (min 4 characters)')
+                  if (!next) return
+                  const result = await resetUserPassword(user.username, next)
+                  notify(result.ok ? 'Password reset' : result.error, result.ok ? 'success' : 'error')
+                }}>Reset password</button>
+                <button className="text-button" type="button" onClick={() => {
+                  if (!window.confirm('Are you sure you want to delete this user?')) return
+                  deleteUser(user.username)
+                  setRoster(publicUsers())
+                }}><TrashIcon size={16} /></button>
+              </>
+            )}
+          </div>
+        ))}
+      </div>
+    </>
   )
 }
 
