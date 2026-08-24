@@ -27,7 +27,6 @@ export function SettingsScreen(): React.JSX.Element {
       <ScreenHeader title="Settings" eyebrow="On this device" actions={<button className="round-button" type="button" onClick={() => navigate(-1)} aria-label="Go back"><ArrowLeftIcon size={19} /></button>} />
       <div className="settings-card">
         <label className="setting-row"><span><strong>Download quality</strong><small>Used for each new public video download</small></span><select value={preferences.quality} onChange={(event) => updatePreferences({ quality: event.target.value as 'hd' | 'sd' })}><option value="hd">HD</option><option value="sd">SD</option></select></label>
-        <label className="setting-row"><span><strong>Autoplay in player</strong><small>Start public video when the player opens</small></span><input className="switch" type="checkbox" checked={preferences.autoplay} onChange={(event) => updatePreferences({ autoplay: event.target.checked })} aria-label="Autoplay in player" /></label>
         <label className="setting-row"><span><strong>Mute on open</strong><small>Open player videos muted by default</small></span><input className="switch" type="checkbox" checked={preferences.muted} onChange={(event) => updatePreferences({ muted: event.target.checked })} aria-label="Mute player videos" /></label>
       </div>
       <div className="section-heading section-heading--spaced"><div><p className="eyebrow">Feed filter</p><h3>Blocked tags</h3></div><span>{preferences.blockedTags.length} hidden</span></div>

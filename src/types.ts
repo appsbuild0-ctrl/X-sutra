@@ -15,6 +15,8 @@ export interface MediaItem {
   previewUrl?: string
   videoUrl?: string
   videoUrlSd?: string
+  /** API-provided watermarked variants kept as last-resort playback/download sources. */
+  watermarkedUrls?: string[]
   sourceUrl: string
   duration: number
   likes: number
@@ -90,3 +92,16 @@ export interface Preferences {
   muted: boolean
   blockedTags: string[]
 }
+
+/** Device-local account used by the optional login flow. Nothing is transmitted anywhere. */
+export interface LocalAccount {
+  name: string
+  username: string
+  /** SHA-256 digest of the password; the raw password is never stored. */
+  passwordHash: string
+  createdAt: string
+  /** 'admin' marks the built-in device administrator account. */
+  role?: 'admin' | 'user'
+}
+
+export type AuthResult = { ok: true } | { ok: false; error: string }
