@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { HashRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { BottomNav } from './components/BottomNav'
+import { ContentShield } from './components/ContentShield'
 import { ToastHost } from './components/ToastHost'
 import { VideoPlayerSheet } from './components/VideoPlayerSheet'
 import { AppProvider } from './context/AppContext'
@@ -38,7 +39,8 @@ function XsApp(): React.JSX.Element {
   const location = useLocation()
   const inPremium = location.pathname.startsWith('/premium')
   return (
-    <div className={`app-frame${inPremium ? ' app-frame--ott' : ''}`}>
+    <div className={`app-frame${inPremium ? ' app-frame--ott' : ''}${location.pathname.startsWith('/admin') ? '' : ' app-frame--guard'}`}>
+      <ContentShield />
       <ScrollToTop />
       <main className="app-content">
         <Routes>

@@ -1082,3 +1082,13 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .pay-modal { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 18px; background: rgba(5,4,6,.78); }
 .pay-modal__card { width: min(100%, 380px); display: grid; gap: 10px; padding: 18px; border: 1px solid rgba(255,196,107,.28); border-radius: 18px; background: #161218; }
 .pay-modal__card img { width: min(100%, 220px); margin: 0 auto; border-radius: 12px; background: #fff; }
+.app-frame--guard, .app-frame--guard img, .app-frame--guard video { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+.app-frame--guard img, .app-frame--guard video { -webkit-user-drag: none; }
+.notify-bell { position: relative; width: 38px; height: 38px; border-radius: 11px; background: rgba(255,255,255,.06); font-size: 16px; }
+.notify-bell i { position: absolute; top: 2px; right: 2px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 99px; background: #e23b3b; color: #fff; font-size: 9px; font-style: normal; line-height: 16px; }
+.notify-panel { margin: -10px 0 16px; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); display: grid; gap: 8px; max-height: 280px; overflow: auto; }
+.notify-item { display: grid; gap: 3px; padding: 8px; border: 0; border-radius: 10px; background: rgba(255,255,255,.03); color: inherit; text-align: left; }
+.notify-item em { color: var(--muted); font-size: 10px; font-style: normal; }
+.admin-tabs { position: sticky; bottom: calc(70px + var(--safe-bottom)); display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 18px; padding: 8px; border: 1px solid var(--line); border-radius: 14px; background: rgba(16,12,13,.92); }
+.admin-tabs button { min-height: 36px; border-radius: 10px; color: var(--muted); background: transparent; font-size: 10px; font-weight: 700; }
+.admin-tabs button.is-active { color: #2a1a05; background: var(--gold); }

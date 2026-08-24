@@ -79,6 +79,7 @@ export interface PremiumCatalog {
   media: PremiumMedia[]
   heroes: PremiumHero[]
   announcements: PremiumAnnouncement[]
+  adminHub?: import('./adminHub').AdminHub
 }
 
 export interface ScanItem {
@@ -116,7 +117,8 @@ export function localCatalog(): PremiumCatalog {
     albums: Array.isArray(stored.albums) ? stored.albums : [],
     media: Array.isArray(stored.media) ? stored.media : [],
     heroes: Array.isArray(stored.heroes) ? stored.heroes : [],
-    announcements: Array.isArray(stored.announcements) ? stored.announcements : []
+    announcements: Array.isArray(stored.announcements) ? stored.announcements : [],
+    adminHub: stored.adminHub
   }
 }
 
@@ -133,7 +135,8 @@ function mergeCatalog(remote: PremiumCatalog, local: PremiumCatalog): PremiumCat
     albums: pick(remote.albums, local.albums),
     media: pick(remote.media, local.media),
     heroes: pick(remote.heroes, local.heroes),
-    announcements: pick(remote.announcements, local.announcements)
+    announcements: pick(remote.announcements, local.announcements),
+    adminHub: remote.adminHub || local.adminHub
   }
 }
 
@@ -169,7 +172,8 @@ export async function fetchPremiumCatalog(): Promise<PremiumCatalog> {
       albums: Array.isArray(data.albums) ? data.albums : [],
       media: Array.isArray(data.media) ? data.media : [],
       heroes: Array.isArray(data.heroes) ? data.heroes : [],
-      announcements: Array.isArray(data.announcements) ? data.announcements : []
+      announcements: Array.isArray(data.announcements) ? data.announcements : [],
+      adminHub: data.adminHub
     }
     return hydrateCatalogUrls(cacheCatalog(mergeCatalog(remote, local)))
   } catch {
@@ -267,6 +271,10 @@ function applyLocalAdmin(action: string, payload: Record<string, unknown>): Prem
       }
       catalog.media.unshift(entry)
     }
+    return cacheCatalog(catalog)
+  }
+  if (action === 'updateAdminHub') {
+    catalog.adminHub = { ...(catalog.adminHub ?? {}), ...(payload.hub as Record<string, unknown>) } as PremiumCatalog['adminHub']
     return cacheCatalog(catalog)
   }
   if (action === 'addPost') {

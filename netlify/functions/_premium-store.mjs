@@ -35,7 +35,34 @@ function emptyCatalog() {
     albums: [],
     media: [],
     heroes: [],
-    announcements: []
+    announcements: [],
+    adminHub: defaultAdminHub()
+  }
+}
+
+export function defaultAdminHub() {
+  return {
+    qr: '',
+    plans: {
+      premium: { name: 'Premium ⭐', price: '', description: 'Premium Plan', enabled: true },
+      vip: { name: 'VIP 💎', price: '', description: 'VIP Plan', enabled: true }
+    },
+    homeCard: {
+      label: 'REAL PUBLIC FEED',
+      online: '',
+      title: "What's moving now.",
+      description: 'Swipe down for another real source batch. Scroll continuously for more public videos.',
+      buttonText: '',
+      buttonUrl: '',
+      secondaryText: '',
+      secondaryUrl: '',
+      image: '',
+      overlay: true,
+      enabled: true
+    },
+    notifications: [],
+    users: [{ username: 'admin', role: 'admin', status: 'on', createdAt: new Date().toISOString() }],
+    hiddenVideos: []
   }
 }
 
@@ -88,6 +115,7 @@ function normalizeCatalog(raw) {
   catalog.media = Array.isArray(raw.media) ? raw.media : []
   catalog.heroes = Array.isArray(raw.heroes) ? raw.heroes : []
   catalog.announcements = Array.isArray(raw.announcements) ? raw.announcements : []
+  catalog.adminHub = { ...defaultAdminHub(), ...(raw.adminHub || {}) }
   return catalog
 }
 
@@ -98,7 +126,8 @@ export async function writeCatalog(catalog) {
     albums: (catalog.albums || []).slice(0, 200),
     media: (catalog.media || []).slice(0, 4000),
     heroes: (catalog.heroes || []).slice(0, 40),
-    announcements: (catalog.announcements || []).slice(0, 200)
+    announcements: (catalog.announcements || []).slice(0, 200),
+    adminHub: { ...defaultAdminHub(), ...catalog.adminHub }
   }
   const payload = JSON.stringify(next)
   if (LOCAL_FILE) {
@@ -143,7 +172,8 @@ export function publicCatalog(catalog) {
     albums,
     media,
     heroes: (catalog.heroes || []).filter((item) => item.published !== false),
-    announcements: catalog.settings.announcements ? catalog.announcements : []
+    announcements: catalog.settings.announcements ? catalog.announcements : [],
+    adminHub: catalog.adminHub || defaultAdminHub()
   }
 }
 

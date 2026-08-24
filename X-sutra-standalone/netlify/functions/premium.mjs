@@ -162,6 +162,11 @@ export const handler = async (event) => {
       return json(200, { added, skipped, catalog: publicCatalog(catalog) })
     }
 
+    if (action === 'updateAdminHub') {
+      catalog.adminHub = { ...(catalog.adminHub || {}), ...(body.hub || {}) }
+      return json(200, publicCatalog(await writeCatalog(catalog)))
+    }
+
     if (action === 'deleteMedia') {
       catalog.media = catalog.media.filter((item) => item.id !== body.id)
       return json(200, publicCatalog(await writeCatalog(catalog)))

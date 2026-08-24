@@ -12,7 +12,6 @@ import {
   MuteIcon,
   PlayIcon,
   PlusIcon,
-  ShareIcon,
   UserIcon,
   VolumeIcon
 } from './icons'
@@ -205,24 +204,6 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
     }
   }, [likeFromDoubleTap, togglePlay])
 
-  async function share(): Promise<void> {
-    if (!current) return
-    const payload = { title: current.title, text: `@${current.creator} on X-sutra`, url: current.sourceUrl }
-    try {
-      if (navigator.share) {
-        await navigator.share(payload)
-        notify('Share sheet opened', 'success')
-      } else if (navigator.clipboard) {
-        await navigator.clipboard.writeText(current.sourceUrl)
-        notify('Source link copied', 'success')
-      } else {
-        notify('Sharing is not supported by this browser', 'error')
-      }
-    } catch {
-      // User cancelling the native share sheet is not an error.
-    }
-  }
-
   const goCreator = (): void => {
     if (!current) return
     closePlayer()
@@ -404,9 +385,6 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
         </RailBtn>
         <RailBtn label={muted ? 'Muted' : 'Sound'} onClick={() => setMuted((m) => !m)}>
           {muted ? <MuteIcon size={24} /> : <VolumeIcon size={24} />}
-        </RailBtn>
-        <RailBtn label="Share" onClick={() => void share()}>
-          <ShareIcon size={24} />
         </RailBtn>
         <RailBtn label={saved ? 'Saved' : 'Save'} on={saved} onClick={() => { if (!current) return; toggleSaved(current); setSaved(!saved) }}>
           <BookmarkIcon filled={saved} size={24} style={saved ? { fill: 'var(--p-ember)', stroke: 'var(--p-ember)' } : undefined} />

@@ -1,94 +1,230 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ScreenHeader } from '../components/ScreenHeader'
-import { DownloadIcon, HeartIcon, LibraryIcon, ShieldIcon, TrashIcon, UserIcon } from '../components/icons'
+import { DownloadIcon, HeartIcon, LibraryIcon, SettingsIcon, ShieldIcon, TrashIcon, UserIcon } from '../components/icons'
 import { useApp } from '../context/AppContext'
 import { useOnlineMembers } from '../hooks/useOnlineMembers'
-import { clearPayQr, fileToDataUrl, readPayQr, writePayQr } from '../lib/payQr'
+import { cacheHub, defaultHub, loadHub, saveHub, type AdminHub, type HubNotification, type HubUser } from '../lib/adminHub'
+import { fetchPremiumCatalog, premiumAdmin, type PremiumCatalog } from '../lib/premium'
+import { fileToDataUrl, writePayQr, clearPayQr } from '../lib/payQr'
 
+type Tab = 'dash' | 'users' | 'videos' | 'settings'
 
 export function AdminPanelScreen(): React.JSX.Element {
   const navigate = useNavigate()
-  const { account, saved, liked, follows, collections, downloads, clearLocalData, clearDownloads, preferences, updatePreferences, signOut, notify } = useApp()
-  const onlineMembers = useOnlineMembers()
-  const [qr, setQr] = useState(readPayQr)
+  const { account } = useApp()
+  const [tab, setTab] = useState<Tab>('dash')
+  const [hub, setHub] = useState<AdminHub>(defaultHub)
+  const [catalog, setCatalog] = useState<PremiumCatalog | null>(null)
 
-  if (account?.role !== 'admin') {
+  useEffect(() => {
+    void loadHub().then(setHub)
+    void fetchPremiumCatalog().then(setCatalog)
+  }, [])
+
+  useEffect(() => { if (!account) navigate('/login') }, [account, navigate])
+  if (!account) {
+    return <section className="screen screen--admin"><p className="form-help">Redirecting to login…</p></section>
+  }
+  if (account.role !== 'admin') {
     return (
       <section className="screen screen--admin">
-        <ScreenHeader title="Admin panel" eyebrow="Restricted" />
-        <div className="admin-locked">
-          <span className="admin-locked__icon"><ShieldIcon size={26} /></span>
-          <strong>Admin access required</strong>
-          <p>Sign in with the built-in administrator account to open the panel.</p>
-          <button className="primary-button primary-button--wide" type="button" onClick={() => navigate('/login')}>Go to sign in</button>
-          <small className="admin-hint">Hint: username <b>admin</b> · password <b>admin123</b></small>
-        </div>
+        <ScreenHeader title="Access Denied" eyebrow="Admin only" />
+        <div className="admin-locked"><strong>Access Denied</strong><p>Normal / Premium / VIP users cannot open the Admin Panel.</p></div>
       </section>
     )
   }
 
+  const persist = async (next: AdminHub) => {
+    setHub(cacheHub(next))
+    writePayQr(next.qr)
+    await saveHub(next)
+  }
+
   return (
     <section className="screen screen--admin">
-      <ScreenHeader title="Admin panel" eyebrow="Device administrator" actions={<button className="round-button" type="button" onClick={() => navigate('/you')} aria-label="Back to you">‹</button>} />
-      <div className="admin-hero">
-        <span className="admin-hero__icon"><ShieldIcon size={24} /></span>
-        <div>
-          <p className="eyebrow">Signed in</p>
-          <h2>Admin</h2>
-          <p>Built-in administrator · full local control on this device.</p>
-        </div>
-      </div>
-      <div className="section-heading section-heading--spaced"><div><p className="eyebrow">Live</p><h3>Presence</h3></div></div>
-      <div className="admin-presence">
-        <i />
-        <div>
-          <strong>{onlineMembers.toLocaleString('en-IN')}</strong>
-          <span>members online now</span>
-        </div>
-        <small>simulated</small>
-      </div>
-      <div className="section-heading section-heading--spaced"><div><p className="eyebrow">Device data</p><h3>Local stats</h3></div></div>
-      <div className="admin-stats">
-        <div><LibraryIcon size={18} /><strong>{saved.length}</strong><span>Saved</span></div>
-        <div><HeartIcon size={18} /><strong>{liked.length}</strong><span>Likes</span></div>
-        <div><UserIcon size={18} /><strong>{follows.length}</strong><span>Following</span></div>
-        <div><LibraryIcon size={18} /><strong>{collections.length}</strong><span>Collections</span></div>
-        <div><DownloadIcon size={18} /><strong>{downloads.length}</strong><span>Downloads</span></div>
-        <div><ShieldIcon size={18} /><strong>{preferences.blockedTags.length}</strong><span>Blocked tags</span></div>
-      </div>
-      <div className="section-heading section-heading--spaced"><div><p className="eyebrow">Payments</p><h3>QR code</h3></div></div>
-      <div className="settings-card" style={{ padding: 14, marginBottom: 18 }}>
-        {qr ? <img src={qr} alt="Payment QR" style={{ width: '100%', maxWidth: 220, margin: '0 auto 12px', borderRadius: 12 }} /> : <p className="form-help">Koi QR uploaded nahi.</p>}
-        <label className="primary-button primary-button--wide">
-          Upload QR
-          <input className="sr-only" type="file" accept="image/*" onChange={async (event) => {
-            const file = event.target.files?.[0]
-            if (!file) return
-            const data = await fileToDataUrl(file)
-            writePayQr(data)
-            setQr(data)
-            notify('QR saved', 'success')
-          }} />
-        </label>
-        {qr && <button className="secondary-button" type="button" style={{ width: '100%', marginTop: 8 }} onClick={() => { clearPayQr(); setQr(''); notify('QR removed') }}>Remove QR</button>}
-      </div>
-      <div className="section-heading section-heading--spaced"><div><p className="eyebrow">Controls</p><h3>Admin actions</h3></div></div>
-      <div className="quick-link-list">
-        <button type="button" onClick={() => { clearDownloads(); notify('Download history cleared', 'success') }}>
-          <span><TrashIcon size={19} /><strong>Clear download history</strong><small>Remove {downloads.length} record{downloads.length === 1 ? '' : 's'}</small></span><i>›</i>
-        </button>
-        <button type="button" onClick={() => { updatePreferences({ quality: 'hd', autoplay: true, muted: true, blockedTags: [] }); notify('Preferences reset to defaults', 'success') }}>
-          <span><ShieldIcon size={19} /><strong>Reset preferences</strong><small>Quality, autoplay, mute, blocked tags</small></span><i>›</i>
-        </button>
-        <button type="button" onClick={clearLocalData}>
-          <span><TrashIcon size={19} /><strong>Clear all local data</strong><small>Saves, likes, follows, collections, history</small></span><i>›</i>
-        </button>
-        <button type="button" onClick={() => { signOut(); navigate('/you') }}>
-          <span><UserIcon size={19} /><strong>Sign out admin</strong><small>End this admin session</small></span><i>›</i>
-        </button>
-      </div>
-      <div className="settings-card settings-card--about"><div className="about-row"><span className="about-x">X</span><span><strong>X-sutra</strong><small>Admin panel · device-local only</small></span></div><p>Admin actions apply to data stored on this device only. Public feed data always comes from the live public API.</p></div>
+      <ScreenHeader title="Admin" eyebrow="X-sutra control" actions={<button className="round-button" type="button" onClick={() => navigate('/you')}>‹</button>} />
+      {tab === 'dash' && <Dash hub={hub} catalog={catalog} />}
+      {tab === 'users' && <Users hub={hub} persist={persist} />}
+      {tab === 'videos' && <Videos catalog={catalog} setCatalog={setCatalog} hub={hub} persist={persist} />}
+      {tab === 'settings' && <Settings hub={hub} persist={persist} />}
+      <nav className="admin-tabs" aria-label="Admin sections">
+        {([['dash', 'Dashboard'], ['users', 'Users'], ['videos', 'Videos'], ['settings', 'Settings']] as const).map(([id, label]) => (
+          <button key={id} className={tab === id ? 'is-active' : ''} type="button" onClick={() => setTab(id)}>{label}</button>
+        ))}
+      </nav>
     </section>
+  )
+}
+
+function Dash({ hub, catalog }: { hub: AdminHub; catalog: PremiumCatalog | null }): React.JSX.Element {
+  const online = useOnlineMembers()
+  const users = hub.users.length
+  const premium = hub.users.filter((user) => user.role === 'premium').length
+  const vip = hub.users.filter((user) => user.role === 'vip').length
+  const videos = catalog?.media.filter((item) => item.type === 'video').length ?? 0
+  return (
+    <>
+      <div className="admin-stats">
+        <div><UserIcon size={18} /><strong>{users}</strong><span>Total Users</span></div>
+        <div><ShieldIcon size={18} /><strong>{premium}</strong><span>Premium</span></div>
+        <div><HeartIcon size={18} /><strong>{vip}</strong><span>VIP</span></div>
+        <div><LibraryIcon size={18} /><strong>{videos}</strong><span>Videos</span></div>
+        <div><DownloadIcon size={18} /><strong>{catalog?.media.length ?? 0}</strong><span>Downloads*</span></div>
+        <div><SettingsIcon size={18} /><strong>{online.toLocaleString('en-IN')}</strong><span>Online</span></div>
+      </div>
+      <p className="form-help">* Media items in the premium catalog. Home feed stays on the public API.</p>
+    </>
+  )
+}
+
+function Users({ hub, persist }: { hub: AdminHub; persist: (hub: AdminHub) => Promise<void> }): React.JSX.Element {
+  const change = async (username: string, patch: Partial<HubUser>) => {
+    await persist({ ...hub, users: hub.users.map((user) => user.username === username ? { ...user, ...patch } : user) })
+  }
+  return (
+    <div className="settings-card">
+      {hub.users.map((user) => (
+        <div className="setting-row" key={user.username} style={{ flexWrap: 'wrap', gap: 8 }}>
+          <span><strong>{user.username}</strong><small>{user.role} · {user.status} · {user.createdAt.slice(0, 10)}</small></span>
+          <select value={user.role} onChange={(event) => void change(user.username, { role: event.target.value as HubUser['role'] })}>
+            <option value="normal">Normal</option>
+            <option value="premium">Premium ⭐</option>
+            <option value="vip">VIP 💎</option>
+            <option value="admin">Admin 👑</option>
+          </select>
+          <button className="text-button" type="button" onClick={() => void change(user.username, { status: user.status === 'on' ? 'off' : 'on' })}>{user.status === 'on' ? 'Disable' : 'Enable'}</button>
+          {user.username !== 'admin' && (
+            <button className="text-button" type="button" onClick={() => {
+              if (!window.confirm('Are you sure you want to delete this user?')) return
+              void persist({ ...hub, users: hub.users.filter((entry) => entry.username !== user.username) })
+            }}><TrashIcon size={16} /></button>
+          )}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function Videos({ catalog, setCatalog, hub, persist }: { catalog: PremiumCatalog | null; setCatalog: (catalog: PremiumCatalog) => void; hub: AdminHub; persist: (hub: AdminHub) => Promise<void> }): React.JSX.Element {
+  if (!catalog) return <p className="form-help">Loading videos…</p>
+  return (
+    <div className="settings-card">
+      <div className="setting-row"><span><strong>Total Videos</strong></span><strong>{catalog.media.filter((item) => item.type === 'video').length}</strong></div>
+      {catalog.media.map((item) => {
+        const hidden = hub.hiddenVideos.includes(item.id)
+        return (
+          <div className="setting-row" key={item.id} style={{ flexWrap: 'wrap' }}>
+            <span><strong>{item.title}</strong><small>{item.type}{hidden ? ' · hidden' : ''}</small></span>
+            <button className="text-button" type="button" onClick={() => void persist({
+              ...hub,
+              hiddenVideos: hidden ? hub.hiddenVideos.filter((id) => id !== item.id) : [...hub.hiddenVideos, item.id]
+            })}>{hidden ? 'Unhide' : 'Hide'}</button>
+            <button className="text-button" type="button" onClick={async () => {
+              if (!window.confirm('Delete this video?')) return
+              const result = await premiumAdmin('deleteMedia', { id: item.id })
+              if (result.ok && result.catalog) setCatalog(result.catalog)
+            }}>Delete</button>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function Settings({ hub, persist }: { hub: AdminHub; persist: (hub: AdminHub) => Promise<void> }): React.JSX.Element {
+  const [draft, setDraft] = useState(hub)
+  useEffect(() => setDraft(hub), [hub])
+  const card = draft.homeCard
+  return (
+    <div className="premium-post-form">
+      <h3>Payment QR Code</h3>
+      {draft.qr ? <img src={draft.qr} alt="QR" style={{ width: 180, borderRadius: 12, background: '#fff' }} /> : <p className="form-help">No QR uploaded.</p>}
+      <label className="primary-button primary-button--wide">
+        Upload / Replace QR
+        <input className="sr-only" type="file" accept="image/*" onChange={async (event) => {
+          const file = event.target.files?.[0]
+          if (!file) return
+          const qr = await fileToDataUrl(file)
+          const next = { ...draft, qr }
+          setDraft(next)
+          writePayQr(qr)
+          await persist(next)
+        }} />
+      </label>
+      {draft.qr && <button className="secondary-button" type="button" onClick={async () => { clearPayQr(); const next = { ...draft, qr: '' }; setDraft(next); await persist(next) }}>Delete QR</button>}
+
+      <h3>Premium ⭐</h3>
+      <PlanFields plan={draft.plans.premium} onChange={(premium) => setDraft({ ...draft, plans: { ...draft.plans, premium } })} />
+      <h3>VIP 💎</h3>
+      <PlanFields plan={draft.plans.vip} onChange={(vip) => setDraft({ ...draft, plans: { ...draft.plans, vip } })} />
+
+      <h3>Home Card Manager</h3>
+      <input value={card.label} onChange={(event) => setDraft({ ...draft, homeCard: { ...card, label: event.target.value } })} placeholder="Small label" />
+      <input value={card.online} onChange={(event) => setDraft({ ...draft, homeCard: { ...card, online: event.target.value } })} placeholder="Online / status text" />
+      <input value={card.title} onChange={(event) => setDraft({ ...draft, homeCard: { ...card, title: event.target.value } })} placeholder="Main title" />
+      <textarea value={card.description} onChange={(event) => setDraft({ ...draft, homeCard: { ...card, description: event.target.value } })} placeholder="Description" />
+      <input value={card.buttonText} onChange={(event) => setDraft({ ...draft, homeCard: { ...card, buttonText: event.target.value } })} placeholder="Button text" />
+      <input value={card.buttonUrl} onChange={(event) => setDraft({ ...draft, homeCard: { ...card, buttonUrl: event.target.value } })} placeholder="Button URL" />
+      <input value={card.secondaryText} onChange={(event) => setDraft({ ...draft, homeCard: { ...card, secondaryText: event.target.value } })} placeholder="Second button text" />
+      <input value={card.secondaryUrl} onChange={(event) => setDraft({ ...draft, homeCard: { ...card, secondaryUrl: event.target.value } })} placeholder="Second button URL" />
+      <label className="primary-button">Upload card image<input className="sr-only" type="file" accept="image/*" onChange={async (event) => {
+        const file = event.target.files?.[0]
+        if (!file) return
+        setDraft({ ...draft, homeCard: { ...card, image: await fileToDataUrl(file) } })
+      }} /></label>
+      <label className="setting-row"><span><strong>Dark overlay</strong></span><input className="switch" type="checkbox" checked={card.overlay} onChange={(event) => setDraft({ ...draft, homeCard: { ...card, overlay: event.target.checked } })} /></label>
+      <label className="setting-row"><span><strong>Card enabled</strong></span><input className="switch" type="checkbox" checked={card.enabled} onChange={(event) => setDraft({ ...draft, homeCard: { ...card, enabled: event.target.checked } })} /></label>
+      <div className="home-intro" style={card.image ? { backgroundImage: `linear-gradient(180deg, rgba(8,6,6,.2), rgba(8,6,6,.75)), url(${card.image})`, backgroundSize: 'cover' } : undefined}>
+        <div><p className="home-intro__kicker">{card.label}</p><h2>{card.title}</h2><p>{card.description}</p></div>
+        {card.online && <span className="online-pill">{card.online}</span>}
+      </div>
+      <p className="form-help">Live Preview</p>
+
+      <h3>Notifications</h3>
+      <NotifyEditor hub={draft} setDraft={setDraft} />
+
+      <button className="primary-button primary-button--wide" type="button" onClick={() => void persist(draft)}>Save Changes</button>
+      <button className="secondary-button" type="button" onClick={() => setDraft(hub)}>Reset</button>
+    </div>
+  )
+}
+
+function PlanFields({ plan, onChange }: { plan: AdminHub['plans']['premium']; onChange: (plan: AdminHub['plans']['premium']) => void }): React.JSX.Element {
+  return (
+    <>
+      <input value={plan.name} onChange={(event) => onChange({ ...plan, name: event.target.value })} placeholder="Plan name" />
+      <input value={plan.price} onChange={(event) => onChange({ ...plan, price: event.target.value })} placeholder="Price" />
+      <textarea value={plan.description} onChange={(event) => onChange({ ...plan, description: event.target.value })} placeholder="Description" />
+      <label className="setting-row"><span><strong>Enabled</strong></span><input className="switch" type="checkbox" checked={plan.enabled} onChange={(event) => onChange({ ...plan, enabled: event.target.checked })} /></label>
+    </>
+  )
+}
+
+function NotifyEditor({ hub, setDraft }: { hub: AdminHub; setDraft: (hub: AdminHub) => void }): React.JSX.Element {
+  const [title, setTitle] = useState('')
+  const [message, setMessage] = useState('')
+  const [link, setLink] = useState('')
+  const [buttonText, setButtonText] = useState('View Update')
+  return (
+    <>
+      <input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Title" />
+      <textarea value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Message" />
+      <input value={link} onChange={(event) => setLink(event.target.value)} placeholder="Optional link" />
+      <input value={buttonText} onChange={(event) => setButtonText(event.target.value)} placeholder="Button text" />
+      <button className="secondary-button" type="button" onClick={() => {
+        if (!title.trim() || !message.trim()) return
+        const item: HubNotification = { id: `nt-${Date.now()}`, title: title.trim(), message: message.trim(), link: link.trim(), buttonText: buttonText.trim() || 'View Update', active: true, createdAt: new Date().toISOString() }
+        setDraft({ ...hub, notifications: [item, ...hub.notifications] })
+        setTitle(''); setMessage(''); setLink('')
+      }}>+ Create Notification</button>
+      {hub.notifications.map((item) => (
+        <div className="setting-row" key={item.id} style={{ flexWrap: 'wrap' }}>
+          <span><strong>{item.title}</strong><small>{item.message}</small></span>
+          <button className="text-button" type="button" onClick={() => setDraft({ ...hub, notifications: hub.notifications.map((entry) => entry.id === item.id ? { ...entry, active: !entry.active } : entry) })}>{item.active ? 'Disable' : 'Enable'}</button>
+          <button className="text-button" type="button" onClick={() => setDraft({ ...hub, notifications: hub.notifications.filter((entry) => entry.id !== item.id) })}>Delete</button>
+        </div>
+      ))}
+    </>
   )
 }
