@@ -68,8 +68,7 @@ export function HomeScreen(): React.JSX.Element {
       <section className="screen screen--home">
         <ScreenHeader showMark title="X-sutra" actions={
           <div className="home-header-actions">
-            <button className="home-cta home-cta--premium" type="button" onClick={() => navigate('/premium')}>✦ Premium</button>
-            <button className="home-cta home-cta--login" type="button" onClick={() => navigate('/login')}>Login</button>
+            <button className="home-cta home-cta--login" type="button" onClick={() => navigate(account ? (account.role === 'admin' ? '/admin' : '/you') : '/login')}>{account ? (account.role === 'admin' ? 'Admin' : `@${account.username}`) : 'Login'}</button>
           </div>
         } />
 
