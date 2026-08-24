@@ -57,10 +57,9 @@ export function PremiumAdmin(): React.JSX.Element {
 function UploadAllPanel({ catalog, setCatalog, notify }: { catalog: PremiumCatalog; setCatalog: (catalog: PremiumCatalog) => void; notify: (text: string, tone?: 'success' | 'error') => void }): React.JSX.Element {
   const [kind, setKind] = useState<UploadKind>('image')
   const [queue, setQueue] = useState<QueueItem[]>([])
-  const [channelId, setChannelId] = useState(catalog.channels[0]?.id ?? '')
-  const [albumId, setAlbumId] = useState(catalog.albums[0]?.id ?? '')
-  const [tabName, setTabName] = useState('')
-  const [albumName, setAlbumName] = useState('')
+  const [autoChannel, setAutoChannel] = useState(true)
+  const [autoCategory, setAutoCategory] = useState(true)
+  const [autoAlbum, setAutoAlbum] = useState(true)
   const [allowDupes, setAllowDupes] = useState(false)
   const [running, setRunning] = useState(false)
   const [directUrl, setDirectUrl] = useState('')
@@ -72,36 +71,40 @@ function UploadAllPanel({ catalog, setCatalog, notify }: { catalog: PremiumCatal
     setQueue(next.map((file) => ({ file, preview: URL.createObjectURL(file), status: 'waiting' })))
   }
 
-  const createTab = async () => {
-    if (!tabName.trim()) return
-    const result = await premiumAdmin('createChannel', { name: tabName.trim(), description: '', type: 'mixed', status: 'on', order: catalog.channels.length + 1 })
-    if (result.ok && result.catalog) {
-      setCatalog(result.catalog)
-      const created = result.catalog.channels.find((channel) => channel.name === tabName.trim())
-      if (created) setChannelId(created.id)
-      setTabName('')
-      notify('Channel created', 'success')
-    } else notify(result.error ?? 'Could not create channel', 'error')
-  }
-
-  const createAlbum = async () => {
-    if (!albumName.trim()) return
-    const result = await premiumAdmin('createAlbum', { name: albumName.trim(), description: '', tags: '', channelId, published: true })
-    if (result.ok && result.catalog) {
-      setCatalog(result.catalog)
-      const created = result.catalog.albums.find((album) => album.name === albumName.trim())
-      if (created) setAlbumId(created.id)
-      setAlbumName('')
-      notify('Album created', 'success')
-    } else notify(result.error ?? 'Could not create album', 'error')
+  const ensureTargets = async (current: PremiumCatalog): Promise<{ catalog: PremiumCatalog; channelId: string; albumId: string }> => {
+    let next = current
+    let channelId = ''
+    let albumId = ''
+    if (autoChannel || autoCategory) {
+      const name = autoCategory && autoChannel ? 'Premium' : autoCategory ? 'Category' : 'Premium'
+      let channel = next.channels.find((entry) => entry.status !== 'off') ?? next.channels[0]
+      if (!channel) {
+        const result = await premiumAdmin('createChannel', { name, type: 'mixed', status: 'on', order: 1 })
+        if (result.ok && result.catalog) {
+          next = result.catalog
+          channel = next.channels.find((entry) => entry.name === name) ?? next.channels[0]
+        }
+      }
+      channelId = channel?.id ?? ''
+    }
+    if (autoAlbum) {
+      let album = next.albums.find((entry) => entry.published !== false && (!channelId || entry.channelId === channelId || !entry.channelId))
+      if (!album) {
+        const result = await premiumAdmin('createAlbum', { name: 'Uploads', description: '', tags: '', channelId, published: true })
+        if (result.ok && result.catalog) {
+          next = result.catalog
+          album = next.albums.find((entry) => entry.name === 'Uploads') ?? next.albums[0]
+        }
+      }
+      albumId = album?.id ?? ''
+    }
+    setCatalog(next)
+    return { catalog: next, channelId, albumId }
   }
 
   const uploadQueue = async (onlyFailed = false) => {
-    if (kind !== 'hero' && (!channelId || !albumId)) {
-      notify('Select a channel and album first', 'error')
-      return
-    }
     setRunning(true)
+    const targets = kind === 'hero' ? { catalog, channelId: '', albumId: '' } : await ensureTargets(catalog)
     const items = queue.map((item, index) => ({ item, index })).filter(({ item }) => onlyFailed ? item.status === 'failed' : item.status === 'waiting' || item.status === 'failed')
     let done = 0
     for (const { item, index } of items) {
@@ -112,7 +115,7 @@ function UploadAllPanel({ catalog, setCatalog, notify }: { catalog: PremiumCatal
         continue
       }
       const hash = await hashFile(item.file)
-      if (!allowDupes && catalog.media.some((entry) => entry.hash === hash || entry.filename === item.file.name && entry.size === item.file.size)) {
+      if (!allowDupes && targets.catalog.media.some((entry) => entry.hash === hash || entry.filename === item.file.name && entry.size === item.file.size)) {
         setQueue((current) => current.map((entry, entryIndex) => entryIndex === index ? { ...entry, status: 'skipped' } : entry))
         done += 1
         continue
@@ -133,13 +136,12 @@ function UploadAllPanel({ catalog, setCatalog, notify }: { catalog: PremiumCatal
           size: item.file.size,
           role: kind === 'hero' ? 'hero' : 'content'
         }],
-        channelId,
-        albumId,
+        channelId: targets.channelId,
+        albumId: targets.albumId,
         importDuplicates: allowDupes
       })
       setQueue((current) => current.map((entry, entryIndex) => entryIndex === index ? { ...entry, status: result.ok ? 'done' : 'failed', error: result.error } : entry))
       if (result.ok && result.catalog) setCatalog(result.catalog)
-      else if (result.ok) setCatalog(await fetchPremiumCatalog())
       done += 1
     }
     setRunning(false)
@@ -165,12 +167,12 @@ function UploadAllPanel({ catalog, setCatalog, notify }: { catalog: PremiumCatal
       <button className="secondary-button" type="button" onClick={async () => {
         const url = directUrl.trim()
         if (!/^https?:\/\//i.test(url)) return notify('Valid https URL chahiye', 'error')
-        if (kind !== 'hero' && (!channelId || !albumId)) return notify('Pehle channel aur album select/create karo', 'error')
+        const targets = kind === 'hero' ? { catalog, channelId: '', albumId: '' } : await ensureTargets(catalog)
         const isVideo = /\.(mp4|webm|mov|m4v)(\?|$)/i.test(url) || kind === 'video'
         const result = await premiumAdmin('importMedia', {
           items: [{ url, type: isVideo ? 'video' : 'image', filename: url, thumbnail: isVideo ? '' : url, title: 'Premium media', role: kind === 'hero' ? 'hero' : 'content' }],
-          channelId,
-          albumId
+          channelId: targets.channelId,
+          albumId: targets.albumId
         })
         if (result.ok && result.catalog) { setCatalog(result.catalog); setDirectUrl(''); notify('URL published to Premium', 'success') }
         else notify(result.error ?? 'URL publish fail', 'error')
@@ -191,39 +193,34 @@ function UploadAllPanel({ catalog, setCatalog, notify }: { catalog: PremiumCatal
           <button key={value} className={kind === value ? 'is-active' : ''} type="button" onClick={() => setKind(value)}>{value === 'hero' ? 'Poster / Hero' : value}</button>
         ))}
       </div>
-      {kind !== 'hero' && (
-        <>
-          <p className="eyebrow">Upload to channel</p>
-          {catalog.channels.length ? (
-            <div className="premium-kind-row">
-              {catalog.channels.map((channel) => (
-                <button key={channel.id} className={channelId === channel.id ? 'is-active' : ''} type="button" onClick={() => setChannelId(channel.id)}>
-                  {channel.name}
-                </button>
-              ))}
-            </div>
-          ) : <p className="form-help">Abhi koi channel nahi hai. Pehle neeche naam likh ke Create tab dabao.</p>}
-          <div className="collection-form">
-            <input value={tabName} onChange={(event) => setTabName(event.target.value)} placeholder="New channel name (e.g. HD Collection)" />
-            <button className="secondary-button" type="button" onClick={() => void createTab()}>+ Create tab</button>
-          </div>
-          <p className="eyebrow">Album</p>
-          {catalog.albums.filter((album) => !channelId || album.channelId === channelId || !album.channelId).length ? (
-            <div className="premium-kind-row">
-              {catalog.albums.filter((album) => !channelId || album.channelId === channelId || !album.channelId).map((album) => (
-                <button key={album.id} className={albumId === album.id ? 'is-active' : ''} type="button" onClick={() => setAlbumId(album.id)}>
-                  {album.name}
-                </button>
-              ))}
-            </div>
-          ) : <p className="form-help">Is channel me album nahi hai. Naam likh ke Create album dabao.</p>}
-          <div className="collection-form">
-            <input value={albumName} onChange={(event) => setAlbumName(event.target.value)} placeholder="New album name" />
-            <button className="secondary-button" type="button" onClick={() => void createAlbum()}>+ Create album</button>
-          </div>
-        </>
+      <div className="settings-card">
+        <label className="setting-row"><span><strong>Create channel</strong><small>ON = upload pe Premium channel apne aap</small></span><input className="switch" type="checkbox" checked={autoChannel} onChange={(event) => setAutoChannel(event.target.checked)} /></label>
+        <label className="setting-row"><span><strong>Create category</strong><small>ON = category Home pe apne aap</small></span><input className="switch" type="checkbox" checked={autoCategory} onChange={(event) => setAutoCategory(event.target.checked)} /></label>
+        <label className="setting-row"><span><strong>Albums</strong><small>ON = Uploads album apne aap</small></span><input className="switch" type="checkbox" checked={autoAlbum} onChange={(event) => setAutoAlbum(event.target.checked)} /></label>
+        <label className="setting-row"><span><strong>Upload duplicates</strong></span><input className="switch" type="checkbox" checked={allowDupes} onChange={(event) => setAllowDupes(event.target.checked)} /></label>
+      </div>
+      {catalog.channels.length > 0 && (
+        <div className="settings-card">
+          {catalog.channels.map((channel) => (
+            <label className="setting-row" key={channel.id}>
+              <span><strong>{channel.name}</strong><small>Category / channel</small></span>
+              <input className="switch" type="checkbox" checked={channel.status !== 'off'} onChange={async () => {
+                const result = await premiumAdmin('updateChannel', { id: channel.id, status: channel.status === 'on' ? 'off' : 'on' })
+                if (result.ok && result.catalog) setCatalog(result.catalog)
+              }} />
+            </label>
+          ))}
+          {catalog.albums.map((album) => (
+            <label className="setting-row" key={album.id}>
+              <span><strong>{album.name}</strong><small>Album</small></span>
+              <input className="switch" type="checkbox" checked={album.published !== false} onChange={async () => {
+                const result = await premiumAdmin('updateAlbum', { id: album.id, published: album.published === false })
+                if (result.ok && result.catalog) setCatalog(result.catalog)
+              }} />
+            </label>
+          ))}
+        </div>
       )}
-      <label className="setting-row"><span><strong>Upload duplicates</strong></span><input className="switch" type="checkbox" checked={allowDupes} onChange={(event) => setAllowDupes(event.target.checked)} /></label>
       <button className="primary-button primary-button--wide" type="button" disabled={running || !queue.length} onClick={() => void uploadQueue(false)}>
         {running ? 'Uploading…' : `Upload all (${queue.length})`}
       </button>
@@ -235,12 +232,6 @@ function UploadAllPanel({ catalog, setCatalog, notify }: { catalog: PremiumCatal
         </div>
       )}
       {counts.failed > 0 && <button className="secondary-button" type="button" onClick={() => void uploadQueue(true)}>Retry failed ({counts.failed})</button>}
-
-      <div className="section-heading section-heading--spaced"><div><p className="eyebrow">Create</p><h3>Create tab / channel</h3></div></div>
-      <div className="collection-form">
-        <input value={tabName} onChange={(event) => setTabName(event.target.value)} placeholder="Tab name (e.g. HD Collection)" />
-        <button className="secondary-button" type="button" onClick={() => void createTab()}>+ Create tab</button>
-      </div>
     </div>
   )
 }

@@ -232,6 +232,13 @@ function applyLocalAdmin(action: string, payload: Record<string, unknown>): Prem
     } : channel)
     return cacheCatalog(catalog)
   }
+  if (action === 'updateAlbum') {
+    catalog.albums = catalog.albums.map((album) => album.id === payload.id ? {
+      ...album,
+      published: payload.published != null ? payload.published !== false : album.published
+    } : album)
+    return cacheCatalog(catalog)
+  }
   if (action === 'deleteChannel') {
     catalog.channels = catalog.channels.filter((channel) => channel.id !== payload.id)
     return cacheCatalog(catalog)
