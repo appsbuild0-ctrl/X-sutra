@@ -13,6 +13,8 @@ const redirects = `# Tier 1: bundled function proxy with the app User-Agent.
 /api/redgifs  /.netlify/functions/redgifs  200
 # Clean media files stream through the same-origin media proxy.
 /api/media  /.netlify/functions/media  200
+# Premium posts list (shared via Netlify Blobs).
+/api/premium  /.netlify/functions/premium  200
 # Tier 2: static rewrite fallback for deployments without functions.
 /api/redgifs/*  https://api.redgifs.com/:splat  200!
 # Hash routing is used by X-sutra, but this keeps any future direct paths safe.

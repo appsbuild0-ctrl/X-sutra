@@ -19,6 +19,12 @@
   force = true
 
 [[redirects]]
+  from = "/api/premium"
+  to = "/.netlify/functions/premium"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200

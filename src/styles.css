@@ -745,3 +745,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 .ptr-spinner svg.is-spinning { animation: ptr-rotate .7s linear infinite; }
 @keyframes ptr-rotate { to { transform: rotate(360deg); } }
+
+/* ---- Premium posts ---- */
+.premium-posts { display: grid; grid-template-columns: repeat(2, 1fr); gap: 9px; }
+.premium-post { display: flex; flex-direction: column; gap: 5px; padding: 9px; border: 1px solid rgba(255,196,107,.3); border-radius: 14px; background: var(--surface); text-align: left; transition: transform .18s ease, border-color .18s ease; }
+.premium-post:hover { transform: translateY(-1px); border-color: rgba(255,196,107,.6); }
+.premium-post__thumb { display: grid; aspect-ratio: 9/13; place-items: center; border-radius: 9px; color: var(--text); background: linear-gradient(150deg, #241a15, #171113) center / cover no-repeat; }
+.premium-post__thumb svg { color: rgba(255,236,221,.85); filter: drop-shadow(0 2px 8px rgba(0,0,0,.5)); }
+.premium-post strong { color: var(--text); font-size: 12px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.premium-post small { color: var(--muted); font-family: 'DM Mono', monospace; font-size: 9px; }
+.premium-post-form { display: grid; gap: 8px; }
+.premium-post-form input { min-height: 42px; padding: 0 12px; border: 1px solid var(--line); border-radius: 10px; outline: 0; color: var(--text); background: var(--surface); font-size: 12px; }
+.premium-post-form input:focus { border-color: rgba(255,196,107,.55); }

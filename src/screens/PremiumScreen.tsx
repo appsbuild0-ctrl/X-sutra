@@ -1,12 +1,19 @@
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ScreenHeader } from '../components/ScreenHeader'
-import { ShieldIcon, SparkIcon } from '../components/icons'
+import { PlayIcon, ShieldIcon, SparkIcon } from '../components/icons'
 import { useApp } from '../context/AppContext'
+import { fetchPremiumPosts, premiumPostToMedia, type PremiumPost } from '../lib/premium'
 
 /** Premium preview — feature pitch while the plan itself is coming soon. */
 export function PremiumScreen(): React.JSX.Element {
   const navigate = useNavigate()
-  const { account } = useApp()
+  const { account, openPlayer } = useApp()
+  const [posts, setPosts] = useState<PremiumPost[]>([])
+
+  useEffect(() => {
+    void fetchPremiumPosts().then(setPosts)
+  }, [])
 
   const perks = [
     { icon: <SparkIcon size={18} />, title: 'HD downloads, no limits', copy: 'Save every public clip at full quality with priority speeds.' },
@@ -39,6 +46,28 @@ export function PremiumScreen(): React.JSX.Element {
           </div>
         ))}
       </div>
+
+      {posts.length > 0 && (
+        <>
+          <div className="section-heading section-heading--spaced"><div><p className="eyebrow">Member exclusives</p><h3>Premium clips</h3></div><span>{posts.length} clips</span></div>
+          <div className="premium-posts">
+            {posts.map((post) => (
+              <button
+                key={post.id}
+                type="button"
+                className="premium-post"
+                onClick={() => openPlayer(premiumPostToMedia(post), posts.map(premiumPostToMedia))}
+              >
+                <span className="premium-post__thumb" style={post.thumbnail ? { backgroundImage: `url(${post.thumbnail})` } : undefined}>
+                  <PlayIcon size={26} />
+                </span>
+                <strong>{post.title}</strong>
+                <small>{new Date(post.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</small>
+              </button>
+            ))}
+          </div>
+        </>
+      )}
 
       <button
         className="home-cta home-cta--premium home-cta--wide"

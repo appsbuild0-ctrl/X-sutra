@@ -1,14 +1,34 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ScreenHeader } from '../components/ScreenHeader'
-import { DownloadIcon, HeartIcon, LibraryIcon, ShieldIcon, TrashIcon, UserIcon } from '../components/icons'
+import { DownloadIcon, HeartIcon, LibraryIcon, ShieldIcon, SparkIcon, TrashIcon, UserIcon } from '../components/icons'
 import { useApp } from '../context/AppContext'
 import { useOnlineMembers } from '../hooks/useOnlineMembers'
+import { addPremiumPost } from '../lib/premium'
 
 /** Device administrator tools. Opens with the built-in admin / admin login. */
 export function AdminPanelScreen(): React.JSX.Element {
   const navigate = useNavigate()
   const { account, saved, liked, follows, collections, downloads, clearLocalData, clearDownloads, preferences, updatePreferences, signOut, notify } = useApp()
   const onlineMembers = useOnlineMembers()
+  const [postTitle, setPostTitle] = useState('')
+  const [postUrl, setPostUrl] = useState('')
+  const [postThumb, setPostThumb] = useState('')
+  const [posting, setPosting] = useState(false)
+
+  const submitPost = async (): Promise<void> => {
+    if (posting) return
+    const result = await addPremiumPost('admin123', postTitle, postUrl.trim(), postThumb.trim())
+    if (result.ok) {
+      notify('Premium post published', 'success')
+      setPostTitle('')
+      setPostUrl('')
+      setPostThumb('')
+    } else {
+      notify(result.error ?? 'Could not publish', 'error')
+    }
+    setPosting(false)
+  }
 
   if (account?.role !== 'admin') {
     return (
@@ -56,6 +76,17 @@ export function AdminPanelScreen(): React.JSX.Element {
         <div><LibraryIcon size={18} /><strong>{collections.length}</strong><span>Collections</span></div>
         <div><DownloadIcon size={18} /><strong>{downloads.length}</strong><span>Downloads</span></div>
         <div><ShieldIcon size={18} /><strong>{preferences.blockedTags.length}</strong><span>Blocked tags</span></div>
+      </div>
+
+      <div className="section-heading section-heading--spaced"><div><p className="eyebrow">Publish</p><h3>Post to Premium</h3></div><SparkIcon size={18} /></div>
+      <div className="premium-post-form">
+        <input value={postTitle} onChange={(e) => setPostTitle(e.target.value)} placeholder="Title (e.g. Exclusive clip)" maxLength={80} />
+        <input value={postUrl} onChange={(e) => setPostUrl(e.target.value)} placeholder="Direct video link (https://...)" inputMode="url" autoCapitalize="none" spellCheck={false} />
+        <input value={postThumb} onChange={(e) => setPostThumb(e.target.value)} placeholder="Thumbnail link (optional)" inputMode="url" autoCapitalize="none" spellCheck={false} />
+        <button className="primary-button primary-button--wide" type="button" disabled={posting || !postUrl.trim()} onClick={() => { setPosting(true); void submitPost() }}>
+          {posting ? 'Publishing…' : 'Publish to Premium'}
+        </button>
+        <p className="form-help">Upload anywhere (CloudGate share link, direct mp4, RedGifs CDN) and paste the link — members see it instantly in the Premium tab.</p>
       </div>
 
       <div className="section-heading section-heading--spaced"><div><p className="eyebrow">Controls</p><h3>Admin actions</h3></div></div>
