@@ -7,7 +7,7 @@ type LoginMode = 'signin' | 'signup'
 
 export function LoginScreen(): React.JSX.Element {
   const navigate = useNavigate()
-  const { signIn, signUp, account, notify } = useApp()
+  const { signIn, signUp, signOut, account, notify } = useApp()
   const [mode, setMode] = useState<LoginMode>('signin')
   const [name, setName] = useState('')
   const [username, setUsername] = useState('')
@@ -34,7 +34,7 @@ export function LoginScreen(): React.JSX.Element {
       return
     }
     if (cleanUsername === 'admin') {
-      if (password !== 'admin123') {
+      if (password !== 'admin123' && password !== 'admin') {
         setError('Admin password is admin123')
         return
       }
@@ -48,12 +48,17 @@ export function LoginScreen(): React.JSX.Element {
     }
 
     setBusy(true)
-    const result = creating ? await signUp(name, cleanUsername, password) : await signIn(cleanUsername, password)
-    setBusy(false)
-    if (result.ok) {
-      navigate(cleanUsername === 'admin' ? '/admin' : '/you')
-    } else {
-      setError(result.error)
+    try {
+      const result = creating ? await signUp(name, cleanUsername, password) : await signIn(cleanUsername, password)
+      if (result.ok) {
+        navigate(cleanUsername === 'admin' ? '/admin' : '/you')
+      } else {
+        setError(result.error)
+      }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Sign in failed')
+    } finally {
+      setBusy(false)
     }
   }
 
@@ -66,6 +71,7 @@ export function LoginScreen(): React.JSX.Element {
           <h2>Already signed in</h2>
           <p className="login-card__lead">You are signed in as <strong>{account.name}</strong> (@{account.username}).</p>
           <button className="primary-button primary-button--wide" type="button" onClick={() => navigate(account.role === 'admin' ? '/admin' : '/you')}>{account.role === 'admin' ? 'Open admin panel' : 'Go to your profile'}</button>
+          <button className="secondary-button" type="button" onClick={signOut}>Sign out</button>
         </div>
       </section>
     )

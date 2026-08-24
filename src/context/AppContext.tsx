@@ -73,9 +73,22 @@ const defaultPreferences: Preferences = { quality: 'hd', autoplay: true, muted: 
 
 /** Device-local digest; the raw password is never persisted or transmitted anywhere. */
 async function sha256(text: string): Promise<string> {
-  const bytes = new TextEncoder().encode(text)
-  const digest = await crypto.subtle.digest('SHA-256', bytes)
-  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
+  try {
+    if (globalThis.crypto?.subtle) {
+      const bytes = new TextEncoder().encode(text)
+      const digest = await crypto.subtle.digest('SHA-256', bytes)
+      return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
+    }
+  } catch {
+    // Insecure contexts (file://, some WebViews) have no SubtleCrypto.
+  }
+  let hash = 5381
+  for (let index = 0; index < text.length; index += 1) hash = ((hash << 5) + hash) ^ text.charCodeAt(index)
+  return `fb:${(hash >>> 0).toString(16)}:${text.length}`
+}
+
+function isAdminPassword(password: string): boolean {
+  return password === 'admin123' || password === 'admin'
 }
 
 function readSessionAccount(): LocalAccount | null {
@@ -142,41 +155,49 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
   }, [])
 
   const signUp = useCallback(async (name: string, username: string, password: string): Promise<AuthResult> => {
-    const cleanName = name.trim().slice(0, 40)
-    const cleanUsername = username.trim().toLowerCase()
-    if (!cleanName) return { ok: false, error: 'Enter your name' }
-    if (cleanUsername === 'admin') return { ok: false, error: 'admin is reserved — sign in with admin / admin123 instead' }
-    if (!validUsername(cleanUsername)) return { ok: false, error: 'Username: 3-20 letters, numbers, dot or underscore' }
-    if (password.length < 4) return { ok: false, error: 'Password must be at least 4 characters' }
-    const existing = readStored<LocalAccount | null>(ACCOUNT_KEY, null)
-    if (existing) return { ok: false, error: `This device already has a local account (${existing.username}). Sign in instead.` }
-    const record: LocalAccount = { name: cleanName, username: cleanUsername, passwordHash: await sha256(password), createdAt: new Date().toISOString() }
-    writeStored(ACCOUNT_KEY, record)
-    writeStored(SESSION_KEY, record)
-    setAccount(record)
-    notify(`Welcome, ${cleanName}`, 'success')
-    return { ok: true }
+    try {
+      const cleanName = name.trim().slice(0, 40)
+      const cleanUsername = username.trim().toLowerCase()
+      if (!cleanName) return { ok: false, error: 'Enter your name' }
+      if (cleanUsername === 'admin') return { ok: false, error: 'admin is reserved — sign in with admin / admin123 instead' }
+      if (!validUsername(cleanUsername)) return { ok: false, error: 'Username: 3-20 letters, numbers, dot or underscore' }
+      if (password.length < 4) return { ok: false, error: 'Password must be at least 4 characters' }
+      const existing = readStored<LocalAccount | null>(ACCOUNT_KEY, null)
+      if (existing) return { ok: false, error: `This device already has a local account (${existing.username}). Sign in instead.` }
+      const record: LocalAccount = { name: cleanName, username: cleanUsername, passwordHash: await sha256(password), createdAt: new Date().toISOString(), role: 'user' }
+      writeStored(ACCOUNT_KEY, record)
+      writeStored(SESSION_KEY, record)
+      setAccount(record)
+      notify(`Welcome, ${cleanName}`, 'success')
+      return { ok: true }
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : 'Could not create account' }
+    }
   }, [notify])
 
   const signIn = useCallback(async (username: string, password: string): Promise<AuthResult> => {
-    const cleanUsername = username.trim().toLowerCase()
-    // Built-in device administrator: admin / admin123 opens the admin panel.
-    if (cleanUsername === 'admin') {
-      if (password !== 'admin123') return { ok: false, error: 'Incorrect admin password' }
-      const admin: LocalAccount = { name: 'Admin', username: 'admin', passwordHash: '', createdAt: new Date().toISOString(), role: 'admin' }
-      writeStored(SESSION_KEY, admin)
-      setAccount(admin)
-      notify('Signed in as Admin', 'success')
+    try {
+      const cleanUsername = username.trim().toLowerCase()
+      // Built-in administrator: admin / admin123 (also accept "admin" — older UI said that).
+      if (cleanUsername === 'admin') {
+        if (!isAdminPassword(password)) return { ok: false, error: 'Incorrect admin password. Use admin123' }
+        const admin: LocalAccount = { name: 'Admin', username: 'admin', passwordHash: '', createdAt: new Date().toISOString(), role: 'admin' }
+        writeStored(SESSION_KEY, admin)
+        setAccount(admin)
+        notify('Signed in as Admin', 'success')
+        return { ok: true }
+      }
+      const stored = readStored<LocalAccount | null>(ACCOUNT_KEY, null)
+      if (!stored) return { ok: false, error: 'No local account on this device yet. Create one first.' }
+      if (stored.username !== cleanUsername) return { ok: false, error: 'That username does not match this device account' }
+      if (stored.passwordHash !== await sha256(password)) return { ok: false, error: 'Incorrect password' }
+      writeStored(SESSION_KEY, stored)
+      setAccount(stored)
+      notify(`Signed in as ${stored.name}`, 'success')
       return { ok: true }
+    } catch (error) {
+      return { ok: false, error: error instanceof Error ? error.message : 'Sign in failed' }
     }
-    const stored = readStored<LocalAccount | null>(ACCOUNT_KEY, null)
-    if (!stored) return { ok: false, error: 'No local account on this device yet. Create one first.' }
-    if (stored.username !== cleanUsername) return { ok: false, error: 'That username does not match this device account' }
-    if (stored.passwordHash !== await sha256(password)) return { ok: false, error: 'Incorrect password' }
-    writeStored(SESSION_KEY, stored)
-    setAccount(stored)
-    notify(`Signed in as ${stored.name}`, 'success')
-    return { ok: true }
   }, [notify])
 
   const signOut = useCallback(() => {

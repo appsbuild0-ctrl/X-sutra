@@ -36,7 +36,7 @@ function normalizePage(result: PageResult<MediaItem>, logicalPage: number, first
 
 export function HomeScreen(): React.JSX.Element {
   const navigate = useNavigate()
-  const { preferences } = useApp()
+  const { preferences, account } = useApp()
   const [mode, setMode] = useState<HomeFeed>('trending')
   const [firstApiPage, setFirstApiPage] = useState(1)
   const onlineMembers = useOnlineMembers()

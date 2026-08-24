@@ -45,7 +45,7 @@ export function YouScreen(): React.JSX.Element {
 
       <button className={`admin-link${isAdmin ? ' is-admin' : ''}`} type="button" onClick={() => navigate('/admin')} aria-label="Open admin panel">
         <ShieldIcon size={19} />
-        <span><strong>Admin panel</strong><small>{isAdmin ? 'Signed in as Admin — open controls' : 'Requires admin sign in (admin / admin)'}</small></span>
+        <span><strong>Admin panel</strong><small>{isAdmin ? 'Signed in as Admin — open controls' : 'Requires admin sign in (admin / admin123)'}</small></span>
         <i>›</i>
       </button>
 
