@@ -1,10 +1,12 @@
 import { useCallback, useMemo, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { LiveError, ScreenNotice } from '../components/LiveState'
 import { MediaGrid } from '../components/MediaGrid'
 import { PullToRefresh } from '../components/PullToRefresh'
 import { ScreenHeader } from '../components/ScreenHeader'
-import { RefreshIcon, SparkIcon } from '../components/icons'
+import { SparkIcon } from '../components/icons'
 import { useApp } from '../context/AppContext'
+import { useOnlineMembers } from '../hooks/useOnlineMembers'
 import { usePagedMedia } from '../hooks/usePagedMedia'
 import { publicMediaApi } from '../lib/redgifs'
 import type { FeedOrder, MediaItem, PageResult } from '../types'
@@ -33,11 +35,13 @@ function normalizePage(result: PageResult<MediaItem>, logicalPage: number, first
 }
 
 export function HomeScreen(): React.JSX.Element {
+  const navigate = useNavigate()
   const { preferences } = useApp()
   const [mode, setMode] = useState<HomeFeed>('trending')
   // Cycling a real API starting page makes every pull refresh retrieve a fresh
   // public batch rather than re-showing a generated/local list.
   const [firstApiPage, setFirstApiPage] = useState(1)
+  const onlineMembers = useOnlineMembers()
   const selected = HOME_FEEDS.find((feed) => feed.id === mode) ?? HOME_FEEDS[0]
 
   const loadFeed = useCallback(async (logicalPage: number) => {
@@ -66,11 +70,19 @@ export function HomeScreen(): React.JSX.Element {
   return (
     <PullToRefresh onRefresh={refreshRealFeed}>
       <section className="screen screen--home">
-        <ScreenHeader title="X-sutra" eyebrow="Public media browser" actions={<button className="round-button" type="button" onClick={() => void refreshRealFeed()} aria-label="Load a fresh public batch"><RefreshIcon size={20} /></button>} />
+        <ScreenHeader showMark title="X-sutra" actions={
+          <div className="home-header-actions">
+            <button className="home-cta home-cta--premium" type="button" onClick={() => navigate('/premium')}>✦ Premium</button>
+            <button className="home-cta home-cta--login" type="button" onClick={() => navigate('/login')}>Login</button>
+          </div>
+        } />
 
         <div className="home-intro">
           <div><p className="home-intro__kicker"><SparkIcon size={16} /> Real public feed</p><h2>{mode === 'trending' ? 'What’s moving now.' : `${selected.title}.`}</h2><p>Swipe down for another real source batch. Scroll continuously for more public videos.</p></div>
-          <span className="live-pill"><i /> Live V2</span>
+          <div className="home-intro__pills">
+            <span className="online-pill"><i />{onlineMembers.toLocaleString('en-IN')} online</span>
+            <span className="live-pill"><i /> Live V2</span>
+          </div>
         </div>
 
         <div className="home-feed-tabs" role="tablist" aria-label="Home feed selection">

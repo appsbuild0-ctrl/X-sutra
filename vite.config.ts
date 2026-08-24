@@ -3,7 +3,15 @@ import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 
 const ORIGIN = 'https://api.redgifs.com'
-const USER_AGENT = 'Mozilla/5.0 (compatible; X-sutra/1.0; public-media-client)'
+const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+// Same fingerprint as the working backend proxy: redgifs.com Referer/Origin
+// is what returns clean (non-watermarked) media URLs from the API.
+const BASE_HEADERS: Record<string, string> = {
+  Accept: 'application/json',
+  'User-Agent': USER_AGENT,
+  Referer: 'https://www.redgifs.com/',
+  Origin: 'https://www.redgifs.com'
+}
 
 function allowedTarget(rawPath: string): URL | null {
   try {
@@ -29,13 +37,13 @@ async function servePublicMedia(req: IncomingMessage, res: ServerResponse): Prom
   }
 
   try {
-    const tokenResponse = await fetch(`${ORIGIN}/v2/auth/temporary`, { headers: { Accept: 'application/json', 'User-Agent': USER_AGENT } })
+    const tokenResponse = await fetch(`${ORIGIN}/v2/auth/temporary`, { headers: { ...BASE_HEADERS } })
     if (!tokenResponse.ok) throw new Error(`Temporary token request failed (${tokenResponse.status})`)
     const { token } = await tokenResponse.json() as { token?: string }
     if (!token) throw new Error('Temporary token response was empty')
 
     const apiResponse = await fetch(target, {
-      headers: { Accept: 'application/json', Authorization: `Bearer ${token}`, 'User-Agent': USER_AGENT }
+      headers: { ...BASE_HEADERS, Authorization: `Bearer ${token}` }
     })
     const body = await apiResponse.text()
     res.statusCode = apiResponse.status

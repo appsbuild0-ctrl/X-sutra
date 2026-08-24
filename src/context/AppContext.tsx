@@ -7,10 +7,11 @@ import {
   useState,
   type ReactNode
 } from 'react'
-import { saveMediaFile } from '../lib/download'
+import { openMediaInBrowser, saveMediaBlob } from '../lib/download'
+import { playbackCandidates } from '../lib/media'
 import { publicMediaApi } from '../lib/redgifs'
-import { readStored, writeStored } from '../lib/storage'
-import type { Creator, DownloadRecord, LocalCollection, MediaItem, Preferences } from '../types'
+import { readStored, writeStored, removeStored } from '../lib/storage'
+import type { AuthResult, Creator, DownloadRecord, DownloadStatus, LocalAccount, LocalCollection, MediaItem, Preferences } from '../types'
 
 type ToastTone = 'default' | 'success' | 'error'
 
@@ -30,6 +31,10 @@ interface AppContextValue {
   playerQueue: MediaItem[]
   playerIndex: number
   preferences: Preferences
+  account: LocalAccount | null
+  signIn: (username: string, password: string) => Promise<AuthResult>
+  signUp: (name: string, username: string, password: string) => Promise<AuthResult>
+  signOut: () => void
   toast: ToastMessage | null
   isSaved: (id: string) => boolean
   toggleSaved: (item: MediaItem) => void
@@ -46,6 +51,10 @@ interface AppContextValue {
   openPlayer: (item: MediaItem, queue?: MediaItem[]) => void
   stepPlayer: (direction: -1 | 1) => void
   closePlayer: () => void
+  /** Re-fetches the playing clip's detail so the player gets fresh direct media URLs. */
+  refreshActiveMedia: () => Promise<MediaItem | null>
+  /** Admin action: wipes all local library/history data on this device. */
+  clearLocalData: () => void
   updatePreferences: (patch: Partial<Preferences>) => void
   notify: (text: string, tone?: ToastTone) => void
 }
@@ -58,7 +67,31 @@ const FOLLOWS_KEY = 'x-sutra.follows.real.v2'
 const COLLECTIONS_KEY = 'x-sutra.collections.local.v2'
 const DOWNLOADS_KEY = 'x-sutra.downloads.real.v2'
 const PREFERENCES_KEY = 'x-sutra.preferences.v2'
+const ACCOUNT_KEY = 'x-sutra.account.local.v1'
+const SESSION_KEY = 'x-sutra.session.local.v1'
 const defaultPreferences: Preferences = { quality: 'hd', autoplay: true, muted: true, blockedTags: [] }
+
+/** Device-local digest; the raw password is never persisted or transmitted anywhere. */
+async function sha256(text: string): Promise<string> {
+  const bytes = new TextEncoder().encode(text)
+  const digest = await crypto.subtle.digest('SHA-256', bytes)
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
+function readSessionAccount(): LocalAccount | null {
+  const session = readStored<LocalAccount | null>(SESSION_KEY, null)
+  if (!session?.username) return null
+  // The built-in admin session has no paired stored record.
+  if (session.role === 'admin') return session
+  const stored = readStored<LocalAccount | null>(ACCOUNT_KEY, null)
+  return stored?.username === session.username ? stored : null
+}
+
+const usernamePattern = /^[a-z0-9._]{3,20}$/i
+
+export function validUsername(username: string): boolean {
+  return usernamePattern.test(username.trim())
+}
 
 function readRealSaved(): MediaItem[] {
   return readStored<MediaItem[]>(SAVED_KEY, [])
@@ -74,7 +107,8 @@ function mergeMediaDetail(item: MediaItem, detail: MediaItem): MediaItem {
     thumbnailUrls: detail.thumbnailUrls.length ? detail.thumbnailUrls : item.thumbnailUrls,
     previewUrl: detail.previewUrl ?? item.previewUrl,
     videoUrl: detail.videoUrl ?? item.videoUrl,
-    videoUrlSd: detail.videoUrlSd ?? item.videoUrlSd
+    videoUrlSd: detail.videoUrlSd ?? item.videoUrlSd,
+    watermarkedUrls: detail.watermarkedUrls?.length ? detail.watermarkedUrls : item.watermarkedUrls
   }
 }
 
@@ -89,6 +123,7 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
   const [playerQueue, setPlayerQueue] = useState<MediaItem[]>([])
   const [playerIndex, setPlayerIndex] = useState(0)
   const [toast, setToast] = useState<ToastMessage | null>(null)
+  const [account, setAccount] = useState<LocalAccount | null>(readSessionAccount)
 
   useEffect(() => writeStored(SAVED_KEY, saved), [saved])
   useEffect(() => writeStored(LIKED_KEY, liked), [liked])
@@ -105,6 +140,50 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
   const notify = useCallback((text: string, tone: ToastTone = 'default') => {
     setToast({ id: Date.now(), text, tone })
   }, [])
+
+  const signUp = useCallback(async (name: string, username: string, password: string): Promise<AuthResult> => {
+    const cleanName = name.trim().slice(0, 40)
+    const cleanUsername = username.trim().toLowerCase()
+    if (!cleanName) return { ok: false, error: 'Enter your name' }
+    if (cleanUsername === 'admin') return { ok: false, error: 'admin is reserved — sign in with admin / admin123 instead' }
+    if (!validUsername(cleanUsername)) return { ok: false, error: 'Username: 3-20 letters, numbers, dot or underscore' }
+    if (password.length < 4) return { ok: false, error: 'Password must be at least 4 characters' }
+    const existing = readStored<LocalAccount | null>(ACCOUNT_KEY, null)
+    if (existing) return { ok: false, error: `This device already has a local account (${existing.username}). Sign in instead.` }
+    const record: LocalAccount = { name: cleanName, username: cleanUsername, passwordHash: await sha256(password), createdAt: new Date().toISOString() }
+    writeStored(ACCOUNT_KEY, record)
+    writeStored(SESSION_KEY, record)
+    setAccount(record)
+    notify(`Welcome, ${cleanName}`, 'success')
+    return { ok: true }
+  }, [notify])
+
+  const signIn = useCallback(async (username: string, password: string): Promise<AuthResult> => {
+    const cleanUsername = username.trim().toLowerCase()
+    // Built-in device administrator: admin / admin123 opens the admin panel.
+    if (cleanUsername === 'admin') {
+      if (password !== 'admin123') return { ok: false, error: 'Incorrect admin password' }
+      const admin: LocalAccount = { name: 'Admin', username: 'admin', passwordHash: '', createdAt: new Date().toISOString(), role: 'admin' }
+      writeStored(SESSION_KEY, admin)
+      setAccount(admin)
+      notify('Signed in as Admin', 'success')
+      return { ok: true }
+    }
+    const stored = readStored<LocalAccount | null>(ACCOUNT_KEY, null)
+    if (!stored) return { ok: false, error: 'No local account on this device yet. Create one first.' }
+    if (stored.username !== cleanUsername) return { ok: false, error: 'That username does not match this device account' }
+    if (stored.passwordHash !== await sha256(password)) return { ok: false, error: 'Incorrect password' }
+    writeStored(SESSION_KEY, stored)
+    setAccount(stored)
+    notify(`Signed in as ${stored.name}`, 'success')
+    return { ok: true }
+  }, [notify])
+
+  const signOut = useCallback(() => {
+    removeStored(SESSION_KEY)
+    setAccount(null)
+    notify('Signed out. Data stays on this device')
+  }, [notify])
 
   const isSaved = useCallback((id: string) => saved.some((item) => item.id === id), [saved])
 
@@ -199,18 +278,38 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
         if (!item.videoUrl && !item.videoUrlSd) throw error
       }
 
-      const mediaUrl = preferences.quality === 'sd'
+      const primaryUrl = preferences.quality === 'sd'
         ? resolved.videoUrlSd ?? resolved.videoUrl
         : resolved.videoUrl ?? resolved.videoUrlSd
-      if (!mediaUrl) throw new Error('This public clip does not expose a downloadable video URL')
+      if (!primaryUrl) throw new Error('This public clip does not expose a downloadable video URL')
 
-      setDownloads((current) => current.map((entry) => entry.id === recordId
-        ? { ...entry, item: resolved, mediaUrl }
-        : entry))
-      const disposition = await saveMediaFile(resolved, mediaUrl)
-      const status = disposition === 'saved' ? 'done' : 'opened'
+      // Proxied clean URLs first, direct clean next, watermarked originals
+      // last — one dead candidate never fails the download.
+      const urlChain = playbackCandidates(resolved)
+
+      let mediaUrl = urlChain[0]
+      let saved = false
+      let lastError: unknown = null
+      for (const candidate of urlChain) {
+        try {
+          await saveMediaBlob(resolved, candidate)
+          mediaUrl = candidate
+          saved = true
+          break
+        } catch (error) {
+          lastError = error
+        }
+      }
+      let disposition: DownloadStatus = 'done'
+      if (!saved) {
+        // Every fetchable candidate failed (e.g. CORS): hand the direct
+        // source URL to the browser instead of failing the download.
+        openMediaInBrowser(resolved, urlChain[0])
+        disposition = 'opened'
+      }
+      const status: DownloadStatus = disposition
       setDownloads((current) => current.map((entry) => entry.id === recordId ? { ...entry, status } : entry))
-      if (disposition === 'saved') notify('Verified media download started', 'success')
+      if (status === 'done') notify('Saved to your device', 'success')
       else notify('The actual media URL was opened; use your browser to save it')
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unable to start download'
@@ -237,6 +336,28 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
     })
   }, [playerQueue])
 
+  const refreshActiveMedia = useCallback(async (): Promise<MediaItem | null> => {
+    if (!activeMedia) return null
+    try {
+      const detail = await publicMediaApi.getById(activeMedia.id)
+      const merged = mergeMediaDetail(activeMedia, detail)
+      setPlayerQueue((current) => current.map((entry, index) => index === playerIndex ? merged : entry))
+      setActiveMedia((current) => current && current.id === merged.id ? merged : current)
+      return merged
+    } catch {
+      return null
+    }
+  }, [activeMedia, playerIndex])
+
+  const clearLocalData = useCallback(() => {
+    setSaved([])
+    setLiked([])
+    setFollows([])
+    setCollections([])
+    setDownloads([])
+    notify('All local data cleared', 'success')
+  }, [notify])
+
   const value = useMemo<AppContextValue>(() => ({
     saved,
     liked,
@@ -247,6 +368,10 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
     playerQueue,
     playerIndex,
     preferences,
+    account,
+    signIn,
+    signUp,
+    signOut,
     toast,
     isSaved,
     toggleSaved,
@@ -265,6 +390,8 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
     },
     openPlayer,
     stepPlayer,
+    refreshActiveMedia,
+    clearLocalData,
     closePlayer: () => {
       setActiveMedia(null)
       setPlayerQueue([])
@@ -272,7 +399,7 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
     },
     updatePreferences: (patch) => setPreferences((current) => ({ ...current, ...patch })),
     notify
-  }), [activeMedia, addToCollection, collectionItems, collections, createCollection, deleteCollection, downloads, follows, isFollowing, isLiked, isSaved, liked, notify, openPlayer, playerIndex, playerQueue, preferences, requestDownload, saved, stepPlayer, toast, toggleFollow, toggleLike, toggleSaved])
+  }), [account, activeMedia, addToCollection, collectionItems, collections, createCollection, deleteCollection, downloads, follows, isFollowing, isLiked, isSaved, liked, notify, openPlayer, playerIndex, playerQueue, clearLocalData, preferences, refreshActiveMedia, requestDownload, saved, signIn, signOut, signUp, stepPlayer, toast, toggleFollow, toggleLike, toggleSaved])
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }

@@ -1,4 +1,5 @@
 import { Capacitor } from '@capacitor/core'
+import { fetchMediaBlob } from './media'
 import type { MediaItem } from '../types'
 
 export type DownloadDisposition = 'saved' | 'opened'
@@ -87,7 +88,12 @@ async function assertActualMedia(blob: Blob, url: string, responseType: string):
  * prevents that verification, the exact media URL is handed to the browser
  * and reported as opened—not as a completed download.
  */
-export async function saveMediaFile(item: MediaItem, rawUrl: string): Promise<DownloadDisposition> {
+/**
+ * Fetch one media candidate fully and save it as a file (Downloads/gallery
+ * on mobile). Throws on any failure so the caller can try the next
+ * candidate — never silently falls back to opening a tab.
+ */
+export async function saveMediaBlob(item: MediaItem, rawUrl: string): Promise<void> {
   const url = actualMediaUrl(rawUrl)
 
   if (Capacitor.isNativePlatform()) {
@@ -98,28 +104,32 @@ export async function saveMediaFile(item: MediaItem, rawUrl: string): Promise<Do
       directory: Directory.Documents,
       recursive: true
     })
-    return 'saved'
+    return
   }
 
   let response: Response
-  try {
+  let blob: Blob
+  if (url.startsWith('/api/media')) {
+    // Proxied clean files arrive as bounded range chunks; assemble them.
+    blob = await fetchMediaBlob(url)
+    response = new Response(blob, { headers: { 'Content-Type': blob.type || 'video/mp4' } })
+  } else {
     response = await fetch(url, {
       headers: { Accept: 'video/*, application/octet-stream;q=0.9, */*;q=0.1' }
     })
-  } catch {
-    // Cross-origin media can be playable while disallowing JavaScript fetch.
-    // Hand the API-provided URL to the browser without claiming it was saved.
-    triggerBrowserDownload(url, fileNameFor(item, url))
-    return 'opened'
+    if (!response.ok) throw new Error(`Media download request failed (${response.status})`)
+    blob = await response.blob()
   }
 
-  if (!response.ok) throw new Error(`Media download request failed (${response.status})`)
   const contentType = response.headers.get('content-type') ?? ''
-  const blob = await response.blob()
   await assertActualMedia(blob, response.url || url, contentType || blob.type)
 
   const objectUrl = URL.createObjectURL(blob)
   triggerBrowserDownload(objectUrl, fileNameFor(item, response.url || url, contentType || blob.type))
   window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000)
-  return 'saved'
+}
+
+/** Last resort: hand a direct URL to the browser when every fetch failed. */
+export function openMediaInBrowser(item: MediaItem, rawUrl: string): void {
+  triggerBrowserDownload(actualMediaUrl(rawUrl), fileNameFor(item, rawUrl))
 }

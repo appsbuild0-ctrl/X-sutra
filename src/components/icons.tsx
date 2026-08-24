@@ -86,6 +86,14 @@ export function CheckIcon(props: IconProps): React.JSX.Element {
   return <IconFrame {...props}><path d="m5 12 4.2 4.2L19 6.5" /></IconFrame>
 }
 
+export function PlusIcon(props: IconProps): React.JSX.Element {
+  return <IconFrame {...props} strokeWidth="2.4"><path d="M12 5v14M5 12h14" /></IconFrame>
+}
+
+export function ShieldIcon(props: IconProps): React.JSX.Element {
+  return <IconFrame {...props}><path d="M12 3 5 5.5v5c0 4.6 3 8.4 7 9.9 4-1.5 7-5.3 7-9.9v-5L12 3Z" /><path d="m9.2 12 2 2 3.6-3.8" /></IconFrame>
+}
+
 export function TrashIcon(props: IconProps): React.JSX.Element {
   return <IconFrame {...props}><path d="M4 7h16M9 7V4h6v3M7 7l.8 13h8.4L17 7M10 11v5M14 11v5" /></IconFrame>
 }
@@ -120,6 +128,14 @@ export function VolumeIcon(props: IconProps): React.JSX.Element {
 
 export function MuteIcon(props: IconProps): React.JSX.Element {
   return <IconFrame {...props}><path d="M4 10v4h4l5 4V6L8 10H4Z" /><path d="m17 10 4 4m0-4-4 4" /></IconFrame>
+}
+
+export function EyeIcon(props: IconProps): React.JSX.Element {
+  return <IconFrame {...props}><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" /><circle cx="12" cy="12" r="3" /></IconFrame>
+}
+
+export function EyeOffIcon(props: IconProps): React.JSX.Element {
+  return <IconFrame {...props}><path d="M3 3l18 18" /><path d="M10.6 6.2A9.8 9.8 0 0 1 12 6.1c6 0 9.5 5.9 9.5 5.9a17.6 17.6 0 0 1-3.3 3.9M6.1 8.3A16.9 16.9 0 0 0 2.5 12S6 17.9 12 17.9a9.5 9.5 0 0 0 4-.85" /><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" /></IconFrame>
 }
 
 export function PauseIcon(props: IconProps): React.JSX.Element {

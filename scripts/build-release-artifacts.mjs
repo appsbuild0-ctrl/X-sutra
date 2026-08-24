@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { mkdir, readFile, readdir, rm, utimes, writeFile } from 'node:fs/promises'
+import { mkdir, copyFile, readFile, readdir, rm, utimes, writeFile } from 'node:fs/promises'
 import { relative, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { build } from 'esbuild'
@@ -39,9 +39,13 @@ const html = `<!doctype html>
 
 await mkdir(standaloneDirectory, { recursive: true })
 await writeFile(resolve(standaloneDirectory, 'index.html'), html, 'utf8')
+await mkdir(resolve(standaloneDirectory, 'netlify/functions'), { recursive: true })
+for (const file of (await readdir('netlify/functions')).filter((name) => name.endsWith('.mjs'))) {
+  await copyFile(resolve('netlify/functions', file), resolve(standaloneDirectory, 'netlify/functions', file))
+}
 await writeFile(
   resolve(standaloneDirectory, '_redirects'),
-  '# Host this directory on Netlify to enable the same-origin public API proxy.\n/api/redgifs/*  https://api.redgifs.com/:splat  200!\n/*  /index.html  200\n',
+  '# Tier 1: bundled function proxy with the app User-Agent.\n/api/redgifs  /.netlify/functions/redgifs  200\n/api/media  /.netlify/functions/media  200\n# Tier 2: static rewrite fallback for deployments without functions.\n/api/redgifs/*  https://api.redgifs.com/:splat  200!\n/*  /index.html  200\n',
   'utf8'
 )
 
