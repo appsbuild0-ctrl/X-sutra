@@ -62,10 +62,6 @@ export function PlayIcon(props: IconProps): React.JSX.Element {
   return <IconFrame {...props} fill="currentColor" strokeWidth="1.4"><path d="m9 7 8 5-8 5V7Z" /></IconFrame>
 }
 
-export function ReelsIcon(props: IconProps): React.JSX.Element {
-  return <IconFrame {...props}><rect x="5" y="3.5" width="14" height="17" rx="2.4" /><path d="M9 3.5v17M15 3.5v17M5 8.5h4M15 15.5h4" /><path d="m10.6 10 3.4 2-3.4 2v-4Z" /></IconFrame>
-}
-
 export function CloseIcon(props: IconProps): React.JSX.Element {
   return <IconFrame {...props}><path d="m6 6 12 12M18 6 6 18" /></IconFrame>
 }

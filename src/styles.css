@@ -107,7 +107,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .subsection-heading--spaced { margin-top: 27px; }
 
 .media-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 17px 11px; }
-.media-grid--two { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
 .media-card { min-width: 0; }
 .media-card__visual { position: relative; display: block; width: 100%; aspect-ratio: .735; overflow: hidden; padding: 0; isolation: isolate; border-radius: 14px; background: #211718; box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); }
 .media-card__visual--empty { background: linear-gradient(145deg, #251a1b, #141112); }

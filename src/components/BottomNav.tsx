@@ -1,12 +1,12 @@
 import { useLocation, useNavigate } from 'react-router-dom'
-import { CompassIcon, HomeIcon, LibraryIcon, ReelsIcon, UserIcon } from './icons'
+import { CompassIcon, DownloadIcon, HomeIcon, LibraryIcon, UserIcon } from './icons'
 
 const tabs = [
-  { path: '/', label: 'Home', Icon: HomeIcon, match: (pathname: string) => pathname === '/' || pathname.startsWith('/hotpic') },
-  { path: '/reels', label: 'Reels', Icon: ReelsIcon, match: (pathname: string) => pathname.startsWith('/reels') },
+  { path: '/', label: 'Home', Icon: HomeIcon, match: (pathname: string) => pathname === '/' },
   { path: '/discover', label: 'Discover', Icon: CompassIcon, match: (pathname: string) => /^\/(discover|search|creator|tag|niche)/.test(pathname) },
-  { path: '/library', label: 'Library', Icon: LibraryIcon, match: (pathname: string) => /^\/(library|collection|downloads)/.test(pathname) },
-  { path: '/you', label: 'You', Icon: UserIcon, match: (pathname: string) => /^\/(you|settings|login|admin)/.test(pathname) }
+  { path: '/library', label: 'Library', Icon: LibraryIcon, match: (pathname: string) => /^\/(library|collection)/.test(pathname) },
+  { path: '/downloads', label: 'Downloads', Icon: DownloadIcon, match: (pathname: string) => pathname.startsWith('/downloads') },
+  { path: '/you', label: 'You', Icon: UserIcon, match: (pathname: string) => /^\/(you|settings)/.test(pathname) }
 ]
 
 export function BottomNav(): React.JSX.Element {

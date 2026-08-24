@@ -10,12 +10,10 @@ interface MediaGridProps {
   canLoadMore?: boolean
   loadingMore?: boolean
   onLoadMore?: () => void
-  twoColumn?: boolean
 }
 
 /** Real-feed grid with an observer sentinel for smooth infinite paging. */
-export function MediaGrid({ items, loading = false, empty, canLoadMore = false, loadingMore = false, onLoadMore, twoColumn = false }: MediaGridProps): React.JSX.Element {
-  const gridClass = twoColumn ? 'media-grid media-grid--two' : 'media-grid'
+export function MediaGrid({ items, loading = false, empty, canLoadMore = false, loadingMore = false, onLoadMore }: MediaGridProps): React.JSX.Element {
   const sentinelRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -28,13 +26,13 @@ export function MediaGrid({ items, loading = false, empty, canLoadMore = false, 
   }, [canLoadMore, loadingMore, onLoadMore, items.length])
 
   if (loading) {
-    return <div className={gridClass} aria-label="Loading public media">{Array.from({ length: 8 }, (_, index) => <div className="media-skeleton" key={index} />)}</div>
+    return <div className="media-grid" aria-label="Loading public media">{Array.from({ length: 8 }, (_, index) => <div className="media-skeleton" key={index} />)}</div>
   }
   if (!items.length) return <>{empty}</>
 
   return (
     <>
-      <div className={gridClass}>{items.map((item, index) => <MediaCard key={item.id} item={item} queue={items} priority={index < 4} />)}</div>
+      <div className="media-grid">{items.map((item, index) => <MediaCard key={item.id} item={item} queue={items} priority={index < 4} />)}</div>
       {canLoadMore && <div className="feed-sentinel" ref={sentinelRef} aria-live="polite">{loadingMore ? <span className="feed-sentinel__loading">Loading more real clips…</span> : <span className="feed-sentinel__ready">Keep scrolling for more</span>}</div>}
       {canLoadMore && onLoadMore && <div className="load-more-wrap"><button className="secondary-button" type="button" onClick={onLoadMore} disabled={loadingMore}>{loadingMore ? 'Loading…' : 'Load more'}</button></div>}
     </>
