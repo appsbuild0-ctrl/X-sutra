@@ -10,7 +10,7 @@ import { roleLabel } from '../lib/roles'
 import { useOnlineMembers } from '../hooks/useOnlineMembers'
 import { usePagedMedia } from '../hooks/usePagedMedia'
 import { defaultHub, loadHub, markNotificationsRead, openHubLink, relativeTime, unreadCount, type AdminHub } from '../lib/adminHub'
-import { publicMediaApi } from '../lib/redgifs'
+import { isRedgifsVideo, publicMediaApi } from '../lib/redgifs'
 import type { FeedOrder, MediaItem, PageResult } from '../types'
 
 type HomeFeed = 'latest' | 'trending' | 'likes' | 'views' | 'longest'
@@ -63,10 +63,15 @@ export function HomeScreen(): React.JSX.Element {
   }, [firstApiPage, mode])
   const feed = usePagedMedia(loadFeed, [mode, firstApiPage])
 
+  useEffect(() => {
+    const timer = window.setInterval(() => { void feed.mergeFresh() }, 60_000)
+    return () => window.clearInterval(timer)
+  }, [feed.mergeFresh])
+
   const visibleItems = useMemo(() => {
     const blocked = new Set(preferences.blockedTags.map((tag) => tag.toLowerCase()))
     const hidden = new Set(hub.hiddenVideos)
-    return feed.items.filter((item) => !hidden.has(item.id) && !item.tags.some((tag) => blocked.has(tag.toLowerCase())))
+    return feed.items.filter((item) => isRedgifsVideo(item) && !hidden.has(item.id) && !item.tags.some((tag) => blocked.has(tag.toLowerCase())))
   }, [feed.items, preferences.blockedTags, hub.hiddenVideos])
 
   const refreshRealFeed = useCallback(async () => {

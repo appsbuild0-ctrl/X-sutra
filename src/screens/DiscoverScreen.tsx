@@ -7,7 +7,7 @@ import { PullToRefresh } from '../components/PullToRefresh'
 import { ScreenHeader } from '../components/ScreenHeader'
 import { ChevronRightIcon, RefreshIcon, SearchIcon } from '../components/icons'
 import { compactNumber } from '../lib/format'
-import { publicMediaApi } from '../lib/redgifs'
+import { isRedgifsVideo, publicMediaApi } from '../lib/redgifs'
 import type { Creator, Niche } from '../types'
 import { usePagedMedia } from '../hooks/usePagedMedia'
 

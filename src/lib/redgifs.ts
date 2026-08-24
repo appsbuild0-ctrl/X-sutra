@@ -450,6 +450,12 @@ export const publicMediaApi = {
   }
 }
 
+export function isRedgifsVideo(item: MediaItem): boolean {
+  if (item.videoUrl || item.videoUrlSd) return true
+  if (item.duration > 0 || item.hasAudio) return true
+  return /\.(?:mp4|webm|m3u8)(?:[?#]|$)/i.test(item.previewUrl ?? '')
+}
+
 export function redgifsIdFromLink(input: string): string | null {
   const value = input.trim()
   if (!value) return null

@@ -9,6 +9,7 @@ interface PagedMediaState {
   canLoadMore: boolean
   reload: () => Promise<void>
   loadMore: () => Promise<void>
+  mergeFresh: () => Promise<void>
 }
 
 /** Shared real-data pagination with stale-request protection. */
@@ -68,7 +69,23 @@ export function usePagedMedia(
     }
   }, [loader, loading, loadingMore, page, pages])
 
+  const mergeFresh = useCallback(async () => {
+    if (loading || loadingMore) return
+    const requestGeneration = generation.current
+    try {
+      const response = await loader(1)
+      if (generation.current !== requestGeneration) return
+      setItems((current) => {
+        const known = new Set(current.map((item) => item.id))
+        const incoming = response.items.filter((item) => !known.has(item.id))
+        return incoming.length ? [...incoming, ...current] : current
+      })
+    } catch {
+      /* keep the visible feed if a background refresh fails */
+    }
+  }, [loader, loading, loadingMore])
+
   useEffect(() => { void reload() }, [reload])
 
-  return { items, loading, loadingMore, error, canLoadMore: page < pages, reload, loadMore }
+  return { items, loading, loadingMore, error, canLoadMore: page < pages, reload, loadMore, mergeFresh }
 }
