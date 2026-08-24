@@ -63,6 +63,7 @@ function UploadAllPanel({ catalog, setCatalog, notify }: { catalog: PremiumCatal
   const [albumName, setAlbumName] = useState('')
   const [allowDupes, setAllowDupes] = useState(false)
   const [running, setRunning] = useState(false)
+  const [directUrl, setDirectUrl] = useState('')
 
   if (!catalog.settings.premiumUpload) return <p className="form-help">Premium upload is turned off.</p>
 
@@ -160,6 +161,20 @@ function UploadAllPanel({ catalog, setCatalog, notify }: { catalog: PremiumCatal
         Select multiple files
         <input className="sr-only" type="file" accept="image/*,video/*" multiple onChange={(event) => pick(event.target.files)} />
       </label>
+      <input value={directUrl} onChange={(event) => setDirectUrl(event.target.value)} placeholder="Or paste image/video URL (https://...)" inputMode="url" />
+      <button className="secondary-button" type="button" onClick={async () => {
+        const url = directUrl.trim()
+        if (!/^https?:\/\//i.test(url)) return notify('Valid https URL chahiye', 'error')
+        if (kind !== 'hero' && (!channelId || !albumId)) return notify('Pehle channel aur album select/create karo', 'error')
+        const isVideo = /\.(mp4|webm|mov|m4v)(\?|$)/i.test(url) || kind === 'video'
+        const result = await premiumAdmin('importMedia', {
+          items: [{ url, type: isVideo ? 'video' : 'image', filename: url, thumbnail: isVideo ? '' : url, title: 'Premium media', role: kind === 'hero' ? 'hero' : 'content' }],
+          channelId,
+          albumId
+        })
+        if (result.ok && result.catalog) { setCatalog(result.catalog); setDirectUrl(''); notify('URL published to Premium', 'success') }
+        else notify(result.error ?? 'URL publish fail', 'error')
+      }}>Publish URL</button>
       {queue.length > 0 && (
         <div className="premium-scan-grid">
           {queue.map((item) => (

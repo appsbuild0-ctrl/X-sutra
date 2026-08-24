@@ -1,4 +1,5 @@
 import type { MediaItem } from '../types'
+import { idbPutFile, resolvePremiumSrc } from './premium-idb'
 import { readStored, writeStored } from './storage'
 
 export interface PremiumSettings {
@@ -170,10 +171,113 @@ export async function fetchPremiumCatalog(): Promise<PremiumCatalog> {
       heroes: Array.isArray(data.heroes) ? data.heroes : [],
       announcements: Array.isArray(data.announcements) ? data.announcements : []
     }
-    return cacheCatalog(mergeCatalog(remote, local))
+    return hydrateCatalogUrls(cacheCatalog(mergeCatalog(remote, local)))
   } catch {
-    return cacheCatalog(local)
+    return hydrateCatalogUrls(cacheCatalog(local))
   }
+}
+
+export async function hydrateCatalogUrls(catalog: PremiumCatalog): Promise<PremiumCatalog> {
+  const media = await Promise.all(catalog.media.map(async (item) => ({
+    ...item,
+    url: await resolvePremiumSrc(item.url),
+    thumbnail: item.thumbnail ? await resolvePremiumSrc(item.thumbnail) : item.thumbnail
+  })))
+  const heroes = await Promise.all(catalog.heroes.map(async (item) => ({
+    ...item,
+    url: await resolvePremiumSrc(item.url),
+    thumbnail: item.thumbnail ? await resolvePremiumSrc(item.thumbnail) : item.thumbnail
+  })))
+  return { ...catalog, media, heroes }
+}
+
+function nidLocal(prefix: string): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function applyLocalAdmin(action: string, payload: Record<string, unknown>): PremiumCatalog | null {
+  const catalog = localCatalog()
+  if (action === 'createChannel') {
+    catalog.channels.push({
+      id: nidLocal('ch'),
+      name: String(payload.name || '').trim().slice(0, 48) || 'Untitled channel',
+      description: String(payload.description || ''),
+      cover: String(payload.cover || ''),
+      type: payload.type === 'images' || payload.type === 'videos' ? payload.type : 'mixed',
+      status: 'on',
+      order: Number(payload.order) || catalog.channels.length + 1,
+      createdAt: new Date().toISOString()
+    })
+    return cacheCatalog(catalog)
+  }
+  if (action === 'createAlbum') {
+    catalog.albums.unshift({
+      id: nidLocal('alb'),
+      name: String(payload.name || '').trim().slice(0, 80) || 'Untitled album',
+      description: String(payload.description || ''),
+      cover: String(payload.cover || ''),
+      tags: String(payload.tags || '').split(',').map((tag) => tag.trim()).filter(Boolean),
+      channelId: String(payload.channelId || ''),
+      published: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    })
+    return cacheCatalog(catalog)
+  }
+  if (action === 'updateChannel') {
+    catalog.channels = catalog.channels.map((channel) => channel.id === payload.id ? {
+      ...channel,
+      name: payload.name != null ? String(payload.name) : channel.name,
+      status: payload.status === 'off' || payload.status === 'on' ? payload.status : channel.status
+    } : channel)
+    return cacheCatalog(catalog)
+  }
+  if (action === 'deleteChannel') {
+    catalog.channels = catalog.channels.filter((channel) => channel.id !== payload.id)
+    return cacheCatalog(catalog)
+  }
+  if (action === 'importMedia') {
+    const items = Array.isArray(payload.items) ? payload.items as Array<Record<string, unknown>> : []
+    for (const raw of items) {
+      const entry = {
+        id: nidLocal('pm'),
+        type: (raw.type === 'video' ? 'video' : 'image') as 'image' | 'video',
+        url: String(raw.url || ''),
+        thumbnail: String(raw.thumbnail || raw.url || ''),
+        title: String(raw.title || raw.filename || 'Premium media'),
+        tags: [],
+        channelId: String(payload.channelId || ''),
+        albumId: String(payload.albumId || ''),
+        sourcePage: '',
+        createdAt: new Date().toISOString(),
+        filename: String(raw.filename || ''),
+        size: Number(raw.size) || 0,
+        hash: String(raw.hash || ''),
+        role: (raw.role === 'hero' ? 'hero' : 'content') as 'content' | 'hero'
+      }
+      if (raw.role === 'hero') {
+        catalog.heroes.unshift({ id: entry.id, url: entry.url, thumbnail: entry.thumbnail, title: entry.title, createdAt: entry.createdAt, published: true })
+      }
+      catalog.media.unshift(entry)
+    }
+    return cacheCatalog(catalog)
+  }
+  if (action === 'addPost') {
+    catalog.media.unshift({
+      id: nidLocal('pm'),
+      type: 'video',
+      url: String(payload.videoUrl || ''),
+      thumbnail: String(payload.thumbnail || ''),
+      title: String(payload.title || 'Premium clip'),
+      tags: [],
+      channelId: String(payload.channelId || ''),
+      albumId: String(payload.albumId || ''),
+      sourcePage: '',
+      createdAt: new Date().toISOString()
+    })
+    return cacheCatalog(catalog)
+  }
+  return null
 }
 
 export async function premiumAdmin(action: string, payload: Record<string, unknown> = {}): Promise<{ ok: boolean; error?: string; catalog?: PremiumCatalog; added?: number; skipped?: number }> {
@@ -184,12 +288,18 @@ export async function premiumAdmin(action: string, payload: Record<string, unkno
       body: JSON.stringify({ password: ADMIN_KEY, action, ...payload })
     })
     const data = await response.json() as { error?: string; added?: number; skipped?: number; catalog?: PremiumCatalog } & Partial<PremiumCatalog>
-    if (!response.ok) return { ok: false, error: data.error ?? `Request failed (${response.status})` }
+    if (!response.ok) {
+      const local = applyLocalAdmin(action, payload)
+      if (local) return { ok: true, catalog: await hydrateCatalogUrls(local) }
+      return { ok: false, error: data.error ?? `Request failed (${response.status})` }
+    }
     const catalog = data.catalog ?? (data.channels ? data as PremiumCatalog : undefined)
-    if (catalog) cacheCatalog(mergeCatalog(catalog, localCatalog()))
-    return { ok: true, catalog: catalog ? mergeCatalog(catalog, localCatalog()) : catalog, added: data.added, skipped: data.skipped }
-  } catch (error) {
-    return { ok: false, error: error instanceof Error ? error.message : 'Network error' }
+    const merged = catalog ? cacheCatalog(mergeCatalog(catalog, localCatalog())) : applyLocalAdmin(action, payload)
+    return { ok: true, catalog: merged ? await hydrateCatalogUrls(merged) : undefined, added: data.added, skipped: data.skipped }
+  } catch {
+    const local = applyLocalAdmin(action, payload)
+    if (local) return { ok: true, catalog: await hydrateCatalogUrls(local) }
+    return { ok: false, error: 'Network error' }
   }
 }
 
