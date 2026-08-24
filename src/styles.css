@@ -516,6 +516,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .home-cta--login { color: #eef5ff; background: linear-gradient(140deg, #4f8cff, #2f6ce8 55%, #2559cf); border-color: rgba(99, 148, 255, .6); box-shadow: 0 4px 14px rgba(59, 113, 235, .26); }
 .home-cta--login:hover { filter: brightness(1.08); transform: translateY(-1px); }
 .home-cta--wide { width: 100%; min-height: 46px; font-size: 13px; margin-top: 16px; }
+.home-cta--telegram { color: #eef6ff; background: linear-gradient(140deg, #37aee2, #1e96c8); border-color: rgba(55, 174, 226, .5); box-shadow: 0 4px 14px rgba(30, 150, 200, .24); }
+.telegram-card { display: grid; gap: 10px; padding: 15px; border: 1px solid rgba(55, 174, 226, .28); border-radius: 15px; background: rgba(55, 174, 226, .06); }
+.telegram-card strong { font-size: 13px; }
+.telegram-card ol { margin: 0; padding-left: 18px; color: var(--text-soft); font-size: 11px; line-height: 1.55; }
+.telegram-card code { color: var(--gold); font-size: 10px; }
 
 /* ---- Premium screen ---- */
 .premium-hero { display: flex; align-items: flex-start; gap: 13px; padding: 18px; border: 1px solid rgba(255, 196, 107, .32); border-radius: 17px; background: linear-gradient(130deg, rgba(255, 196, 107, .14), rgba(240, 100, 67, .05)); }

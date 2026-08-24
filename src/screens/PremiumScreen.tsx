@@ -69,6 +69,9 @@ export function PremiumScreen(): React.JSX.Element {
         </>
       )}
 
+      <a className="home-cta home-cta--telegram home-cta--wide" href="https://t.me/XSutraBot" target="_blank" rel="noreferrer">
+        Open Telegram bot · /notify
+      </a>
       <button
         className="home-cta home-cta--premium home-cta--wide"
         type="button"
@@ -76,7 +79,9 @@ export function PremiumScreen(): React.JSX.Element {
       >
         {account ? `You're signed in as ${account.name}` : 'Sign in to get notified first'}
       </button>
-      <p className="form-help" style={{ textAlign: 'center' }}>Premium is not live yet — nothing to pay right now.</p>
+      <p className="form-help" style={{ textAlign: 'center' }}>
+        Bot me /start then /notify. Admin: /auth admin123 then send a video or /post Title | https://…
+      </p>
     </section>
   )
 }

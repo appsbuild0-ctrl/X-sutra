@@ -89,6 +89,18 @@ export function AdminPanelScreen(): React.JSX.Element {
         <p className="form-help">Upload anywhere (CloudGate share link, direct mp4, RedGifs CDN) and paste the link — members see it instantly in the Premium tab.</p>
       </div>
 
+      <div className="section-heading section-heading--spaced"><div><p className="eyebrow">Telegram</p><h3>Premium bot</h3></div></div>
+      <div className="telegram-card">
+        <strong>Same posts, from Telegram</strong>
+        <ol>
+          <li>BotFather se bot banao, token Netlify env <code>TELEGRAM_BOT_TOKEN</code> me daalo.</li>
+          <li>Site deploy ke baad ye URL kholo: <code>/api/telegram?setup=1&amp;password=admin123</code></li>
+          <li>Bot pe <code>/auth admin123</code> — phir video, link, ya <code>/post Title | https://…</code></li>
+          <li>Members: <code>/notify</code> se naye clips milte hain.</li>
+        </ol>
+        <a className="secondary-button" href="https://t.me/XSutraBot" target="_blank" rel="noreferrer">Open @XSutraBot</a>
+      </div>
+
       <div className="section-heading section-heading--spaced"><div><p className="eyebrow">Controls</p><h3>Admin actions</h3></div></div>
       <div className="quick-link-list">
         <button type="button" onClick={() => { clearDownloads(); notify('Download history cleared', 'success') }}>

@@ -45,7 +45,17 @@ for (const file of (await readdir('netlify/functions')).filter((name) => name.en
 }
 await writeFile(
   resolve(standaloneDirectory, '_redirects'),
-  '# Tier 1: bundled function proxy with the app User-Agent.\n/api/redgifs  /.netlify/functions/redgifs  200\n/api/media  /.netlify/functions/media  200\n/api/premium  /.netlify/functions/premium  200\n# Tier 2: static rewrite fallback for deployments without functions.\n/api/redgifs/*  https://api.redgifs.com/:splat  200!\n/*  /index.html  200\n',
+  [
+    '# Tier 1: bundled function proxy with the app User-Agent.',
+    '/api/redgifs  /.netlify/functions/redgifs  200',
+    '/api/media  /.netlify/functions/media  200',
+    '/api/premium  /.netlify/functions/premium  200',
+    '/api/telegram  /.netlify/functions/telegram  200',
+    '# Tier 2: static rewrite fallback for deployments without functions.',
+    '/api/redgifs/*  https://api.redgifs.com/:splat  200!',
+    '/*  /index.html  200',
+    ''
+  ].join('\n'),
   'utf8'
 )
 

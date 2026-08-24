@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { ScreenHeader } from '../components/ScreenHeader'
-import { DownloadIcon, HeartIcon, LibraryIcon, SettingsIcon, ShieldIcon, UserIcon } from '../components/icons'
+import { DownloadIcon, HeartIcon, LibraryIcon, SettingsIcon, ShieldIcon, SparkIcon, UserIcon } from '../components/icons'
 import { useApp } from '../context/AppContext'
 
 export function YouScreen(): React.JSX.Element {
@@ -51,6 +51,7 @@ export function YouScreen(): React.JSX.Element {
 
       <div className="section-heading section-heading--spaced"><div><p className="eyebrow">Quick access</p><h3>Your local data</h3></div></div>
       <div className="quick-link-list">
+        <button type="button" onClick={() => navigate('/premium')}><span><SparkIcon size={19} /><strong>Premium</strong><small>Exclusive clips + Telegram drops</small></span><i>›</i></button>
         <button type="button" onClick={() => navigate('/library')}><span><LibraryIcon size={19} /><strong>Library</strong><small>Saved clips, collections and follows</small></span><i>›</i></button>
         <button type="button" onClick={() => navigate('/downloads')}><span><DownloadIcon size={19} /><strong>Download history</strong><small>Public files sent to your device</small></span><i>›</i></button>
         <button type="button" onClick={() => navigate('/settings')}><span><SettingsIcon size={19} /><strong>Preferences</strong><small>Quality, player and blocked tags</small></span><i>›</i></button>
