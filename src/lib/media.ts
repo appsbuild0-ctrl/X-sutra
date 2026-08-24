@@ -27,7 +27,7 @@ export function playbackCandidates(item: MediaItem): string[] {
     item.videoUrlSd,
     /\.(?:mp4|webm)(?:[?#]|$)/i.test(item.previewUrl ?? '') ? item.previewUrl : undefined,
     ...(item.watermarkedUrls ?? [])
-  ].filter((url): url is string => typeof url === 'string' && /^https?:\/\//i.test(url))
+  ].filter((url): url is string => typeof url === 'string' && /^https?:\/\//i.test(url) && !/hotpic\.(vip|cc|one)\/i\//i.test(url) && /\.(?:mp4|webm|mov|m4v)(?:[?#]|$)/i.test(url))
 
   const withFallbacks = [...direct]
   for (const url of direct) {

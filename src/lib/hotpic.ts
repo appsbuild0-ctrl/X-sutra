@@ -136,8 +136,26 @@ function emptyProfile(username: string): HotpicProfile {
   }
 }
 
-function fullFromThumb(thumb: string): string {
-  return thumb.replace('/thumb/', '/').replace(/\.webp(?:\?.*)?$/i, '.jpeg')
+function fullFromThumb(thumb: string, isVideo = false): string {
+  const full = thumb.replace('/thumb/', '/')
+  if (isVideo) return full.replace(/\.(?:webp|jpe?g|png)(?:\?.*)?$/i, '.mp4')
+  return full.replace(/\.webp(?:\?.*)?$/i, '.jpeg')
+}
+
+function isDirectFile(url?: string): boolean {
+  return Boolean(url && /^https?:\/\//i.test(url) && /\.(?:mp4|webm|mov|m4v|jpe?g|png|gif|webp)(?:[?#]|$)/i.test(url))
+}
+
+function parseDirectUrls(html: string): { video?: string; image?: string } {
+  const video = html.match(/property=["']og:video(?::url)?["'][^>]*content=["']([^"']+)/i)?.[1]
+    || html.match(/content=["']([^"']+)["'][^>]*property=["']og:video(?::url)?["']/i)?.[1]
+    || html.match(/<video[^>]+src=["']([^"']+)/i)?.[1]
+    || html.match(/<source[^>]+src=["']([^"']+)/i)?.[1]
+    || html.match(/https?:\/\/cdn[^"' <]+\.(?:mp4|webm|mov)/i)?.[0]
+  const image = html.match(/property=["']og:image["'][^>]*content=["']([^"']+)/i)?.[1]
+    || html.match(/content=["']([^"']+)["'][^>]*property=["']og:image["']/i)?.[1]
+    || html.match(/src=["'](https?:\/\/cdn[^"']+)/i)?.[1]
+  return { video, image }
 }
 
 function parseProfile(html: string, username: string): HotpicProfile {
@@ -172,6 +190,7 @@ function parseAlbum(html: string, id: string): HotpicAlbum {
     const name = decode(slice.match(/title=["']([^"']+)["']/i)?.[1] || match[1])
     const thumb = slice.match(/src=["'](https?:\/\/[^"']+)["']/i)?.[1] || ''
     const isVideo = /\.(mp4|mov|avi|webm)/i.test(name) || /m-play|play_circle|<video/i.test(slice)
+    const direct = thumb ? fullFromThumb(thumb, isVideo) : ''
     media.push({
       id: `hp-${match[1]}`,
       title: name,
@@ -180,7 +199,7 @@ function parseAlbum(html: string, id: string): HotpicAlbum {
       thumbnail: thumb,
       thumbnailUrls: thumb ? [thumb] : [],
       previewUrl: isVideo ? undefined : (thumb ? fullFromThumb(thumb) : undefined),
-      videoUrl: isVideo ? `${ORIGIN}/i/${match[1]}` : undefined,
+      videoUrl: isVideo && isDirectFile(direct) ? direct : undefined,
       sourceUrl: `${ORIGIN}/i/${match[1]}`,
       duration: 0,
       likes: 0,
@@ -312,9 +331,52 @@ export const hotpicApi = {
   },
   async item(id: string): Promise<MediaItem> {
     const html = await loadPage('item', { id })
-    const parsed = parseAlbum(html, id)
-    if (parsed.items[0]) return parsed.items[0]
-    return cardToMedia({ id, title: id, cover: '', url: `${ORIGIN}/i/${id}`, kind: 'pic' })
+    const title = html.match(/<h1[^>]*>([^<]+)<\/h1>/i)?.[1]?.trim()
+      || html.match(/property=["']og:title["'][^>]*content=["']([^"']+)/i)?.[1]
+      || id
+    const owner = html.match(/\/u\/([^"'/]+)/i)?.[1] || 'hotpic'
+    const urls = parseDirectUrls(html)
+    const isVideo = Boolean(urls.video) || /\.(mp4|mov|avi|webm)/i.test(title) || /<video/i.test(html)
+    const derived = urls.video || (urls.image && isVideo ? fullFromThumb(urls.image, true) : undefined)
+    const image = urls.image || ''
+    return {
+      id: `hp-${id}`,
+      title: decode(title),
+      description: decode(title),
+      creator: owner,
+      thumbnail: image,
+      thumbnailUrls: image ? [image] : [],
+      previewUrl: isVideo ? undefined : (image ? fullFromThumb(image) : undefined),
+      videoUrl: isDirectFile(derived) ? derived : undefined,
+      sourceUrl: `${ORIGIN}/i/${id}`,
+      duration: 0,
+      likes: 0,
+      views: 0,
+      width: 0,
+      height: 0,
+      createdAt: Date.now(),
+      hasAudio: isVideo,
+      tags: [],
+      niches: []
+    }
+  },
+  async resolve(item: MediaItem): Promise<MediaItem> {
+    if (!item.id.startsWith('hp-')) return item
+    if (isDirectFile(item.videoUrl) || (item.previewUrl && isDirectFile(item.previewUrl) && !item.hasAudio)) return item
+    const id = item.id.replace(/^hp-/, '')
+    try {
+      const full = await this.item(id)
+      return {
+        ...item,
+        ...full,
+        thumbnail: full.thumbnail || item.thumbnail,
+        thumbnailUrls: full.thumbnailUrls.length ? full.thumbnailUrls : item.thumbnailUrls,
+        videoUrl: full.videoUrl || (item.videoUrl && isDirectFile(item.videoUrl) ? item.videoUrl : undefined),
+        previewUrl: full.previewUrl || item.previewUrl
+      }
+    } catch {
+      return item
+    }
   },
   async feed(tag = 'Desi', page = 1): Promise<HotpicFeed> {
     try {

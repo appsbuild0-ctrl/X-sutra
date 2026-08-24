@@ -125,7 +125,7 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
     setLiked(isLiked(current.id))
     setSaved(isSaved(current.id))
     setFollowing(isFollowing(current.creator))
-    if (!current.videoUrl && !current.videoUrlSd && !current.previewUrl) void ensureDirectSource()
+    if (current.id.startsWith('hp-') || (!current.videoUrl && !current.videoUrlSd && !current.previewUrl)) void ensureDirectSource()
     for (const [id, v] of videoRefs.current) {
       if (id !== current.id) {
         v.pause()

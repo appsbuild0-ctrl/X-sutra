@@ -90,8 +90,10 @@ function parseProfile(html, username) {
   }
 }
 
-function fullFromThumb(thumb) {
-  return thumb.replace('/thumb/', '/').replace(/\.webp(?:\?.*)?$/i, '.jpeg')
+function fullFromThumb(thumb, isVideo = false) {
+  const full = thumb.replace('/thumb/', '/')
+  if (isVideo) return full.replace(/\.(?:webp|jpe?g|png)(?:\?.*)?$/i, '.mp4')
+  return full.replace(/\.webp(?:\?.*)?$/i, '.jpeg')
 }
 
 function parseAlbum(html, id) {
@@ -177,6 +179,13 @@ export const handler = async (event) => {
       if (!id) return json(400, { error: 'Missing album' })
       const html = await load(`/album/${encodeURIComponent(id)}`)
       return json(200, parseAlbum(html, id))
+    }
+    if (kind === 'item') {
+      const id = String(params.id || '').trim()
+      if (!id) return json(400, { error: 'Missing item' })
+      const html = await load(`/i/${encodeURIComponent(id)}`)
+      const parsed = parseAlbum(html, id)
+      return json(200, parsed.items[0] || { id: `hp-${id}`, title: id, items: [] })
     }
     return json(400, { error: 'Unknown Hotpic path' })
   } catch (error) {

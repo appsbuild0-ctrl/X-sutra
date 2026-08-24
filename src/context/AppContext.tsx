@@ -9,6 +9,7 @@ import {
 } from 'react'
 import { openMediaInBrowser, saveMediaBlob } from '../lib/download'
 import { playbackCandidates } from '../lib/media'
+import { hotpicApi } from '../lib/hotpic'
 import { publicMediaApi } from '../lib/redgifs'
 import { readStored, writeStored, removeStored } from '../lib/storage'
 import type { AuthResult, Creator, DownloadRecord, DownloadStatus, LocalAccount, LocalCollection, MediaItem, Preferences } from '../types'
@@ -294,7 +295,9 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
       // the detail refresh is temporarily unavailable.
       let resolved = item
       try {
-        resolved = mergeMediaDetail(item, await publicMediaApi.getById(item.id))
+        resolved = item.id.startsWith('hp-')
+          ? await hotpicApi.resolve(item)
+          : mergeMediaDetail(item, await publicMediaApi.getById(item.id))
       } catch (error) {
         if (!item.videoUrl && !item.videoUrlSd) throw error
       }
@@ -360,6 +363,13 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
   const refreshActiveMedia = useCallback(async (): Promise<MediaItem | null> => {
     if (!activeMedia) return null
     try {
+      if (activeMedia.id.startsWith('hp-') || activeMedia.id.startsWith('pm-') || activeMedia.id.startsWith('premium-')) {
+        const detail = activeMedia.id.startsWith('hp-') ? await hotpicApi.resolve(activeMedia) : activeMedia
+        const merged = mergeMediaDetail(activeMedia, detail)
+        setPlayerQueue((current) => current.map((entry, index) => index === playerIndex ? merged : entry))
+        setActiveMedia((current) => current && current.id === merged.id ? merged : current)
+        return merged
+      }
       const detail = await publicMediaApi.getById(activeMedia.id)
       const merged = mergeMediaDetail(activeMedia, detail)
       setPlayerQueue((current) => current.map((entry, index) => index === playerIndex ? merged : entry))
