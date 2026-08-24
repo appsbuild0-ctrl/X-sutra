@@ -270,6 +270,7 @@ async function loadPage(kind: 'feed' | 'user' | 'album' | 'item', params: { tag?
 
 function cardToMedia(card: HotpicAlbumCard): MediaItem {
   const isVideo = card.kind === 'video' || card.hasVideo
+  const derived = card.cover ? fullFromThumb(card.cover, isVideo) : ''
   return {
     id: `hp-${card.id}`,
     title: card.title,
@@ -277,8 +278,8 @@ function cardToMedia(card: HotpicAlbumCard): MediaItem {
     creator: card.owner || 'hotpic',
     thumbnail: card.cover,
     thumbnailUrls: card.cover ? [card.cover] : [],
-    previewUrl: isVideo ? undefined : card.cover,
-    videoUrl: isVideo ? card.url : undefined,
+    previewUrl: isVideo ? undefined : (card.cover || derived),
+    videoUrl: isVideo && isDirectFile(derived) ? derived : undefined,
     sourceUrl: card.url,
     duration: 0,
     likes: 0,
