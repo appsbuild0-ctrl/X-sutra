@@ -12,7 +12,7 @@
 - Browser response validation rejects HTML/error documents instead of renaming them as video files; CORS-only fallbacks are reported as opened, not completed
 - Local-only likes, saved clips, follows, collections, download history, autoplay/mute preferences, and blocked-tag filtering
 - Optional device-local login page (`#/login`) with username/password fields, sign-in / create-account modes, a show/hide password eye toggle, and a built-in admin account (`admin` / `admin123`) that opens the admin panel
-- Premium tab plus a Telegram bot (`/api/telegram`) so admin can publish clips from chat and members can `/notify` for drops
+- Premium tab where admin can publish exclusive clips for members
 - Local accounts store only a SHA-256 password hash on the device; the raw password is never persisted or transmitted
 - No demo/fake feed data and no external account password/token capture
 
@@ -63,15 +63,6 @@ main
 ```
 
 Netlify builds the app and deploys the public API function together. A plain static `index.html` opened via `file://` cannot call the same-origin function, so use the Netlify deployment for live data/playback.
-
-## Telegram Premium bot
-
-1. Create a bot with [@BotFather](https://t.me/BotFather) and set Netlify env `TELEGRAM_BOT_TOKEN`.
-2. After deploy, open `https://YOUR-SITE.netlify.app/api/telegram?setup=1&password=admin123` once to register the webhook.
-3. Admin: `/auth admin123`, then send a video, a link, or `/post Title | https://video.mp4`.
-4. Members: `/start` then `/notify` to receive new premium clips.
-
-Optional: `TELEGRAM_ADMIN_IDS` (comma-separated chat IDs) and `PREMIUM_ADMIN_PASSWORD`.
 
 ## Production build
 

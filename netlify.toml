@@ -25,12 +25,6 @@
   force = true
 
 [[redirects]]
-  from = "/api/telegram"
-  to = "/.netlify/functions/telegram"
-  status = 200
-  force = true
-
-[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
