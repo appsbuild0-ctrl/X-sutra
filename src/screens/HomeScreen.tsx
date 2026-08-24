@@ -1,5 +1,6 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { CreatorAvatar } from '../components/CreatorAvatar'
 import { LiveError, ScreenNotice } from '../components/LiveState'
 import { MediaGrid } from '../components/MediaGrid'
 import { PullToRefresh } from '../components/PullToRefresh'
@@ -8,8 +9,9 @@ import { SparkIcon } from '../components/icons'
 import { useApp } from '../context/AppContext'
 import { useOnlineMembers } from '../hooks/useOnlineMembers'
 import { usePagedMedia } from '../hooks/usePagedMedia'
+import { hotpicApi } from '../lib/hotpic'
 import { publicMediaApi } from '../lib/redgifs'
-import type { FeedOrder, MediaItem, PageResult } from '../types'
+import type { Creator, FeedOrder, MediaItem, PageResult } from '../types'
 
 type HomeFeed = 'latest' | 'trending' | 'likes' | 'views' | 'longest'
 
@@ -42,7 +44,12 @@ export function HomeScreen(): React.JSX.Element {
   // public batch rather than re-showing a generated/local list.
   const [firstApiPage, setFirstApiPage] = useState(1)
   const onlineMembers = useOnlineMembers()
+  const [models, setModels] = useState<Creator[]>([])
   const selected = HOME_FEEDS.find((feed) => feed.id === mode) ?? HOME_FEEDS[0]
+
+  useEffect(() => {
+    void hotpicApi.topModels().then(setModels).catch(() => setModels([]))
+  }, [])
 
   const loadFeed = useCallback(async (logicalPage: number) => {
     const apiPage = firstApiPage + logicalPage - 1
@@ -84,6 +91,21 @@ export function HomeScreen(): React.JSX.Element {
             <span className="live-pill"><i /> Live V2</span>
           </div>
         </div>
+
+        {models.length > 0 && (
+          <>
+            <div className="ott-row-head"><h3>Top models</h3><button type="button" onClick={() => navigate('/premium')}>Premium ›</button></div>
+            <div className="ott-rail ott-models" aria-label="Hotpic Desi accounts">
+              {models.map((model, index) => (
+                <button key={model.username} className="ott-model" type="button" onClick={() => navigate(`/premium/model/${encodeURIComponent(model.username)}`)}>
+                  <CreatorAvatar src={model.avatar} label={model.displayName || model.username} index={index} className="ott-model__avatar" />
+                  <strong>{model.displayName || model.username}</strong>
+                  <small>@{model.username}</small>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
 
         <div className="home-feed-tabs" role="tablist" aria-label="Home feed selection">
           {HOME_FEEDS.map((feedOption) => <button key={feedOption.id} className={mode === feedOption.id ? 'is-active' : ''} type="button" role="tab" aria-selected={mode === feedOption.id} onClick={() => { setMode(feedOption.id); setFirstApiPage(1) }}>{feedOption.label}</button>)}

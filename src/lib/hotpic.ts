@@ -2,6 +2,19 @@ import type { Creator, MediaItem } from '../types'
 
 const ENDPOINT = '/api/hotpic'
 
+const FALLBACK_MODELS: Creator[] = [
+  'DesiHub', 'Nova.Black', 'Anonymous', 'mohnichohan56', 'ashiknishat95', 'wandaxhulk', 'Jhoncerry09'
+].map((username) => ({
+  username,
+  displayName: username.replace(/\./g, ' '),
+  avatar: `https://hotpic.vip/images/user/${encodeURIComponent(username)}.jpg`,
+  profileUrl: `https://hotpic.vip/u/${encodeURIComponent(username)}`,
+  followers: 0,
+  gifs: 0,
+  views: 0,
+  verified: false
+}))
+
 export interface HotpicAlbumCard {
   id: string
   title: string
@@ -37,11 +50,28 @@ async function getJson<T>(params: Record<string, string>): Promise<T> {
 
 export const hotpicApi = {
   async topModels(): Promise<Creator[]> {
-    const data = await getJson<{ users?: Creator[] }>({ path: 'desi' })
-    return Array.isArray(data.users) ? data.users.filter((user) => user.username) : []
+    try {
+      const data = await getJson<{ users?: Creator[] }>({ path: 'desi' })
+      const live = Array.isArray(data.users) ? data.users.filter((user) => user.username) : []
+      return live.length ? live : FALLBACK_MODELS
+    } catch {
+      return FALLBACK_MODELS
+    }
   },
   async profile(username: string): Promise<HotpicProfile> {
-    return getJson<HotpicProfile>({ path: 'user', u: username })
+    try {
+      return await getJson<HotpicProfile>({ path: 'user', u: username })
+    } catch {
+      return {
+        username,
+        displayName: username,
+        avatar: `https://hotpic.vip/images/user/${encodeURIComponent(username)}.jpg`,
+        profileUrl: `https://hotpic.vip/u/${encodeURIComponent(username)}`,
+        albums: 0,
+        joined: '',
+        items: []
+      }
+    }
   },
   async album(id: string): Promise<HotpicAlbum> {
     return getJson<HotpicAlbum>({ path: 'album', id })

@@ -14,6 +14,7 @@ export function PremiumScreen(): React.JSX.Element {
   const { openPlayer } = useApp()
   const [catalog, setCatalog] = useState<PremiumCatalog | null>(null)
   const [models, setModels] = useState<Creator[]>([])
+  const [modelsLoading, setModelsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [query, setQuery] = useState('')
 
@@ -23,6 +24,7 @@ export function PremiumScreen(): React.JSX.Element {
       if (!live) return
       if (catalogResult.status === 'fulfilled') setCatalog(catalogResult.value)
       if (modelsResult.status === 'fulfilled') setModels(modelsResult.value)
+      setModelsLoading(false)
       if (catalogResult.status === 'rejected' && modelsResult.status === 'rejected') {
         setError('Premium could not load.')
       }
@@ -56,7 +58,7 @@ export function PremiumScreen(): React.JSX.Element {
             </button>
           ))}
         </div>
-      ) : <p className="form-help">Loading Hotpic Desi accounts…</p>}
+      ) : <p className="form-help">{modelsLoading ? 'Loading Hotpic Desi accounts…' : 'No Hotpic accounts loaded.'}</p>}
 
       {videos.length > 0 && (
         <>
