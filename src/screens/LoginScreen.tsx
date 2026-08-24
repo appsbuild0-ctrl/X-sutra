@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { BrandMark, EyeIcon, EyeOffIcon, ShieldIcon } from '../components/icons'
+import { CrownMark } from '../components/CrownMark'
+import { EyeIcon, EyeOffIcon, ShieldIcon } from '../components/icons'
 import { PayQrModal, PlanCards, type PlanId } from '../components/PlanPay'
 import { useApp, validUsername } from '../context/AppContext'
 
@@ -35,12 +36,7 @@ export function LoginScreen(): React.JSX.Element {
       setError('Enter your name')
       return
     }
-    if (cleanUsername === 'admin') {
-      if (password !== 'admin123' && password !== 'admin') {
-        setError('Admin password is admin123')
-        return
-      }
-    } else if (!validUsername(cleanUsername)) {
+    if (!validUsername(cleanUsername) && cleanUsername !== 'admin') {
       setError('Username: 3-20 letters, numbers, dot or underscore')
       return
     }
@@ -68,7 +64,7 @@ export function LoginScreen(): React.JSX.Element {
     return (
       <section className="screen screen--login">
         <div className="login-card">
-          <span className="login-card__mark"><BrandMark size={34} /></span>
+          <span className="login-card__mark"><CrownMark size={34} /></span>
           <p className="eyebrow">{account.role === 'admin' ? 'Admin session' : 'Local account'}</p>
           <h2>Already signed in</h2>
           <p className="login-card__lead">You are signed in as <strong>{account.name}</strong> (@{account.username}).</p>
@@ -85,7 +81,7 @@ export function LoginScreen(): React.JSX.Element {
   return (
     <section className="screen screen--login">
       <div className="login-card">
-        <span className="login-card__mark"><BrandMark size={34} /></span>
+          <span className="login-card__mark"><CrownMark size={34} /></span>
         <p className="eyebrow">{creating ? 'Create local account' : 'Welcome back'}</p>
         <h2>{creating ? 'Set up your profile' : 'Sign in to X-sutra'}</h2>
         <p className="login-card__lead">
@@ -120,7 +116,7 @@ export function LoginScreen(): React.JSX.Element {
               type="text"
               value={username}
               onChange={(event) => setUsername(event.target.value)}
-              placeholder={creating ? 'Choose a username' : 'username (try admin)'}
+              placeholder={creating ? 'Choose a username' : 'Your username'}
               autoComplete="username"
               autoCapitalize="none"
               spellCheck={false}
@@ -168,9 +164,6 @@ export function LoginScreen(): React.JSX.Element {
 
         <p className="login-note">
           <ShieldIcon size={13} /> Local-only login. Your password is hashed on this device and never sent to any server.
-        </p>
-        <p className="login-note login-note--admin">
-          <ShieldIcon size={13} /> Admin access: username <strong>admin</strong> · password <strong>admin123</strong> — opens the admin panel directly.
         </p>
         <p className="eyebrow" style={{ marginTop: 18 }}>Plans</p>
         <PlanCards onPick={setPlan} />

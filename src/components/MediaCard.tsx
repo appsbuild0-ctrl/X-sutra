@@ -134,13 +134,13 @@ export function MediaCard({ item, queue, priority = false }: MediaCardProps): Re
         aria-label={`Open ${display.title}`}
       >
         {activeThumbnail ? (
-          <img key={activeThumbnail} src={activeThumbnail} alt="" loading={priority ? 'eager' : 'lazy'} onError={nextThumbnail} />
-        ) : previewSource && !previewFailed ? (
-          <video key={previewSource} src={previewSource} muted autoPlay loop playsInline preload="metadata" onError={() => setPreviewFailed(true)} />
-        ) : inView && embedUrl ? (
-          <iframe className="media-card__embed" src={embedUrl} title="Public video preview" loading="lazy" allow="autoplay; fullscreen" tabIndex={-1} aria-hidden="true" />
+          <img key={activeThumbnail} src={activeThumbnail} alt="" loading={priority ? 'eager' : 'lazy'} decoding="async" onError={nextThumbnail} />
+        ) : previewSource && inView && !previewFailed ? (
+          <video key={previewSource} src={previewSource} muted playsInline preload="metadata" poster={display.thumbnail} onError={() => setPreviewFailed(true)} />
+        ) : previewFailed ? (
+          <span className="media-card__missing">Video unavailable</span>
         ) : (
-          <span className="media-card__missing">{opening ? 'Opening…' : isPremium ? 'Open' : 'Loading source preview…'}</span>
+          <span className="media-card__missing">{opening ? 'Opening…' : 'Preview'}</span>
         )}
         <span className="media-card__shade" aria-hidden="true" />
         <span className="media-card__play" aria-hidden="true"><PlayIcon size={18} /></span>

@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react'
-import { BrandMark } from './icons'
+import { CrownMark } from './CrownMark'
 
 interface ScreenHeaderProps {
   title: string
@@ -13,7 +13,7 @@ export function ScreenHeader({ title, eyebrow, actions, showMark = false }: Scre
   return (
     <header className="screen-header">
       <div className="screen-header__identity">
-        {showMark && <span className="brand-mark" aria-hidden="true"><BrandMark size={28} /></span>}
+        {showMark && <span className="brand-mark" aria-hidden="true"><CrownMark size={28} /></span>}
         <div>
           {eyebrow && <p className="eyebrow">{eyebrow}</p>}
           <h1>{title}</h1>

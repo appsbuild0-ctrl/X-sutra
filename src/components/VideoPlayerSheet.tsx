@@ -303,13 +303,11 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
           const queueIndex = first + slideIndex
           const isCurrent = queueIndex === playerIndex
           const offset = (queueIndex - playerIndex) * 100
-          const itemSource = isCurrent
-            ? source ?? undefined
-            : item.videoUrl ?? item.videoUrlSd ?? undefined
-          // Tiered preload: the current and next clip download fully, slides
-          // further out only load metadata — four parallel full downloads were
-          // starving the playing clip's bandwidth (heavy buffering).
-          const preloadFor = queueIndex === playerIndex || queueIndex === playerIndex + 1 ? 'auto' : 'metadata'
+          const nearby = queueIndex === playerIndex || queueIndex === playerIndex + 1
+          const itemSource = nearby
+            ? (isCurrent ? source ?? undefined : item.videoUrl ?? item.videoUrlSd ?? undefined)
+            : undefined
+          const preloadFor = isCurrent ? 'auto' : nearby ? 'metadata' : 'none'
           return (
             <div
               key={item.id}

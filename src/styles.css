@@ -54,7 +54,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .screen-header__identity h1 { margin: 0; color: var(--text); font-family: 'Fraunces', Georgia, serif; font-size: 25px; font-weight: 650; line-height: 1; letter-spacing: -.04em; }
 .screen-header__actions { display: flex; align-items: center; gap: 8px; }
 .brand-mark { display: grid; flex: 0 0 auto; width: 37px; height: 37px; place-items: center; color: var(--ember); border: 1px solid rgba(240, 100, 67, .28); border-radius: 12px; background: linear-gradient(145deg, rgba(240, 100, 67, .13), rgba(255, 196, 107, .04)); }
-.brand-mark svg { overflow: visible; }
+.brand-mark svg, .brand-mark img { overflow: visible; width: 72%; height: 72%; object-fit: contain; }
+.login-card__mark img { width: 28px; height: 28px; object-fit: contain; }
 .eyebrow { margin: 0 0 5px; color: var(--muted); font-family: 'DM Mono', ui-monospace, monospace; font-size: 9px; font-weight: 500; line-height: 1.1; letter-spacing: .13em; text-transform: uppercase; }
 
 .round-button { display: inline-grid; width: 39px; height: 39px; padding: 0; place-items: center; border: 1px solid var(--line); border-radius: 50%; color: var(--text-soft); background: rgba(255, 255, 255, .035); transition: color .18s ease, background .18s ease, border-color .18s ease, transform .18s ease; }

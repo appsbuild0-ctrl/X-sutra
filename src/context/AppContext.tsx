@@ -160,7 +160,7 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
       const cleanName = name.trim().slice(0, 40)
       const cleanUsername = username.trim().toLowerCase()
       if (!cleanName) return { ok: false, error: 'Enter your name' }
-      if (cleanUsername === 'admin') return { ok: false, error: 'admin is reserved — sign in with admin / admin123 instead' }
+      if (cleanUsername === 'admin') return { ok: false, error: 'That username is reserved' }
       if (!validUsername(cleanUsername)) return { ok: false, error: 'Username: 3-20 letters, numbers, dot or underscore' }
       if (password.length < 4) return { ok: false, error: 'Password must be at least 4 characters' }
       const existing = readStored<LocalAccount | null>(ACCOUNT_KEY, null)
@@ -181,7 +181,7 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
       const cleanUsername = username.trim().toLowerCase()
       // Built-in administrator: admin / admin123 (also accept "admin" — older UI said that).
       if (cleanUsername === 'admin') {
-        if (!isAdminPassword(password)) return { ok: false, error: 'Incorrect admin password. Use admin123' }
+        if (!isAdminPassword(password)) return { ok: false, error: 'Incorrect password' }
         const admin: LocalAccount = { name: 'Admin', username: 'admin', passwordHash: '', createdAt: new Date().toISOString(), role: 'admin' }
         writeStored(SESSION_KEY, admin)
         setAccount(admin)

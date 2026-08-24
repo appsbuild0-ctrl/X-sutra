@@ -1,11 +1,13 @@
-import { useEffect } from 'react'
+import { lazy, Suspense, useEffect } from 'react'
 import { HashRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { BottomNav } from './components/BottomNav'
 import { ContentShield } from './components/ContentShield'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { ToastHost } from './components/ToastHost'
 import { VideoPlayerSheet } from './components/VideoPlayerSheet'
 import { AppProvider } from './context/AppContext'
-import { AdminPanelScreen } from './screens/AdminPanelScreen'
+
+const AdminPanelScreen = lazy(async () => ({ default: (await import('./screens/AdminPanelScreen')).AdminPanelScreen }))
 import { CollectionScreen } from './screens/CollectionScreen'
 import { CreatorScreen } from './screens/CreatorScreen'
 import { DiscoverScreen } from './screens/DiscoverScreen'
@@ -43,6 +45,8 @@ function XsApp(): React.JSX.Element {
       <ContentShield />
       <ScrollToTop />
       <main className="app-content">
+        <ErrorBoundary>
+        <Suspense fallback={<p className="form-help" style={{ padding: 24 }}>Loading…</p>}>
         <Routes>
           <Route path="/" element={<HomeScreen />} />
           <Route path="/discover" element={<DiscoverScreen />} />
@@ -68,6 +72,8 @@ function XsApp(): React.JSX.Element {
           <Route path="/settings" element={<SettingsScreen />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
+        </Suspense>
+        </ErrorBoundary>
       </main>
       {inPremium ? <PremiumNav /> : <BottomNav />}
       <VideoPlayerSheet />
