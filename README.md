@@ -87,3 +87,92 @@ Open `android/` in Android Studio to run on a device/emulator or create a signed
 | `npm run check` | Type-check without creating `dist/` |
 | `npm run cap:sync` | Build web assets and copy them into Android |
 | `npm run android:open` | Open the Android Studio project |
+| `npm run server` | Run the secure backend standalone (same handlers as Vite/Netlify) |
+| `npm run test:telegram` | End-to-end test of the media backend against a local Telegram Bot API mock |
+| `npm run test:dev` | End-to-end test of the media API through the real Vite dev server |
+
+## Studio — private Telegram media storage
+
+X-sutra now has an **admin Studio** for uploading your own media. Telegram is used
+**only as hidden storage**; it is never shown to normal users and its credentials
+never reach the browser.
+
+### How it works
+
+```
+ADMIN  ──▶  Secure backend (Vite dev plugin / Netlify Function)
+                     │
+                     ▼
+              Telegram Bot API  ──▶  PRIVATE Telegram channel (media bytes)
+                     │                      │
+                     ▼                      ▼
+              Media metadata store    file_id / message_id reference
+                     │
+                     ▼
+              MY APP  ──▶  NORMAL USERS see images / video / files (view, play, download)
+```
+
+- **Admin** signs in with a password. The backend issues an `HttpOnly`,
+  `SameSite=Strict` session cookie. Only admin requests may upload or delete.
+- **Normal users** see uploaded media in the app (Home feed + the Studio tab) and
+  can view, play, and download — but they cannot upload, cannot reach Telegram,
+  and never see the bot token, chat id, or any storage credentials.
+- Uploads go `Admin panel → backend → Telegram private channel`. The backend stores
+  only **metadata/references** (no large bytes in the database). The app then
+  streams the real bytes back through the backend, so the Telegram token stays
+  server-side.
+
+### Backend architecture (follows the existing pattern)
+
+The same handler code (`server/api.mjs`, `server/telegram.mjs`, `server/store.mjs`,
+`server/auth.mjs`) runs in three places:
+
+1. **Local dev** — the Vite plugin `secureMediaProxy` in `vite.config.ts` mounts
+   `/api/media` and `/api/admin`.
+2. **Netlify** — `netlify/functions/media.mjs` (redirects in `netlify.toml`).
+3. **Standalone** — `npm run server` (a plain Node server) if you self-host.
+
+No external storage/database provider is used: **no Supabase, no Cloudinary, no
+Firebase, no R2.** Telegram is the only storage layer. Metadata lives in a JSON
+store under `XSUTRA_DATA_DIR` (default `./server/data`). On Netlify you can opt into
+the host-provided Netlify Blobs for persistence by installing `@netlify/blobs` and
+setting `XSUTRA_STORE=blobs`; otherwise the local file store is used.
+
+### Endpoints
+
+- `POST /api/admin/login` · `POST /api/admin/logout` · `GET /api/admin/session`
+- `POST /api/media/upload` (admin only, multipart, real progress)
+- `GET /api/media` · `GET /api/media/:id` (public)
+- `GET /api/media/:id/stream` (public video/image, range-aware)
+- `GET /api/media/:id/thumbnail` (public poster)
+- `GET /api/media/:id/file` (public download, `Content-Disposition: attachment`)
+- `DELETE /api/media/:id` (admin only)
+
+### Environment variables (server-side only)
+
+Copy `.env.example` to `.env` (or set them in your host). **None of these are ever
+bundled into the frontend, placed in `localStorage`, or sent to the browser.**
+
+| Variable | Purpose |
+| --- | --- |
+| `TELEGRAM_BOT_TOKEN` | Bot token for the storage bot. **Never exposed to clients.** |
+| `TELEGRAM_STORAGE_CHAT_ID` | Private channel / storage chat id (the bot must be a member with post permission). |
+| `ADMIN_PASSWORD` | Password that unlocks the Studio upload panel. |
+| `ADMIN_SESSION_SECRET` | Secret used to sign the admin session cookie. Use a long random value. |
+| `TELEGRAM_API_BASE` | Optional. Point at a self-hosted Local Bot API Server to raise the ~20 MB bot-download ceiling (and 50 MB upload ceiling) to ~2 GB. Defaults to `https://api.telegram.org`. |
+| `XSUTRA_DATA_DIR` | Optional. Where the media metadata JSON store is written. |
+| `XSUTRA_STORE` | Optional. `file` (default) or `blobs` (Netlify Blobs). |
+
+To deploy: set the four required variables on your backend (Netlify site env or your
+host), create a **private** Telegram channel, add the bot as an admin, and restart.
+No code changes and no URL copying are needed — uploaded media appears in the app
+automatically.
+
+### File-size limits (real Telegram Bot API limits)
+
+- Photos: **10 MB**
+- Videos / documents / files: **50 MB**
+
+These are enforced on upload. (The standard public Bot API caps bot *downloads* at
+~20 MB; files above that need `TELEGRAM_API_BASE` pointing at a Local Bot API Server.)
+

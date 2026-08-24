@@ -10,7 +10,10 @@
     "build:drop": "tsc -b && vite build --mode drop --outDir dist-drop && node scripts/write-drop-redirects.mjs",
     "build:artifacts": "npm run build:drop && node scripts/build-release-artifacts.mjs",
     "preview": "vite preview --host 0.0.0.0",
-    "check": "tsc --noEmit",
+    "check": "tsc -b",
+    "server": "node server/index.mjs",
+    "test:telegram": "node scripts/e2e-telegram-test.mjs",
+    "test:dev": "node scripts/live-dev-test.mjs",
     "cap:sync": "npm run build && cap sync android",
     "android:open": "cap open android"
   },

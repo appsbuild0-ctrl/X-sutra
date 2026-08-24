@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
-import { compactNumber, durationLabel } from '../lib/format'
+import { compactNumber, durationLabel, formatBytes } from '../lib/format'
 import {
   BookmarkIcon,
   CheckIcon,
@@ -46,13 +46,21 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
   const [muted, setMuted] = useState(preferences.muted)
   const [progress, setProgress] = useState(0)
   const [videoError, setVideoError] = useState(false)
+  const [imageError, setImageError] = useState(false)
+  const [videoReloadKey, setVideoReloadKey] = useState(0)
   const [collectionId, setCollectionId] = useState('')
   const [heartBurst, setHeartBurst] = useState(false)
+
+  const isImage = activeMedia?.mediaType === 'image'
+  const isFile = activeMedia?.mediaType === 'file'
+  const isStudio = Boolean(activeMedia?.mediaType)
 
   useEffect(() => {
     if (!activeMedia) return
     setProgress(0)
     setVideoError(false)
+    setImageError(false)
+    setVideoReloadKey(0)
     setCollectionId('')
     setPlaying(preferences.autoplay)
     setMuted(preferences.muted)
@@ -100,6 +108,32 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
 
   const source = media.videoUrl ?? media.videoUrlSd
   const embedUrl = `https://www.redgifs.com/ifr/${encodeURIComponent(media.id)}?autoplay=${preferences.autoplay ? '1' : '0'}`
+
+  function downloadDirect(url: string | undefined, filename: string): void {
+    if (!url) return
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = filename || 'download'
+    anchor.target = '_blank'
+    anchor.rel = 'noopener noreferrer'
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+  }
+
+  function handleDownload(): void {
+    if (isFile) {
+      downloadDirect(media.fileUrl ?? media.sourceUrl, media.fileName || media.title)
+      notify('Download started', 'success')
+      return
+    }
+    if (isImage) {
+      downloadDirect(media.thumbnail ?? media.videoUrl ?? media.sourceUrl, media.fileName || media.title)
+      notify('Download started', 'success')
+      return
+    }
+    void requestDownload(media)
+  }
   const liked = isLiked(activeMedia.id)
   const saved = isSaved(activeMedia.id)
   const following = isFollowing(activeMedia.creator)
@@ -184,11 +218,25 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
         if (delta > 86 && canPrevious) stepPlayer(-1)
       }}
     >
-      <div className="immersive-player__media" onClick={onVideoTap}>
-        {source && !videoError ? (
+      <div className="immersive-player__media" onClick={isFile ? undefined : onVideoTap}>
+        {isFile ? (
+          <div className="file-viewer">
+            <span className="file-viewer__icon"><DownloadIcon size={30} /></span>
+            <strong className="file-viewer__name">{media.fileName || media.title}</strong>
+            <span className="file-viewer__meta">{formatBytes(media.fileSize)}</span>
+            <button className="primary-button" type="button" onClick={() => downloadDirect(media.fileUrl ?? media.sourceUrl, media.fileName || media.title)}>Download file</button>
+            <a className="text-button" href={media.fileUrl ?? media.sourceUrl} target="_blank" rel="noopener noreferrer">Open in new tab</a>
+          </div>
+        ) : isImage ? (
+          imageError ? (
+            <div className="immersive-player__error">Image failed to load. <button type="button" onClick={() => setImageError(false)}>Retry</button></div>
+          ) : (
+            <img className="immersive-player__img" src={media.thumbnail} alt={media.title} onError={() => setImageError(true)} />
+          )
+        ) : source && !videoError ? (
           <video
             ref={videoRef}
-            key={media.id}
+            key={`${media.id}-${videoReloadKey}`}
             src={source}
             poster={media.thumbnail}
             loop
@@ -204,16 +252,18 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
               if (video.duration) setProgress(video.currentTime / video.duration)
             }}
           />
+        ) : videoError && isStudio ? (
+          <div className="immersive-player__error">This video could not be loaded. <button type="button" onClick={() => { setVideoError(false); setVideoReloadKey((key) => key + 1) }}>Retry</button></div>
         ) : <iframe className="immersive-player__embed" src={embedUrl} title="Public RedGifs video" allow="autoplay; fullscreen" allowFullScreen />}
       </div>
       <div className="immersive-player__scrim" />
 
       {heartBurst && <span className="immersive-player__heart" aria-hidden="true"><HeartIcon filled size={76} /></span>}
-      {!playing && !videoError && <span className="immersive-player__paused" aria-hidden="true"><PlayIcon size={34} /></span>}
-      {videoError && <div className="immersive-player__error">Using the public embed fallback. <a href={media.sourceUrl} target="_blank" rel="noreferrer">Open source</a></div>}
+      {!isImage && !isFile && !playing && !videoError && <span className="immersive-player__paused" aria-hidden="true"><PlayIcon size={34} /></span>}
+      {videoError && !isStudio && <div className="immersive-player__error">Using the public embed fallback. <a href={media.sourceUrl} target="_blank" rel="noreferrer">Open source</a></div>}
 
       <header className="immersive-player__top">
-        <span>{playerIndex + 1} / {playerQueue.length || 1} · public video</span>
+        <span>{playerIndex + 1} / {playerQueue.length || 1} · {isStudio ? 'studio' : 'public video'}</span>
         <button type="button" onClick={closePlayer} aria-label="Close player"><CloseIcon size={21} /></button>
       </header>
 
@@ -222,7 +272,7 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
         <RailAction label="Share" onClick={() => void share()}><ShareIcon size={22} /></RailAction>
         <RailAction label={muted ? 'Sound off' : 'Sound on'} onClick={toggleMute}>{muted ? <MuteIcon size={22} /> : <VolumeIcon size={22} />}</RailAction>
         <RailAction label={saved ? 'Saved' : 'Save'} active={saved} onClick={() => toggleSaved(activeMedia)}><BookmarkIcon filled={saved} size={22} /></RailAction>
-        <RailAction label="Download" onClick={() => void requestDownload(activeMedia)}><DownloadIcon size={22} /></RailAction>
+        <RailAction label="Download" onClick={handleDownload}><DownloadIcon size={22} /></RailAction>
       </aside>
 
       <footer className="immersive-player__info">
@@ -242,7 +292,7 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
       <div className="immersive-player__progress"><i style={{ width: `${Math.round(progress * 100)}%` }} /></div>
       {canPrevious && <button className="immersive-player__step immersive-player__step--up" type="button" onClick={() => stepPlayer(-1)} aria-label="Previous video">‹</button>}
       {canNext && <button className="immersive-player__step immersive-player__step--down" type="button" onClick={() => stepPlayer(1)} aria-label="Next video">›</button>}
-      {!source && <a className="immersive-player__source" href={activeMedia.sourceUrl} target="_blank" rel="noreferrer"><ExternalIcon size={17} /> Open source</a>}
+      {!source && !isImage && !isFile && <a className="immersive-player__source" href={activeMedia.sourceUrl} target="_blank" rel="noreferrer"><ExternalIcon size={17} /> Open source</a>}
     </div>
   )
 }

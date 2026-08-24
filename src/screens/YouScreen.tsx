@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { ScreenHeader } from '../components/ScreenHeader'
-import { DownloadIcon, HeartIcon, LibraryIcon, SettingsIcon, UserIcon } from '../components/icons'
+import { DownloadIcon, HeartIcon, LibraryIcon, SettingsIcon, StudioIcon, UserIcon } from '../components/icons'
 import { useApp } from '../context/AppContext'
 
 export function YouScreen(): React.JSX.Element {
@@ -17,6 +17,7 @@ export function YouScreen(): React.JSX.Element {
       <div className="profile-stats"><div><LibraryIcon size={19} /><strong>{saved.length}</strong><span>Saved</span></div><div><HeartIcon size={19} /><strong>{liked.length}</strong><span>Likes</span></div><div><UserIcon size={19} /><strong>{follows.length}</strong><span>Following</span></div><div><DownloadIcon size={19} /><strong>{downloads.length}</strong><span>Downloads</span></div></div>
       <div className="section-heading section-heading--spaced"><div><p className="eyebrow">Quick access</p><h3>Your local data</h3></div></div>
       <div className="quick-link-list">
+        <button type="button" onClick={() => navigate('/studio')}><span><StudioIcon size={19} /><strong>Studio</strong><small>Admin media in private storage</small></span><i>›</i></button>
         <button type="button" onClick={() => navigate('/library')}><span><LibraryIcon size={19} /><strong>Library</strong><small>Saved clips, collections and follows</small></span><i>›</i></button>
         <button type="button" onClick={() => navigate('/downloads')}><span><DownloadIcon size={19} /><strong>Download history</strong><small>Public files sent to your device</small></span><i>›</i></button>
         <button type="button" onClick={() => navigate('/settings')}><span><SettingsIcon size={19} /><strong>Preferences</strong><small>Quality, player and blocked tags</small></span><i>›</i></button>

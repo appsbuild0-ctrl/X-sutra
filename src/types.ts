@@ -25,6 +25,12 @@ export interface MediaItem {
   hasAudio: boolean
   tags: string[]
   niches: string[]
+  /** Present on media stored in the private Telegram storage layer (admin uploads). */
+  mediaType?: 'image' | 'video' | 'file'
+  /** Direct download URL for file-type media (served by the secure backend). */
+  fileUrl?: string
+  fileName?: string
+  fileSize?: number
 }
 
 export interface PageResult<T> {

@@ -13,6 +13,7 @@ import { LibraryScreen } from './screens/LibraryScreen'
 import { NicheScreen } from './screens/NicheScreen'
 import { SearchScreen } from './screens/SearchScreen'
 import { SettingsScreen } from './screens/SettingsScreen'
+import { StudioScreen } from './screens/StudioScreen'
 import { TagScreen } from './screens/TagScreen'
 import { YouScreen } from './screens/YouScreen'
 
@@ -35,6 +36,7 @@ function XsApp(): React.JSX.Element {
           <Route path="/tag/:tag" element={<TagScreen />} />
           <Route path="/niche/:id" element={<NicheScreen />} />
           <Route path="/library" element={<LibraryScreen />} />
+          <Route path="/studio" element={<StudioScreen />} />
           <Route path="/collection/:id" element={<CollectionScreen />} />
           <Route path="/downloads" element={<DownloadsScreen />} />
           <Route path="/you" element={<YouScreen />} />

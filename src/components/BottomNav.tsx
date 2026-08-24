@@ -1,10 +1,11 @@
 import { useLocation, useNavigate } from 'react-router-dom'
-import { CompassIcon, DownloadIcon, HomeIcon, LibraryIcon, UserIcon } from './icons'
+import { CompassIcon, DownloadIcon, HomeIcon, LibraryIcon, StudioIcon, UserIcon } from './icons'
 
 const tabs = [
   { path: '/', label: 'Home', Icon: HomeIcon, match: (pathname: string) => pathname === '/' },
   { path: '/discover', label: 'Discover', Icon: CompassIcon, match: (pathname: string) => /^\/(discover|search|creator|tag|niche)/.test(pathname) },
   { path: '/library', label: 'Library', Icon: LibraryIcon, match: (pathname: string) => /^\/(library|collection)/.test(pathname) },
+  { path: '/studio', label: 'Studio', Icon: StudioIcon, match: (pathname: string) => pathname.startsWith('/studio') },
   { path: '/downloads', label: 'Downloads', Icon: DownloadIcon, match: (pathname: string) => pathname.startsWith('/downloads') },
   { path: '/you', label: 'You', Icon: UserIcon, match: (pathname: string) => /^\/(you|settings)/.test(pathname) }
 ]

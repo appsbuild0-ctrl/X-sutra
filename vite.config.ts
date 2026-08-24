@@ -1,6 +1,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
+// @ts-expect-error server backend module is plain Node ESM without type declarations
+import { serveNode } from './server/http-adapter.mjs'
 
 const ORIGIN = 'https://api.redgifs.com'
 const USER_AGENT = 'Mozilla/5.0 (compatible; X-sutra/1.0; public-media-client)'
@@ -60,8 +62,31 @@ function publicMediaProxy(): Plugin {
   }
 }
 
+/**
+ * Mounts the secure Telegram-backed media backend (/api/media and /api/admin)
+ * during local development. The same handlers run in production via the
+ * Netlify Function, so behaviour is identical. A pathless middleware is used
+ * (rather than `middlewares.use('/api/media', …)`) so that `req.url` is NOT
+ * rewritten before reach the handler, which routes on the full path.
+ */
+function secureMediaProxy(): Plugin {
+  return {
+    name: 'x-sutra-secure-media-proxy',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const url = req.url || ''
+        if (url.startsWith('/api/media') || url.startsWith('/api/admin')) {
+          void serveNode(req, res)
+        } else {
+          next()
+        }
+      })
+    }
+  }
+}
+
 export default defineConfig({
-  plugins: [react(), publicMediaProxy()],
+  plugins: [react(), publicMediaProxy(), secureMediaProxy()],
   server: {
     host: '0.0.0.0',
     port: 5173,

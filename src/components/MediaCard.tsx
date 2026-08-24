@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { compactNumber, durationLabel } from '../lib/format'
+import { compactNumber, durationLabel, formatBytes } from '../lib/format'
 import { publicMediaApi } from '../lib/redgifs'
 import type { MediaItem } from '../types'
 import { useApp } from '../context/AppContext'
-import { BookmarkIcon, PlayIcon } from './icons'
+import { BookmarkIcon, DownloadIcon, PlayIcon } from './icons'
 
 interface MediaCardProps {
   item: MediaItem
@@ -79,7 +79,7 @@ export function MediaCard({ item, queue, priority = false }: MediaCardProps): Re
     return () => observer.disconnect()
   }, [priority, item.id])
 
-  const requiresDetail = !item.videoUrl || item.thumbnailUrls.length === 0
+  const requiresDetail = (!item.videoUrl || item.thumbnailUrls.length === 0) && item.mediaType !== 'file'
   useEffect(() => {
     if (!inView || resolved || !requiresDetail) return
     let cancelled = false
@@ -109,7 +109,9 @@ export function MediaCard({ item, queue, priority = false }: MediaCardProps): Re
   const open = async () => {
     setOpening(true)
     try {
-      const full = resolved ?? await hydrateMedia(item).catch(() => item)
+      // Studio items already carry full metadata (and a non-RedGifs id), so skip
+      // the public detail lookup that would otherwise 404.
+      const full = resolved ?? (item.mediaType ? item : await hydrateMedia(item).catch(() => item))
       const fullQueue = (queue?.length ? queue : [item]).map((entry) => entry.id === full.id ? full : (detailCache.get(entry.id) ?? entry))
       openPlayer(full, fullQueue)
     } finally {
@@ -125,7 +127,9 @@ export function MediaCard({ item, queue, priority = false }: MediaCardProps): Re
         onClick={() => void open()}
         aria-label={`Open ${display.title}`}
       >
-        {activeThumbnail ? (
+        {display.mediaType === 'file' ? (
+          <span className="media-card__file"><DownloadIcon size={26} /><small>{display.fileName || 'File'}</small></span>
+        ) : activeThumbnail ? (
           <img key={activeThumbnail} src={activeThumbnail} alt="" loading={priority ? 'eager' : 'lazy'} onError={nextThumbnail} />
         ) : previewSource && !previewFailed ? (
           <video key={previewSource} src={previewSource} muted autoPlay loop playsInline preload="metadata" onError={() => setPreviewFailed(true)} />
@@ -135,9 +139,15 @@ export function MediaCard({ item, queue, priority = false }: MediaCardProps): Re
           <span className="media-card__missing">{opening ? 'Opening source…' : 'Loading source preview…'}</span>
         )}
         <span className="media-card__shade" aria-hidden="true" />
-        <span className="media-card__play" aria-hidden="true"><PlayIcon size={18} /></span>
-        <span className="media-card__duration">{durationLabel(display.duration)}</span>
-        {display.hasAudio && <span className="media-card__audio">Audio</span>}
+        {display.mediaType === 'file' ? (
+          <span className="media-card__play" aria-hidden="true"><DownloadIcon size={18} /></span>
+        ) : (
+          <>
+            <span className="media-card__play" aria-hidden="true"><PlayIcon size={18} /></span>
+            <span className="media-card__duration">{durationLabel(display.duration)}</span>
+            {display.hasAudio && <span className="media-card__audio">Audio</span>}
+          </>
+        )}
       </button>
 
       <div className="media-card__info">
@@ -147,7 +157,14 @@ export function MediaCard({ item, queue, priority = false }: MediaCardProps): Re
         </div>
         <button className={`save-button${saved ? ' is-saved' : ''}`} type="button" aria-label={saved ? `Remove ${display.title} from library` : `Save ${display.title} to library`} onClick={() => toggleSaved(display)}><BookmarkIcon size={17} filled={saved} /></button>
       </div>
-      <div className="media-card__meta"><span>{compactNumber(display.views)} views</span><span>{compactNumber(display.likes)} likes</span></div>
+      <div className="media-card__meta">{display.mediaType === 'file' ? (
+        <span>{formatBytes(display.fileSize)} · {(display.fileName?.split('.').pop() || 'file').toUpperCase()}</span>
+      ) : (
+        <>
+          <span>{compactNumber(display.views)} views</span>
+          <span>{compactNumber(display.likes)} likes</span>
+        </>
+      )}</div>
     </article>
   )
 }

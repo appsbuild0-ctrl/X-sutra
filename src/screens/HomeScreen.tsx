@@ -6,6 +6,7 @@ import { ScreenHeader } from '../components/ScreenHeader'
 import { RefreshIcon, SparkIcon } from '../components/icons'
 import { useApp } from '../context/AppContext'
 import { usePagedMedia } from '../hooks/usePagedMedia'
+import { useStudioMedia } from '../hooks/useStudioMedia'
 import { publicMediaApi } from '../lib/redgifs'
 import type { FeedOrder, MediaItem, PageResult } from '../types'
 
@@ -53,11 +54,16 @@ export function HomeScreen(): React.JSX.Element {
     return normalizePage(result, logicalPage, firstApiPage, mode)
   }, [firstApiPage, mode])
   const feed = usePagedMedia(loadFeed, [mode, firstApiPage])
+  const studio = useStudioMedia()
 
   const visibleItems = useMemo(() => {
     const blocked = new Set(preferences.blockedTags.map((tag) => tag.toLowerCase()))
-    return feed.items.filter((item) => !item.tags.some((tag) => blocked.has(tag.toLowerCase())))
-  }, [feed.items, preferences.blockedTags])
+    const publicItems = feed.items.filter((item) => !item.tags.some((tag) => blocked.has(tag.toLowerCase())))
+    // Admin-uploaded media (private Telegram storage) appears at the top of Home.
+    const known = new Set(publicItems.map((item) => item.id))
+    const studioItems = studio.items.filter((item) => !known.has(item.id))
+    return [...studioItems, ...publicItems]
+  }, [feed.items, preferences.blockedTags, studio.items])
 
   const refreshRealFeed = useCallback(async () => {
     setFirstApiPage((current) => current >= 7 ? 1 : current + 1)

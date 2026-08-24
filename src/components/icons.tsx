@@ -46,6 +46,10 @@ export function DownloadIcon(props: IconProps): React.JSX.Element {
   return <IconFrame {...props}><path d="M12 3v11" /><path d="m8 10 4 4 4-4" /><path d="M4 17v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" /></IconFrame>
 }
 
+export function UploadIcon(props: IconProps): React.JSX.Element {
+  return <IconFrame {...props}><path d="M12 16V4" /><path d="m7 9 5-5 5 5" /><path d="M5 20h14" /></IconFrame>
+}
+
 export function UserIcon(props: IconProps): React.JSX.Element {
   return <IconFrame {...props}><circle cx="12" cy="8" r="3.5" /><path d="M4.5 21a7.5 7.5 0 0 1 15 0" /></IconFrame>
 }
@@ -124,4 +128,13 @@ export function MuteIcon(props: IconProps): React.JSX.Element {
 
 export function PauseIcon(props: IconProps): React.JSX.Element {
   return <IconFrame {...props} fill="currentColor"><path d="M8 6h3v12H8zM13 6h3v12h-3z" stroke="none" /></IconFrame>
+}
+
+export function StudioIcon(props: IconProps): React.JSX.Element {
+  return (
+    <IconFrame {...props}>
+      <rect x="3" y="4" width="18" height="14" rx="2.4" />
+      <path d="m9.5 8.4 5 2.6-5 2.6V8.4Z" fill="currentColor" stroke="none" />
+    </IconFrame>
+  )
 }
