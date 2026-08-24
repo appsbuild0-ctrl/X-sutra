@@ -57,6 +57,42 @@ async function servePublicMedia(req: IncomingMessage, res: ServerResponse): Prom
   }
 }
 
+function readBody(req: IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = []
+    req.on('data', (chunk) => chunks.push(Buffer.from(chunk)))
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
+    req.on('error', reject)
+  })
+}
+
+function premiumDevApi(): Plugin {
+  return {
+    name: 'x-sutra-premium-dev-api',
+    configureServer(server) {
+      server.middlewares.use(async (req, res, next) => {
+        const path = req.url?.split('?')[0] ?? ''
+        if (path !== '/api/premium' && path !== '/api/premium-scan') return next()
+        process.env.PREMIUM_LOCAL_FILE ||= '.premium-data.json'
+        try {
+          const body = req.method === 'POST' ? await readBody(req) : ''
+          const event = { httpMethod: req.method, body, headers: req.headers }
+          const handlerPath = path === '/api/premium-scan' ? './netlify/functions/premium-scan.mjs' : './netlify/functions/premium.mjs'
+          const mod = await import(/* @vite-ignore */ handlerPath) as { handler: (event: unknown) => Promise<{ statusCode: number; body: string }> }
+          const result = await mod.handler(event)
+          res.statusCode = result.statusCode
+          res.setHeader('Content-Type', 'application/json; charset=utf-8')
+          res.end(result.body)
+        } catch (error) {
+          res.statusCode = 500
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify({ error: error instanceof Error ? error.message : 'Premium API failed' }))
+        }
+      })
+    }
+  }
+}
+
 function publicMediaProxy(): Plugin {
   return {
     name: 'x-sutra-public-media-proxy',
@@ -69,7 +105,7 @@ function publicMediaProxy(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), publicMediaProxy()],
+  plugins: [react(), publicMediaProxy(), premiumDevApi()],
   server: {
     host: '0.0.0.0',
     port: 5173,

@@ -12,6 +12,8 @@ import { DownloadsScreen } from './screens/DownloadsScreen'
 import { HomeScreen } from './screens/HomeScreen'
 import { LibraryScreen } from './screens/LibraryScreen'
 import { LoginScreen } from './screens/LoginScreen'
+import { PremiumAlbumScreen } from './screens/PremiumAlbumScreen'
+import { PremiumChannelScreen } from './screens/PremiumChannelScreen'
 import { PremiumScreen } from './screens/PremiumScreen'
 import { NicheScreen } from './screens/NicheScreen'
 import { SearchScreen } from './screens/SearchScreen'
@@ -43,6 +45,8 @@ function XsApp(): React.JSX.Element {
           <Route path="/you" element={<YouScreen />} />
           <Route path="/login" element={<LoginScreen />} />
           <Route path="/premium" element={<PremiumScreen />} />
+          <Route path="/premium/channel/:id" element={<PremiumChannelScreen />} />
+          <Route path="/premium/album/:id" element={<PremiumAlbumScreen />} />
           <Route path="/admin" element={<AdminPanelScreen />} />
           <Route path="/settings" element={<SettingsScreen />} />
           <Route path="*" element={<Navigate to="/" replace />} />

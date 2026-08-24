@@ -25,6 +25,12 @@
   force = true
 
 [[redirects]]
+  from = "/api/premium-scan"
+  to = "/.netlify/functions/premium-scan"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200

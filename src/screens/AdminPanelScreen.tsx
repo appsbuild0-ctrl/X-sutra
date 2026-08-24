@@ -4,7 +4,8 @@ import { ScreenHeader } from '../components/ScreenHeader'
 import { DownloadIcon, HeartIcon, LibraryIcon, ShieldIcon, SparkIcon, TrashIcon, UserIcon } from '../components/icons'
 import { useApp } from '../context/AppContext'
 import { useOnlineMembers } from '../hooks/useOnlineMembers'
-import { addPremiumPost } from '../lib/premium'
+import { PremiumAdmin } from './PremiumAdmin'
+import { premiumAdmin } from '../lib/premium'
 
 /** Device administrator tools. Opens with the built-in admin / admin login. */
 export function AdminPanelScreen(): React.JSX.Element {
@@ -18,7 +19,7 @@ export function AdminPanelScreen(): React.JSX.Element {
 
   const submitPost = async (): Promise<void> => {
     if (posting) return
-    const result = await addPremiumPost('admin123', postTitle, postUrl.trim(), postThumb.trim())
+    const result = await premiumAdmin('addPost', { title: postTitle, videoUrl: postUrl.trim(), thumbnail: postThumb.trim() })
     if (result.ok) {
       notify('Premium post published', 'success')
       setPostTitle('')
@@ -86,8 +87,10 @@ export function AdminPanelScreen(): React.JSX.Element {
         <button className="primary-button primary-button--wide" type="button" disabled={posting || !postUrl.trim()} onClick={() => { setPosting(true); void submitPost() }}>
           {posting ? 'Publishing…' : 'Publish to Premium'}
         </button>
-        <p className="form-help">Paste a direct video link — members see it in the Premium tab.</p>
+        <p className="form-help">Paste a direct video link — members see it in Premium Reels.</p>
       </div>
+
+      <PremiumAdmin />
 
       <div className="section-heading section-heading--spaced"><div><p className="eyebrow">Controls</p><h3>Admin actions</h3></div></div>
       <div className="quick-link-list">

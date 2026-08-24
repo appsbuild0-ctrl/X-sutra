@@ -79,7 +79,8 @@ export function MediaCard({ item, queue, priority = false }: MediaCardProps): Re
     return () => observer.disconnect()
   }, [priority, item.id])
 
-  const requiresDetail = !item.videoUrl || item.thumbnailUrls.length === 0
+  const isPremium = item.id.startsWith('pm-') || item.id.startsWith('premium-') || item.creator === 'premium'
+  const requiresDetail = !isPremium && (!item.videoUrl || item.thumbnailUrls.length === 0)
   useEffect(() => {
     if (!inView || resolved || !requiresDetail) return
     let cancelled = false
