@@ -1,4 +1,5 @@
 import type { MediaItem } from '../types'
+import { readStored, writeStored } from './storage'
 
 export interface PremiumSettings {
   premiumUpload: boolean
@@ -96,7 +97,44 @@ export interface ScanPage {
 
 const ENDPOINT = '/api/premium'
 const SCAN = '/api/premium-scan'
+const LOCAL_KEY = 'x-sutra.premium.catalog.v1'
 export const ADMIN_KEY = 'admin123'
+
+export function cacheCatalog(catalog: PremiumCatalog): PremiumCatalog {
+  writeStored(LOCAL_KEY, catalog)
+  return catalog
+}
+
+export function localCatalog(): PremiumCatalog {
+  const stored = readStored<PremiumCatalog | null>(LOCAL_KEY, null)
+  if (!stored) return emptyCatalog()
+  const fallback = emptyCatalog()
+  return {
+    settings: { ...fallback.settings, ...stored.settings },
+    channels: Array.isArray(stored.channels) ? stored.channels : [],
+    albums: Array.isArray(stored.albums) ? stored.albums : [],
+    media: Array.isArray(stored.media) ? stored.media : [],
+    heroes: Array.isArray(stored.heroes) ? stored.heroes : [],
+    announcements: Array.isArray(stored.announcements) ? stored.announcements : []
+  }
+}
+
+function mergeCatalog(remote: PremiumCatalog, local: PremiumCatalog): PremiumCatalog {
+  const pick = <T extends { id: string }>(primary: T[], secondary: T[]): T[] => {
+    const map = new Map<string, T>()
+    for (const item of secondary) map.set(item.id, item)
+    for (const item of primary) map.set(item.id, item)
+    return [...map.values()]
+  }
+  return {
+    settings: remote.channels.length || remote.media.length ? remote.settings : local.settings,
+    channels: pick(remote.channels, local.channels),
+    albums: pick(remote.albums, local.albums),
+    media: pick(remote.media, local.media),
+    heroes: pick(remote.heroes, local.heroes),
+    announcements: pick(remote.announcements, local.announcements)
+  }
+}
 
 export const emptyCatalog = (): PremiumCatalog => ({
   settings: {
@@ -118,12 +156,13 @@ export const emptyCatalog = (): PremiumCatalog => ({
 })
 
 export async function fetchPremiumCatalog(): Promise<PremiumCatalog> {
+  const local = localCatalog()
   try {
     const response = await fetch(ENDPOINT, { headers: { Accept: 'application/json' } })
-    if (!response.ok) return emptyCatalog()
+    if (!response.ok) return cacheCatalog(local)
     const data = await response.json() as Partial<PremiumCatalog>
     const fallback = emptyCatalog()
-    return {
+    const remote: PremiumCatalog = {
       settings: { ...fallback.settings, ...data.settings },
       channels: Array.isArray(data.channels) ? data.channels : [],
       albums: Array.isArray(data.albums) ? data.albums : [],
@@ -131,8 +170,9 @@ export async function fetchPremiumCatalog(): Promise<PremiumCatalog> {
       heroes: Array.isArray(data.heroes) ? data.heroes : [],
       announcements: Array.isArray(data.announcements) ? data.announcements : []
     }
+    return cacheCatalog(mergeCatalog(remote, local))
   } catch {
-    return emptyCatalog()
+    return cacheCatalog(local)
   }
 }
 
@@ -146,7 +186,8 @@ export async function premiumAdmin(action: string, payload: Record<string, unkno
     const data = await response.json() as { error?: string; added?: number; skipped?: number; catalog?: PremiumCatalog } & Partial<PremiumCatalog>
     if (!response.ok) return { ok: false, error: data.error ?? `Request failed (${response.status})` }
     const catalog = data.catalog ?? (data.channels ? data as PremiumCatalog : undefined)
-    return { ok: true, catalog, added: data.added, skipped: data.skipped }
+    if (catalog) cacheCatalog(mergeCatalog(catalog, localCatalog()))
+    return { ok: true, catalog: catalog ? mergeCatalog(catalog, localCatalog()) : catalog, added: data.added, skipped: data.skipped }
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : 'Network error' }
   }

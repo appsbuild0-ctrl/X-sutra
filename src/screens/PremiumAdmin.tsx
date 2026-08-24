@@ -178,14 +178,30 @@ function UploadAllPanel({ catalog, setCatalog, notify }: { catalog: PremiumCatal
       </div>
       {kind !== 'hero' && (
         <>
-          <select value={channelId} onChange={(event) => setChannelId(event.target.value)}>
-            <option value="">Select premium channel</option>
-            {catalog.channels.map((channel) => <option key={channel.id} value={channel.id}>{channel.name}</option>)}
-          </select>
-          <select value={albumId} onChange={(event) => setAlbumId(event.target.value)}>
-            <option value="">Select album</option>
-            {catalog.albums.filter((album) => !channelId || album.channelId === channelId || !album.channelId).map((album) => <option key={album.id} value={album.id}>{album.name}</option>)}
-          </select>
+          <p className="eyebrow">Upload to channel</p>
+          {catalog.channels.length ? (
+            <div className="premium-kind-row">
+              {catalog.channels.map((channel) => (
+                <button key={channel.id} className={channelId === channel.id ? 'is-active' : ''} type="button" onClick={() => setChannelId(channel.id)}>
+                  {channel.name}
+                </button>
+              ))}
+            </div>
+          ) : <p className="form-help">Abhi koi channel nahi hai. Pehle neeche naam likh ke Create tab dabao.</p>}
+          <div className="collection-form">
+            <input value={tabName} onChange={(event) => setTabName(event.target.value)} placeholder="New channel name (e.g. HD Collection)" />
+            <button className="secondary-button" type="button" onClick={() => void createTab()}>+ Create tab</button>
+          </div>
+          <p className="eyebrow">Album</p>
+          {catalog.albums.filter((album) => !channelId || album.channelId === channelId || !album.channelId).length ? (
+            <div className="premium-kind-row">
+              {catalog.albums.filter((album) => !channelId || album.channelId === channelId || !album.channelId).map((album) => (
+                <button key={album.id} className={albumId === album.id ? 'is-active' : ''} type="button" onClick={() => setAlbumId(album.id)}>
+                  {album.name}
+                </button>
+              ))}
+            </div>
+          ) : <p className="form-help">Is channel me album nahi hai. Naam likh ke Create album dabao.</p>}
           <div className="collection-form">
             <input value={albumName} onChange={(event) => setAlbumName(event.target.value)} placeholder="New album name" />
             <button className="secondary-button" type="button" onClick={() => void createAlbum()}>+ Create album</button>
@@ -215,8 +231,19 @@ function UploadAllPanel({ catalog, setCatalog, notify }: { catalog: PremiumCatal
 }
 
 function ChannelsPane({ catalog, setCatalog, notify }: { catalog: PremiumCatalog; setCatalog: (catalog: PremiumCatalog) => void; notify: (text: string, tone?: 'success' | 'error') => void }): React.JSX.Element {
+  const [name, setName] = useState('')
   return (
     <div className="premium-post-form">
+      <div className="collection-form">
+        <input value={name} onChange={(event) => setName(event.target.value)} placeholder="New channel name" />
+        <button className="secondary-button" type="button" onClick={async () => {
+          if (!name.trim()) return
+          const result = await premiumAdmin('createChannel', { name: name.trim(), type: 'mixed', status: 'on', order: catalog.channels.length + 1 })
+          if (result.ok && result.catalog) { setCatalog(result.catalog); setName(''); notify('Channel created', 'success') }
+          else notify(result.error ?? 'Failed', 'error')
+        }}>+ Create</button>
+      </div>
+      {!catalog.channels.length && <p className="form-help">No channels yet.</p>}
       {catalog.channels.map((channel) => (
         <div className="premium-admin-row" key={channel.id}>
           <strong>{channel.name}</strong>
