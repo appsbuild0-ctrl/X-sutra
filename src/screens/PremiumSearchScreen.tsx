@@ -1,44 +1,57 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
-import { MediaGrid } from '../components/MediaGrid'
-import { SearchIcon } from '../components/icons'
-import { emptyCatalog, fetchPremiumCatalog, premiumMediaToItem, searchPremium, type PremiumCatalog } from '../lib/premium'
+import { PlayIcon, SearchIcon } from '../components/icons'
+import { useApp } from '../context/AppContext'
+import { hotpicApi, type HotpicAlbumCard, type HotpicFeed } from '../lib/hotpic'
 
 export function PremiumSearchScreen(): React.JSX.Element {
   const navigate = useNavigate()
+  const { openPlayer } = useApp()
   const [params] = useSearchParams()
-  const [catalog, setCatalog] = useState<PremiumCatalog | null>(null)
   const [query, setQuery] = useState(params.get('q') ?? '')
+  const [feed, setFeed] = useState<HotpicFeed | null>(null)
+  const [busy, setBusy] = useState(false)
 
-  useEffect(() => { void fetchPremiumCatalog().then(setCatalog) }, [])
-  const results = useMemo(() => searchPremium(catalog ?? emptyCatalog(), query), [catalog, query])
+  useEffect(() => {
+    const tag = query.trim().replace(/[^A-Za-z0-9-]/g, '') || 'Desi'
+    setBusy(true)
+    void hotpicApi.feed(tag, 1).then(setFeed).finally(() => setBusy(false))
+  }, [query])
+
+  const openCard = (card: HotpicAlbumCard) => {
+    if ((card.kind || 'album') === 'album') {
+      navigate(`/premium/hotpic/${card.id}`)
+      return
+    }
+    openPlayer(hotpicApi.cardToMedia(card))
+  }
+
+  const Grid = ({ cards }: { cards: HotpicAlbumCard[] }) => cards.length ? (
+    <div className="hp-grid">
+      {cards.map((card) => (
+        <button key={`${card.kind}-${card.id}`} className="hp-card" type="button" onClick={() => openCard(card)}>
+          <span className="hp-card__media" style={card.cover ? { backgroundImage: `url(${card.cover})` } : undefined}>
+            {(card.kind === 'video' || card.hasVideo) && <i className="hp-card__play"><PlayIcon size={18} /></i>}
+          </span>
+          <strong>{card.title}</strong>
+        </button>
+      ))}
+    </div>
+  ) : null
 
   return (
     <section className="screen screen--ott">
       <form className="ott-search" onSubmit={(event) => event.preventDefault()}>
         <SearchIcon size={18} />
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search albums, videos, categories..." autoFocus />
+        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search albums, pics, videos..." autoFocus />
       </form>
-      {query.trim() && !results.albums.length && !results.media.length && !results.channels.length && <div className="empty-state"><strong>No results found</strong></div>}
-      {results.channels.length > 0 && (
-        <div className="ott-rail">{results.channels.map((channel) => <button key={channel.id} className="ott-cat" type="button" onClick={() => navigate(`/premium/channel/${channel.id}`)}><strong>{channel.name}</strong></button>)}</div>
-      )}
-      {results.albums.length > 0 && (
-        <div className="ott-rail">
-          {results.albums.map((album) => (
-            <button key={album.id} className="ott-card" type="button" onClick={() => navigate(`/premium/album/${album.id}`)}>
-              <span style={album.cover ? { backgroundImage: `url(${album.cover})` } : undefined} />
-              <strong>{album.name}</strong>
-            </button>
-          ))}
-        </div>
-      )}
-      <MediaGrid items={results.media.filter((item) => item.type === 'video').map(premiumMediaToItem)} empty={null} />
-      <div className="premium-image-grid">
-        {results.media.filter((item) => item.type === 'image').map((item) => (
-          <a key={item.id} className="premium-image" href={item.url} target="_blank" rel="noreferrer" style={{ backgroundImage: `url(${item.thumbnail || item.url})` }} />
-        ))}
-      </div>
+      {busy && <p className="form-help">Searching…</p>}
+      <div className="ott-row-head"><h3>Albums</h3></div>
+      <Grid cards={feed?.albums ?? []} />
+      <div className="ott-row-head"><h3>Pics</h3></div>
+      <Grid cards={feed?.pics ?? []} />
+      <div className="ott-row-head"><h3>Videos</h3></div>
+      <Grid cards={feed?.videos ?? []} />
     </section>
   )
 }

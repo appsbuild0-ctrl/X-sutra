@@ -26,6 +26,7 @@ export interface HotpicAlbumCard {
   url: string
   owner?: string
   hasVideo?: boolean
+  kind?: 'album' | 'pic' | 'video'
 }
 
 export interface HotpicProfile {
@@ -43,6 +44,13 @@ export interface HotpicAlbum {
   title: string
   owner: string
   items: MediaItem[]
+}
+
+export interface HotpicFeed {
+  users: Creator[]
+  albums: HotpicAlbumCard[]
+  pics: HotpicAlbumCard[]
+  videos: HotpicAlbumCard[]
 }
 
 function decode(value: string): string {
@@ -70,31 +78,62 @@ function parseUsers(html: string): Creator[] {
   return [...users.values()]
 }
 
-function parseFeed(html: string): HotpicAlbumCard[] {
-  const albums: HotpicAlbumCard[] = []
-  const seen = new Set<string>()
-  const re = /\/album\/([A-Za-z0-9_-]{4,})/gi
-  let match: RegExpExecArray | null
-  while ((match = re.exec(html))) {
-    const id = match[1]
-    if (seen.has(id)) continue
-    seen.add(id)
-    const window = html.slice(Math.max(0, match.index - 240), match.index + 1400)
-    const title = decode(window.match(/title=["']([^"']+)["']/i)?.[1] || `Album ${id}`)
-    const cover = window.match(/src=["'](https?:\/\/cdn[^"']+)["']/i)?.[1]
-      || window.match(/src=["'](https?:\/\/[^"']+\.(?:webp|jpe?g|png)[^"']*)["']/i)?.[1]
-      || ''
-    const owner = decodeURIComponent(window.match(/\/u\/([^"'/#?]+)/i)?.[1] || '')
-    albums.push({
-      id,
-      title,
-      cover,
-      url: `${ORIGIN}/album/${id}`,
-      owner,
-      hasVideo: /m-play|play_circle|\.mp4|video/i.test(window)
-    })
+function cardFromWindow(id: string, kind: 'album' | 'pic' | 'video', html: string, index: number): HotpicAlbumCard {
+  const slice = html.slice(Math.max(0, index - 240), index + 1400)
+  const title = decode(slice.match(/title=["']([^"']+)["']/i)?.[1] || (kind === 'album' ? `Album ${id}` : id))
+  const cover = slice.match(/src=["'](https?:\/\/cdn[^"']+)["']/i)?.[1]
+    || slice.match(/src=["'](https?:\/\/[^"']+\.(?:webp|jpe?g|png)[^"']*)["']/i)?.[1]
+    || ''
+  const owner = decodeURIComponent(slice.match(/\/u\/([^"'/#?]+)/i)?.[1] || '')
+  const looksVideo = kind === 'video' || /m-play|play_circle|\.(mp4|mov|avi|webm)/i.test(`${title} ${slice}`)
+  return {
+    id,
+    title,
+    cover,
+    url: kind === 'album' ? `${ORIGIN}/album/${id}` : `${ORIGIN}/i/${id}`,
+    owner,
+    hasVideo: looksVideo,
+    kind: kind === 'album' ? 'album' : looksVideo ? 'video' : 'pic'
   }
-  return albums
+}
+
+function parseFeed(html: string): HotpicAlbumCard[] {
+  const cards: HotpicAlbumCard[] = []
+  const seen = new Set<string>()
+  const albumRe = /\/album\/([A-Za-z0-9_-]{4,})/gi
+  let match: RegExpExecArray | null
+  while ((match = albumRe.exec(html))) {
+    if (seen.has(`a:${match[1]}`)) continue
+    seen.add(`a:${match[1]}`)
+    cards.push(cardFromWindow(match[1], 'album', html, match.index))
+  }
+  const itemRe = /\/i\/([A-Za-z0-9_-]{4,})/gi
+  while ((match = itemRe.exec(html))) {
+    if (seen.has(`i:${match[1]}`)) continue
+    seen.add(`i:${match[1]}`)
+    cards.push(cardFromWindow(match[1], 'pic', html, match.index))
+  }
+  return cards
+}
+
+function splitFeed(cards: HotpicAlbumCard[]): Pick<HotpicFeed, 'albums' | 'pics' | 'videos'> {
+  return {
+    albums: cards.filter((card) => (card.kind || 'album') === 'album'),
+    pics: cards.filter((card) => card.kind === 'pic'),
+    videos: cards.filter((card) => card.kind === 'video')
+  }
+}
+
+function emptyProfile(username: string): HotpicProfile {
+  return {
+    username,
+    displayName: username,
+    avatar: `${ORIGIN}/images/user/${encodeURIComponent(username)}.jpg`,
+    profileUrl: `${ORIGIN}/u/${encodeURIComponent(username)}`,
+    albums: 0,
+    joined: '',
+    items: []
+  }
 }
 
 function fullFromThumb(thumb: string): string {
@@ -107,14 +146,15 @@ function parseProfile(html: string, username: string): HotpicProfile {
     || username
   const albums = Number(html.match(/(\d+)\s*Albums/i)?.[1] || 0)
   const joined = html.match(/Joined\s+([A-Za-z]+ \d{1,2}, \d{4})/i)?.[1] || ''
+  const items = parseFeed(html)
   return {
     username,
     displayName: decode(name),
     avatar: `${ORIGIN}/images/user/${encodeURIComponent(username)}.jpg`,
     profileUrl: `${ORIGIN}/u/${encodeURIComponent(username)}`,
-    albums,
+    albums: albums || items.filter((item) => item.kind === 'album').length,
     joined,
-    items: parseFeed(html)
+    items
   }
 }
 
@@ -122,23 +162,26 @@ function parseAlbum(html: string, id: string): HotpicAlbum {
   const title = html.match(/<h1[^>]*>([^<]+)<\/h1>/i)?.[1]?.trim() || `Album ${id}`
   const owner = html.match(/\/u\/([^"'/]+)/i)?.[1] || 'hotpic'
   const media: MediaItem[] = []
-  const image = /\/i\/([A-Za-z0-9_-]+)[^>]{0,220}title=["']([^"']*)["'][\s\S]{0,280}?src=["'](https?:\/\/[^"']+)["']/gi
+  const seen = new Set<string>()
+  const loose = /\/i\/([A-Za-z0-9_-]+)/gi
   let match: RegExpExecArray | null
-  while ((match = image.exec(html))) {
-    const itemId = match[1]
-    const name = decode(match[2])
-    const thumb = match[3]
-    const isVideo = /\.(mp4|mov|avi|webm)$/i.test(name)
+  while ((match = loose.exec(html))) {
+    if (seen.has(match[1])) continue
+    seen.add(match[1])
+    const slice = html.slice(match.index, match.index + 700)
+    const name = decode(slice.match(/title=["']([^"']+)["']/i)?.[1] || match[1])
+    const thumb = slice.match(/src=["'](https?:\/\/[^"']+)["']/i)?.[1] || ''
+    const isVideo = /\.(mp4|mov|avi|webm)/i.test(name) || /m-play|play_circle|<video/i.test(slice)
     media.push({
-      id: `hp-${itemId}`,
+      id: `hp-${match[1]}`,
       title: name,
       description: title,
       creator: owner,
       thumbnail: thumb,
-      thumbnailUrls: [thumb],
-      previewUrl: isVideo ? undefined : fullFromThumb(thumb),
-      videoUrl: isVideo ? `${ORIGIN}/i/${itemId}` : undefined,
-      sourceUrl: `${ORIGIN}/i/${itemId}`,
+      thumbnailUrls: thumb ? [thumb] : [],
+      previewUrl: isVideo ? undefined : (thumb ? fullFromThumb(thumb) : undefined),
+      videoUrl: isVideo ? `${ORIGIN}/i/${match[1]}` : undefined,
+      sourceUrl: `${ORIGIN}/i/${match[1]}`,
       duration: 0,
       likes: 0,
       views: 0,
@@ -149,33 +192,6 @@ function parseAlbum(html: string, id: string): HotpicAlbum {
       tags: [],
       niches: []
     })
-  }
-  if (!media.length) {
-    const loose = /\/i\/([A-Za-z0-9_-]+)/gi
-    while ((match = loose.exec(html))) {
-      if (media.some((item) => item.id === `hp-${match![1]}`)) continue
-      const window = html.slice(match.index, match.index + 500)
-      const thumb = window.match(/src=["'](https?:\/\/[^"']+)["']/i)?.[1] || ''
-      media.push({
-        id: `hp-${match[1]}`,
-        title: match[1],
-        description: title,
-        creator: owner,
-        thumbnail: thumb,
-        thumbnailUrls: thumb ? [thumb] : [],
-        previewUrl: thumb ? fullFromThumb(thumb) : undefined,
-        sourceUrl: `${ORIGIN}/i/${match[1]}`,
-        duration: 0,
-        likes: 0,
-        views: 0,
-        width: 0,
-        height: 0,
-        createdAt: Date.now(),
-        hasAudio: false,
-        tags: [],
-        niches: []
-      })
-    }
   }
   return { id, title, owner, items: media }
 }
@@ -204,7 +220,7 @@ async function nativeHtml(path: string): Promise<string> {
 async function proxyHtml(path: string): Promise<string> {
   const response = await fetch(`${HTML_PROXY}${path}`, { headers: { Accept: 'text/html' } })
   const body = await response.text()
-  if (!response.ok || body.trim().startsWith('<!DOCTYPE html>') && body.includes('id="root"')) {
+  if (!response.ok || (body.trim().startsWith('<!DOCTYPE html>') && body.includes('id="root"'))) {
     throw new Error('Hotpic HTML proxy unavailable')
   }
   return body
@@ -221,70 +237,98 @@ async function functionJson<T>(params: Record<string, string>): Promise<T> {
   return data
 }
 
-async function loadPage(kind: 'feed' | 'user' | 'album', params: { tag?: string; page?: number; u?: string; id?: string }): Promise<string> {
+async function loadPage(kind: 'feed' | 'user' | 'album' | 'item', params: { tag?: string; page?: number; u?: string; id?: string }): Promise<string> {
   const path = kind === 'user'
     ? `/u/${encodeURIComponent(params.u || '')}`
     : kind === 'album'
       ? `/album/${encodeURIComponent(params.id || '')}`
-      : `/t/${encodeURIComponent(params.tag || 'Desi')}${params.page && params.page > 1 ? `?page=${params.page}` : ''}`
+      : kind === 'item'
+        ? `/i/${encodeURIComponent(params.id || '')}`
+        : `/t/${encodeURIComponent(params.tag || 'Desi')}${params.page && params.page > 1 ? `?page=${params.page}` : ''}`
   if (Capacitor.isNativePlatform()) return nativeHtml(path)
   return proxyHtml(path)
 }
 
+function cardToMedia(card: HotpicAlbumCard): MediaItem {
+  const isVideo = card.kind === 'video' || card.hasVideo
+  return {
+    id: `hp-${card.id}`,
+    title: card.title,
+    description: card.title,
+    creator: card.owner || 'hotpic',
+    thumbnail: card.cover,
+    thumbnailUrls: card.cover ? [card.cover] : [],
+    previewUrl: isVideo ? undefined : card.cover,
+    videoUrl: isVideo ? card.url : undefined,
+    sourceUrl: card.url,
+    duration: 0,
+    likes: 0,
+    views: 0,
+    width: 0,
+    height: 0,
+    createdAt: Date.now(),
+    hasAudio: Boolean(isVideo),
+    tags: [],
+    niches: []
+  }
+}
+
 export const hotpicApi = {
+  cardToMedia,
   async topModels(): Promise<Creator[]> {
-    try {
-      const data = await functionJson<{ users?: Creator[] }>({ path: 'desi' })
-      const live = Array.isArray(data.users) ? data.users.filter((user) => user.username) : []
-      if (live.length) return live
-    } catch { /* parse HTML next */ }
-    try {
-      const users = parseUsers(await loadPage('feed', { tag: 'Desi', page: 1 }))
-      return users.length ? users : FALLBACK_MODELS
-    } catch {
-      return FALLBACK_MODELS
-    }
+    const feed = await this.feed('Desi', 1)
+    return feed.users.length ? feed.users : FALLBACK_MODELS
   },
   async profile(username: string): Promise<HotpicProfile> {
+    let profile: HotpicProfile | null = null
     try {
       const data = await functionJson<HotpicProfile>({ path: 'user', u: username })
-      if (data.username) return data
+      if (data.username && data.items?.length) profile = data
     } catch { /* parse HTML next */ }
-    try {
-      return parseProfile(await loadPage('user', { u: username }), username)
-    } catch {
-      return {
-        username,
-        displayName: username,
-        avatar: `${ORIGIN}/images/user/${encodeURIComponent(username)}.jpg`,
-        profileUrl: `${ORIGIN}/u/${encodeURIComponent(username)}`,
-        albums: 0,
-        joined: '',
-        items: []
+    if (!profile) {
+      try {
+        profile = parseProfile(await loadPage('user', { u: username }), username)
+      } catch {
+        profile = emptyProfile(username)
       }
     }
+    if (!profile.items.length) {
+      const feed = await this.feed('Desi', 1)
+      const owned = [...feed.albums, ...feed.pics, ...feed.videos].filter((card) => card.owner && card.owner.toLowerCase() === username.toLowerCase())
+      if (owned.length) profile = { ...profile, items: owned, albums: owned.filter((card) => card.kind === 'album').length }
+    }
+    return profile
   },
   async album(id: string): Promise<HotpicAlbum> {
     try {
       const data = await functionJson<HotpicAlbum>({ path: 'album', id })
-      if (data.id) return data
+      if (data.id && data.items?.length) return data
     } catch { /* parse HTML next */ }
-    return parseAlbum(await loadPage('album', { id }), id)
+    try {
+      return parseAlbum(await loadPage('album', { id }), id)
+    } catch {
+      return { id, title: `Album ${id}`, owner: 'hotpic', items: [] }
+    }
   },
-  async feed(tag = 'Desi', page = 1): Promise<{ users: Creator[]; albums: HotpicAlbumCard[] }> {
+  async item(id: string): Promise<MediaItem> {
+    const html = await loadPage('item', { id })
+    const parsed = parseAlbum(html, id)
+    if (parsed.items[0]) return parsed.items[0]
+    return cardToMedia({ id, title: id, cover: '', url: `${ORIGIN}/i/${id}`, kind: 'pic' })
+  },
+  async feed(tag = 'Desi', page = 1): Promise<HotpicFeed> {
     try {
       const data = await functionJson<{ users?: Creator[]; albums?: HotpicAlbumCard[] }>({ path: 'feed', tag, page: String(page) })
       const users = Array.isArray(data.users) ? data.users : []
-      const albums = Array.isArray(data.albums) ? data.albums : []
-      if (users.length || albums.length) return { users, albums }
+      const cards = Array.isArray(data.albums) ? data.albums : []
+      if (users.length || cards.length) return { users: users.length ? users : FALLBACK_MODELS, ...splitFeed(cards) }
     } catch { /* parse HTML next */ }
     try {
       const html = await loadPage('feed', { tag, page })
       const users = parseUsers(html)
-      const albums = parseFeed(html)
-      return { users: users.length ? users : FALLBACK_MODELS, albums }
+      return { users: users.length ? users : FALLBACK_MODELS, ...splitFeed(parseFeed(html)) }
     } catch {
-      return { users: FALLBACK_MODELS, albums: [] }
+      return { users: FALLBACK_MODELS, albums: [], pics: [], videos: [] }
     }
   }
 }

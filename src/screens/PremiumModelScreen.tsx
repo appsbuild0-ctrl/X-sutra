@@ -3,15 +3,15 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { CreatorAvatar } from '../components/CreatorAvatar'
 import { LiveError } from '../components/LiveState'
 import { ScreenHeader } from '../components/ScreenHeader'
-import { ArrowLeftIcon, BookmarkIcon, RefreshIcon } from '../components/icons'
+import { ArrowLeftIcon, BookmarkIcon, PlayIcon, RefreshIcon } from '../components/icons'
 import { useApp } from '../context/AppContext'
-import { hotpicApi, type HotpicProfile } from '../lib/hotpic'
+import { hotpicApi, type HotpicAlbumCard, type HotpicProfile } from '../lib/hotpic'
 
 export function PremiumModelScreen(): React.JSX.Element {
   const { username: encoded = '' } = useParams()
   const username = decodeURIComponent(encoded)
   const navigate = useNavigate()
-  const { isFollowing, toggleFollow } = useApp()
+  const { isFollowing, toggleFollow, openPlayer } = useApp()
   const [profile, setProfile] = useState<HotpicProfile | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -38,6 +38,33 @@ export function PremiumModelScreen(): React.JSX.Element {
     verified: false
   }
 
+  const albums = (profile?.items ?? []).filter((card) => (card.kind || 'album') === 'album')
+  const pics = (profile?.items ?? []).filter((card) => card.kind === 'pic')
+  const videos = (profile?.items ?? []).filter((card) => card.kind === 'video')
+
+  const openCard = (card: HotpicAlbumCard) => {
+    if ((card.kind || 'album') === 'album') {
+      navigate(`/premium/hotpic/${card.id}`)
+      return
+    }
+    const item = hotpicApi.cardToMedia(card)
+    const queue = (card.kind === 'video' ? videos : pics).map(hotpicApi.cardToMedia)
+    openPlayer(item, queue.length ? queue : [item])
+  }
+
+  const Grid = ({ cards }: { cards: HotpicAlbumCard[] }) => cards.length ? (
+    <div className="hp-grid">
+      {cards.map((card) => (
+        <button key={`${card.kind}-${card.id}`} className="hp-card" type="button" onClick={() => openCard(card)}>
+          <span className="hp-card__media" style={card.cover ? { backgroundImage: `url(${card.cover})` } : undefined}>
+            {(card.kind === 'video' || card.hasVideo) && <i className="hp-card__play"><PlayIcon size={18} /></i>}
+          </span>
+          <strong>{card.title}</strong>
+        </button>
+      ))}
+    </div>
+  ) : <p className="form-help">Nothing public here yet.</p>
+
   return (
     <section className="screen screen--ott">
       <ScreenHeader
@@ -56,8 +83,9 @@ export function PremiumModelScreen(): React.JSX.Element {
           <p className="eyebrow">@{username}</p>
           <h2>{profile?.displayName || username}</h2>
           <div className="creator-profile-card__stats">
-            <span><strong>{profile?.albums ?? 0}</strong> albums</span>
-            {profile?.joined && <span>{profile.joined}</span>}
+            <span><strong>{albums.length}</strong> albums</span>
+            <span><strong>{pics.length}</strong> pics</span>
+            <span><strong>{videos.length}</strong> videos</span>
           </div>
         </div>
         <button className={`follow-button${following ? ' is-following' : ''}`} type="button" onClick={() => toggleFollow(followTarget)}>
@@ -66,17 +94,11 @@ export function PremiumModelScreen(): React.JSX.Element {
       </div>
       {error && <LiveError message={error} onRetry={() => void load()} />}
       <div className="ott-row-head"><h3>Albums</h3></div>
-      {profile?.items?.length ? (
-        <div className="premium-album-grid">
-          {profile.items.map((album) => (
-            <button key={album.id} className="premium-album" type="button" onClick={() => navigate(`/premium/hotpic/${album.id}`)}>
-              <span className="premium-album__cover" style={album.cover ? { backgroundImage: `url(${album.cover})` } : undefined} />
-              <strong>{album.title}</strong>
-              <small>@{username}</small>
-            </button>
-          ))}
-        </div>
-      ) : !error && <p className="form-help">No public albums on this account.</p>}
+      <Grid cards={albums} />
+      <div className="ott-row-head"><h3>Pics</h3></div>
+      <Grid cards={pics} />
+      <div className="ott-row-head"><h3>Videos</h3></div>
+      <Grid cards={videos} />
     </section>
   )
 }

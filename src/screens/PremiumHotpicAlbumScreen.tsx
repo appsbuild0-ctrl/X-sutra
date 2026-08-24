@@ -27,8 +27,10 @@ export function PremiumHotpicAlbumScreen(): React.JSX.Element {
     <section className="screen screen--ott">
       <ScreenHeader title={album?.title ?? 'Album'} eyebrow={`Hotpic · @${album?.owner || 'account'}`} actions={<button className="round-button" type="button" onClick={() => navigate(-1)} aria-label="Back">‹</button>} />
       {error && <p className="form-help">{error}</p>}
-      {videos.length > 0 && <MediaGrid items={videos} empty={null} />}
-      {images.length > 0 && (
+      <div className="ott-row-head"><h3>Videos</h3></div>
+      {videos.length ? <MediaGrid items={videos} empty={null} /> : <p className="form-help">No videos in this album.</p>}
+      <div className="ott-row-head"><h3>Pics</h3></div>
+      {images.length ? (
         <div className="premium-image-grid">
           {images.map((item) => (
             <button
@@ -41,7 +43,7 @@ export function PremiumHotpicAlbumScreen(): React.JSX.Element {
             />
           ))}
         </div>
-      )}
+      ) : <p className="form-help">No pics in this album.</p>}
     </section>
   )
 }
