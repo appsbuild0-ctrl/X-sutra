@@ -53,7 +53,7 @@ export function CreatorScreen(): React.JSX.Element {
       <ScreenHeader
         title="Creator"
         eyebrow="Public profile"
-        actions={<><button className="round-button" type="button" onClick={() => void loadProfile()} aria-label="Refresh creator"><RefreshIcon size={19} /></button><button className="round-button" type="button" onClick={() => navigate(-1)} aria-label="Go back"><ArrowLeftIcon size={19} /></button></>}
+        actions={<><button className="round-button" type="button" onClick={() => navigate(-1)} aria-label="Go back"><ArrowLeftIcon size={19} /></button><button className="round-button" type="button" onClick={() => void loadProfile()} aria-label="Refresh creator"><RefreshIcon size={19} /></button></>}
       />
 
       <div className="creator-profile-card">
