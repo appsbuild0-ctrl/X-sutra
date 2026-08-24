@@ -3,7 +3,7 @@ import { ScreenHeader } from '../components/ScreenHeader'
 import { DownloadIcon, HeartIcon, LibraryIcon, ShieldIcon, TrashIcon, UserIcon } from '../components/icons'
 import { useApp } from '../context/AppContext'
 import { useOnlineMembers } from '../hooks/useOnlineMembers'
-import { PremiumAdmin } from './PremiumAdmin'
+
 
 export function AdminPanelScreen(): React.JSX.Element {
   const navigate = useNavigate()
@@ -54,7 +54,6 @@ export function AdminPanelScreen(): React.JSX.Element {
         <div><DownloadIcon size={18} /><strong>{downloads.length}</strong><span>Downloads</span></div>
         <div><ShieldIcon size={18} /><strong>{preferences.blockedTags.length}</strong><span>Blocked tags</span></div>
       </div>
-      <PremiumAdmin />
       <div className="section-heading section-heading--spaced"><div><p className="eyebrow">Controls</p><h3>Admin actions</h3></div></div>
       <div className="quick-link-list">
         <button type="button" onClick={() => { clearDownloads(); notify('Download history cleared', 'success') }}>
