@@ -1093,3 +1093,20 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .admin-tabs { position: sticky; bottom: calc(70px + var(--safe-bottom)); display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 18px; padding: 8px; border: 1px solid var(--line); border-radius: 14px; background: rgba(16,12,13,.92); }
 .admin-tabs button { min-height: 36px; border-radius: 10px; color: var(--muted); background: transparent; font-size: 10px; font-weight: 700; }
 .admin-tabs button.is-active { color: #2a1a05; background: var(--gold); }
+
+/* Premium access landing: protected content is never mounted for normal users. */
+.premium-gate-screen { display: grid; gap: 18px; padding-top: 18px; }
+.premium-gate-hero { position: relative; overflow: hidden; padding: 30px 20px; border: 1px solid rgba(255,196,107,.3); border-radius: 24px; text-align: center; background: radial-gradient(circle at 50% -10%, rgba(255,196,107,.22), transparent 48%), linear-gradient(145deg,#17141a,#0c0d12); }
+.premium-gate-hero .ott-exit { position: absolute; top: 14px; left: 14px; }
+.premium-gate-crown { display: grid; width: 68px; height: 68px; margin: 4px auto 16px; place-items: center; border-radius: 22px; font-size: 31px; background: linear-gradient(145deg,#ffe19a,#ee9d35); box-shadow: 0 12px 38px rgba(245,160,60,.24); }
+.premium-gate-hero h1 { margin: 3px 0 8px; font-family: 'Fraunces',serif; font-size: clamp(30px,8vw,44px); }
+.premium-gate-hero > p:not(.eyebrow) { max-width: 520px; margin: 0 auto 18px; color: var(--text-soft); line-height: 1.55; }
+.premium-status-chip { display: inline-flex; padding: 9px 14px; border: 1px solid var(--line); border-radius: 99px; color: var(--muted); background: rgba(0,0,0,.28); font-size: 11px; }
+.premium-benefits,.premium-plan-section { padding: 18px; border: 1px solid var(--line); border-radius: 20px; background: var(--surface); }
+.premium-benefits h2,.premium-plan-section h2 { margin: 0 0 14px; font-size: 18px; }
+.premium-benefit-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 9px; }
+.premium-benefit-grid article { padding: 14px; border: 1px solid var(--line); border-radius: 15px; background: rgba(255,255,255,.018); }
+.premium-benefit-grid article span { display: block; margin-bottom: 9px; color: var(--gold); font-size: 21px; }
+.premium-benefit-grid strong { display: block; font-size: 12px; }
+.premium-benefit-grid p { margin: 5px 0 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
+@media (max-width:520px) { .premium-benefit-grid { grid-template-columns: 1fr; } .home-header-actions { gap: 5px; } .home-cta { padding-inline: 9px; } }

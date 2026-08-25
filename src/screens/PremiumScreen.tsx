@@ -2,12 +2,14 @@ import { useCallback, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { CreatorAvatar } from '../components/CreatorAvatar'
 import { LiveError } from '../components/LiveState'
+import { PayQrModal, PlanCards, type PlanId } from '../components/PlanPay'
 import { MediaGrid } from '../components/MediaGrid'
 import { PlayIcon, SearchIcon } from '../components/icons'
 import { useApp } from '../context/AppContext'
 import { usePagedMedia } from '../hooks/usePagedMedia'
 import { hotpicApi, type HotpicAlbumCard } from '../lib/hotpic'
 import { publicMediaApi } from '../lib/redgifs'
+import { hasPremiumAccess, roleLabel } from '../lib/roles'
 import type { Creator } from '../types'
 
 function CardGrid({ cards, onOpen }: { cards: HotpicAlbumCard[]; onOpen: (card: HotpicAlbumCard) => void }): React.JSX.Element | null {
@@ -27,7 +29,7 @@ function CardGrid({ cards, onOpen }: { cards: HotpicAlbumCard[]; onOpen: (card: 
   )
 }
 
-export function PremiumScreen(): React.JSX.Element {
+function PremiumContent(): React.JSX.Element {
   const navigate = useNavigate()
   const { openPlayer } = useApp()
   const [models, setModels] = useState<Creator[]>([])
@@ -126,6 +128,45 @@ export function PremiumScreen(): React.JSX.Element {
           </button>
         </div>
       )}
+    </section>
+  )
+}
+
+export function PremiumScreen(): React.JSX.Element {
+  const navigate = useNavigate()
+  const { account } = useApp()
+  const [plan, setPlan] = useState<PlanId | null>(null)
+
+  if (hasPremiumAccess(account?.role)) return <PremiumContent />
+
+  return (
+    <section className="screen premium-gate-screen">
+      <div className="premium-gate-hero">
+        <button className="ott-exit" type="button" onClick={() => navigate('/')}>← Home</button>
+        <span className="premium-gate-crown">⭐</span>
+        <p className="eyebrow">X-Sutra membership</p>
+        <h1>Unlock Premium</h1>
+        <p>Private channels and protected media stay hidden until your account is activated by the server.</p>
+        {account
+          ? <span className="premium-status-chip">Current status · {roleLabel(account.role)}</span>
+          : <button className="primary-button" type="button" onClick={() => navigate('/login')}>Login or create account</button>}
+      </div>
+      <div className="premium-benefits">
+        <h2>Premium access includes</h2>
+        <div className="premium-benefit-grid">
+          <article><span>📡</span><strong>Private channels</strong><p>Access the X-Sutra channel inbox without exposing its private source.</p></article>
+          <article><span>▶</span><strong>Built-in player</strong><p>Watch protected videos and albums directly inside X-Sutra.</p></article>
+          <article><span>⌕</span><strong>Premium search</strong><p>Search channels, categories, titles and media types.</p></article>
+          <article><span>💎</span><strong>VIP tier</strong><p>Higher-tier collections and exclusive releases when enabled.</p></article>
+        </div>
+      </div>
+      <div className="premium-plan-section">
+        <p className="eyebrow">Choose your access</p>
+        <h2>Premium & VIP plans</h2>
+        <PlanCards onPick={setPlan} />
+        <p className="form-help">Payment does not unlock content automatically. Access appears only after admin verification and role activation.</p>
+      </div>
+      {plan && <PayQrModal plan={plan} onClose={() => setPlan(null)} />}
     </section>
   )
 }
