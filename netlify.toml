@@ -6,6 +6,9 @@
 [build.environment]
   NODE_VERSION = "22"
 
+[functions]
+  node_bundler = "esbuild"
+
 [[redirects]]
   from = "/api/redgifs"
   to = "/.netlify/functions/redgifs"
