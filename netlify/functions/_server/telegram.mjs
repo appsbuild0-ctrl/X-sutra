@@ -26,11 +26,22 @@ export async function connectionStatus() {
   try { return { connected: await client.isUserAuthorized(), status: state.status } } finally { await client.disconnect() }
 }
 
-export async function sendOtp() {
+function normalizePhone(value) { return String(value || '').replace(/[^\d+]/g, '') }
+
+export function telegramConfiguration() {
+  const names = ['TELEGRAM_API_ID', 'TELEGRAM_API_HASH', 'TELEGRAM_PHONE', 'ADMIN_TELEGRAM_USER_ID', 'DATABASE_URL', 'ADMIN_SETUP_SECRET', 'SESSION_ENCRYPTION_KEY', 'AUTH_JWT_SECRET']
+  const missing = names.filter((name) => !process.env[name]?.trim())
+  return { configured: missing.length === 0, missing }
+}
+
+export async function sendOtp(requestedPhone) {
+  validateTelegramEnv()
+  const configuredPhone = normalizePhone(process.env.TELEGRAM_PHONE)
+  if (normalizePhone(requestedPhone) !== configuredPhone) throw Object.assign(new Error('This phone number is not authorized for the private source.'), { statusCode: 403 })
   const state = await authState()
   const client = await clientFrom(state?.encrypted_session)
   try {
-    const sent = await client.sendCode(credentials(), process.env.TELEGRAM_PHONE, false)
+    const sent = await client.sendCode(credentials(), configuredPhone, false)
     await saveAuth({ encrypted_session: encryptSecret(client.session.save()), phone_code_hash: sent.phoneCodeHash, status: 'otp_sent' })
     return { ok: true, status: 'otp_sent', delivery: sent.isCodeViaApp ? 'telegram_app' : 'phone' }
   } finally { await client.disconnect() }

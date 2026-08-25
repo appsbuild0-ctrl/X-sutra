@@ -17,7 +17,7 @@ The database user needs permission to create the `xs_*` tables on first use. Pos
 
 The internal endpoint `/api/internal/telegram-auth` is intentionally absent from frontend code. Call it only from a trusted terminal, passing `ADMIN_SETUP_SECRET` in `x-admin-setup-secret`. Do not paste commands containing secrets into chat, screenshots, shell history, or source files.
 
-1. POST `{ "action": "send_otp" }`.
+1. POST `{ "action": "send_otp", "phone": "+<country-code><number>" }`. The backend accepts only the phone already configured as `TELEGRAM_PHONE`; API ID and API Hash are never requested by the UI.
 2. POST `{ "action": "verify_otp", "code": "..." }`.
 3. If returned status is `2fa_required`, POST `{ "action": "verify_2fa", "password": "..." }`.
 
