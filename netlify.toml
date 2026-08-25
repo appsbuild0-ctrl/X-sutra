@@ -37,6 +37,19 @@
   force = true
 
 [[redirects]]
+  from = "/api/telegram/channels"
+  to = "/.netlify/functions/telegram-channels"
+  status = 200
+  force = true
+
+# Owner bootstrap only. Call from a trusted server/CLI, never from frontend JavaScript.
+[[redirects]]
+  from = "/api/internal/telegram-auth"
+  to = "/.netlify/functions/telegram-admin"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/api/hotpic"
   to = "/.netlify/functions/hotpic"
   status = 200
