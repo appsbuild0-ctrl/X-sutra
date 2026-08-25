@@ -12,3 +12,6 @@ dist-drop/
 android/.gradle/
 android/build/
 android/app/build/
+
+# Local Netlify folder
+.netlify
