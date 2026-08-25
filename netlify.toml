@@ -6,6 +6,9 @@
 [build.environment]
   NODE_VERSION = "22"
 
+[functions]
+  node_bundler = "esbuild"
+
 [[redirects]]
   from = "/api/redgifs"
   to = "/.netlify/functions/redgifs"
@@ -33,6 +36,19 @@
 [[redirects]]
   from = "/api/premium-file"
   to = "/.netlify/functions/premium-file"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/telegram/channels"
+  to = "/.netlify/functions/telegram-channels"
+  status = 200
+  force = true
+
+# Owner bootstrap only. Call from a trusted server/CLI, never from frontend JavaScript.
+[[redirects]]
+  from = "/api/internal/telegram-auth"
+  to = "/.netlify/functions/telegram-admin"
   status = 200
   force = true
 

@@ -5,7 +5,8 @@ import { ContentShield } from './components/ContentShield'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import { ToastHost } from './components/ToastHost'
 import { VideoPlayerSheet } from './components/VideoPlayerSheet'
-import { AppProvider } from './context/AppContext'
+import { AppProvider, useApp } from './context/AppContext'
+import { hasPremiumAccess } from './lib/roles'
 
 const AdminPanelScreen = lazy(async () => ({ default: (await import('./screens/AdminPanelScreen')).AdminPanelScreen }))
 import { CollectionScreen } from './screens/CollectionScreen'
@@ -37,6 +38,11 @@ function ScrollToTop(): null {
   return null
 }
 
+function PremiumOnly({ children }: { children: React.ReactNode }): React.JSX.Element {
+  const { account } = useApp()
+  return hasPremiumAccess(account?.role) ? <>{children}</> : <Navigate to="/premium" replace />
+}
+
 function XsApp(): React.JSX.Element {
   const location = useLocation()
   const inPremium = location.pathname.startsWith('/premium')
@@ -60,14 +66,14 @@ function XsApp(): React.JSX.Element {
           <Route path="/you" element={<YouScreen />} />
           <Route path="/login" element={<LoginScreen />} />
           <Route path="/premium" element={<PremiumScreen />} />
-          <Route path="/premium/search" element={<PremiumSearchScreen />} />
-          <Route path="/premium/model/:username" element={<PremiumModelScreen />} />
-          <Route path="/premium/hotpic/:id" element={<PremiumHotpicAlbumScreen />} />
-          <Route path="/premium/downloads" element={<PremiumDownloadsScreen />} />
-          <Route path="/premium/announcements" element={<PremiumAnnouncementsScreen />} />
-          <Route path="/premium/videos" element={<PremiumVideosScreen />} />
-          <Route path="/premium/channel/:id" element={<PremiumChannelScreen />} />
-          <Route path="/premium/album/:id" element={<PremiumAlbumScreen />} />
+          <Route path="/premium/search" element={<PremiumOnly><PremiumSearchScreen /></PremiumOnly>} />
+          <Route path="/premium/model/:username" element={<PremiumOnly><PremiumModelScreen /></PremiumOnly>} />
+          <Route path="/premium/hotpic/:id" element={<PremiumOnly><PremiumHotpicAlbumScreen /></PremiumOnly>} />
+          <Route path="/premium/downloads" element={<PremiumOnly><PremiumDownloadsScreen /></PremiumOnly>} />
+          <Route path="/premium/announcements" element={<PremiumOnly><PremiumAnnouncementsScreen /></PremiumOnly>} />
+          <Route path="/premium/videos" element={<PremiumOnly><PremiumVideosScreen /></PremiumOnly>} />
+          <Route path="/premium/channel/:id" element={<PremiumOnly><PremiumChannelScreen /></PremiumOnly>} />
+          <Route path="/premium/album/:id" element={<PremiumOnly><PremiumAlbumScreen /></PremiumOnly>} />
           <Route path="/admin" element={<AdminPanelScreen />} />
           <Route path="/settings" element={<SettingsScreen />} />
           <Route path="*" element={<Navigate to="/" replace />} />

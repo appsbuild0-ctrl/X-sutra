@@ -1093,3 +1093,59 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .admin-tabs { position: sticky; bottom: calc(70px + var(--safe-bottom)); display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 18px; padding: 8px; border: 1px solid var(--line); border-radius: 14px; background: rgba(16,12,13,.92); }
 .admin-tabs button { min-height: 36px; border-radius: 10px; color: var(--muted); background: transparent; font-size: 10px; font-weight: 700; }
 .admin-tabs button.is-active { color: #2a1a05; background: var(--gold); }
+
+/* Premium access landing: protected content is never mounted for normal users. */
+.premium-gate-screen { display: grid; gap: 18px; padding-top: 18px; }
+.premium-gate-hero { position: relative; overflow: hidden; padding: 30px 20px; border: 1px solid rgba(255,196,107,.3); border-radius: 24px; text-align: center; background: radial-gradient(circle at 50% -10%, rgba(255,196,107,.22), transparent 48%), linear-gradient(145deg,#17141a,#0c0d12); }
+.premium-gate-hero .ott-exit { position: absolute; top: 14px; left: 14px; }
+.premium-gate-crown { display: grid; width: 68px; height: 68px; margin: 4px auto 16px; place-items: center; border-radius: 22px; font-size: 31px; background: linear-gradient(145deg,#ffe19a,#ee9d35); box-shadow: 0 12px 38px rgba(245,160,60,.24); }
+.premium-gate-hero h1 { margin: 3px 0 8px; font-family: 'Fraunces',serif; font-size: clamp(30px,8vw,44px); }
+.premium-gate-hero > p:not(.eyebrow) { max-width: 520px; margin: 0 auto 18px; color: var(--text-soft); line-height: 1.55; }
+.premium-status-chip { display: inline-flex; padding: 9px 14px; border: 1px solid var(--line); border-radius: 99px; color: var(--muted); background: rgba(0,0,0,.28); font-size: 11px; }
+.premium-benefits,.premium-plan-section { padding: 18px; border: 1px solid var(--line); border-radius: 20px; background: var(--surface); }
+.premium-benefits h2,.premium-plan-section h2 { margin: 0 0 14px; font-size: 18px; }
+.premium-benefit-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 9px; }
+.premium-benefit-grid article { padding: 14px; border: 1px solid var(--line); border-radius: 15px; background: rgba(255,255,255,.018); }
+.premium-benefit-grid article span { display: block; margin-bottom: 9px; color: var(--gold); font-size: 21px; }
+.premium-benefit-grid strong { display: block; font-size: 12px; }
+.premium-benefit-grid p { margin: 5px 0 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
+@media (max-width:520px) { .premium-benefit-grid { grid-template-columns: 1fr; } .home-header-actions { gap: 5px; } .home-cta { padding-inline: 9px; } }
+
+/* Telegram-inspired X-Sutra premium channel inbox (original branding). */
+.tg-premium-screen { padding: 0; background: #080a0e; min-height: calc(100vh - 70px); }
+.tg-premium-header { display:flex; align-items:center; justify-content:space-between; padding:14px 15px 10px; background:#101319; border-bottom:1px solid #20242c; }
+.tg-premium-header > div { display:flex; align-items:center; gap:11px; }
+.tg-premium-header h1 { margin:0; font-size:19px; letter-spacing:-.02em; }
+.tg-premium-header small { color:#7f8a99; font-size:10px; }
+.tg-logo,.tg-premium-header > button { display:grid; width:39px; height:39px; place-items:center; border-radius:50%; color:white; background:linear-gradient(145deg,#35a7f2,#1775cd); font-weight:800; }
+.tg-premium-header > button { border:0; font-size:14px; }
+.tg-search { display:flex; align-items:center; gap:9px; margin:10px 12px; padding:0 13px; height:40px; border-radius:12px; color:#718096; background:#171b22; }
+.tg-search input { width:100%; border:0; outline:0; color:#eaf0f7; background:transparent; font-size:13px; }
+.tg-category-strip { display:flex; gap:7px; overflow-x:auto; padding:0 12px 10px; scrollbar-width:none; }
+.tg-category-strip button { flex:none; padding:7px 11px; border:1px solid #29303b; border-radius:99px; color:#aeb9c7; background:#141820; font-size:10px; text-transform:capitalize; }
+.tg-list-title { display:flex; justify-content:space-between; padding:8px 16px; color:#8290a0; font-size:11px; text-transform:uppercase; letter-spacing:.08em; }
+.tg-channel-list { border-top:1px solid #1c2027; }
+.tg-channel-row { display:flex; width:100%; gap:12px; padding:11px 12px; border:0; border-bottom:1px solid #1c2027; color:#edf3f9; background:#0c0f14; text-align:left; }
+.tg-channel-row:active { background:#151a22; }
+.tg-channel-avatar { display:grid; flex:0 0 54px; height:54px; place-items:center; overflow:hidden; border-radius:50%; font-size:24px; background:linear-gradient(145deg,#25364a,#17202b); }
+.tg-channel-avatar img { width:100%; height:100%; object-fit:cover; }
+.tg-channel-main { flex:1; min-width:0; padding-top:1px; }
+.tg-channel-top,.tg-channel-preview { display:flex; align-items:center; min-width:0; }
+.tg-channel-top { justify-content:space-between; gap:9px; }
+.tg-channel-top > strong { overflow:hidden; font-size:14px; font-weight:760; text-overflow:ellipsis; white-space:nowrap; }
+.tg-channel-date { display:flex; flex:none; align-items:center; gap:5px; color:#758292; font-size:10px; }
+.tg-channel-date i { color:#37a9f5; font-style:normal; letter-spacing:-3px; padding-right:3px; }
+.tg-channel-preview { gap:6px; margin-top:7px; color:#7e8998; font-size:10px; }
+.tg-channel-preview b { color:#39aaf5; font-weight:600; }
+.tg-channel-preview > span:not(.tg-mini-thumbs) { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.tg-channel-preview em { display:grid; min-width:20px; height:20px; margin-left:auto; padding:0 5px; place-items:center; border-radius:99px; color:white; background:#268fd8; font-style:normal; font-size:9px; }
+.tg-mini-thumbs { display:flex; flex:none; }
+.tg-mini-thumbs img { width:27px; height:27px; margin-right:-5px; border:2px solid #0c0f14; border-radius:7px; object-fit:cover; }
+.tg-channel-skeleton { display:flex; gap:12px; padding:11px 12px; border-bottom:1px solid #1c2027; }
+.tg-channel-skeleton i { width:54px; height:54px; border-radius:50%; background:#171c24; animation:pulse 1.2s infinite; }
+.tg-channel-skeleton span { width:65%; height:35px; margin-top:7px; border-radius:8px; background:#171c24; animation:pulse 1.2s infinite; }
+.tg-inbox-empty { display:grid; justify-items:center; padding:55px 20px; text-align:center; }
+.tg-inbox-empty > span { font-size:34px; }
+.tg-inbox-empty strong { margin-top:9px; font-size:14px; }
+.tg-inbox-empty p { max-width:300px; color:#758292; font-size:11px; line-height:1.5; }
+.tg-private-note { margin:18px; color:#586575; text-align:center; font-size:9px; }

@@ -1,131 +1,116 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { CreatorAvatar } from '../components/CreatorAvatar'
-import { LiveError } from '../components/LiveState'
-import { MediaGrid } from '../components/MediaGrid'
-import { PlayIcon, SearchIcon } from '../components/icons'
+import { PayQrModal, PlanCards, type PlanId } from '../components/PlanPay'
+import { SearchIcon } from '../components/icons'
 import { useApp } from '../context/AppContext'
-import { usePagedMedia } from '../hooks/usePagedMedia'
-import { hotpicApi, type HotpicAlbumCard } from '../lib/hotpic'
-import { publicMediaApi } from '../lib/redgifs'
-import type { Creator } from '../types'
+import { fetchPremiumCatalog, type PremiumCatalog, type PremiumChannel, type PremiumMedia } from '../lib/premium'
+import { hasPremiumAccess, roleLabel } from '../lib/roles'
 
-function CardGrid({ cards, onOpen }: { cards: HotpicAlbumCard[]; onOpen: (card: HotpicAlbumCard) => void }): React.JSX.Element | null {
-  if (!cards.length) return null
+function shortDate(value?: string): string {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const today = new Date()
+  if (date.toDateString() === today.toDateString()) return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  return date.toLocaleDateString([], { month: 'short', day: 'numeric' })
+}
+
+function channelEmoji(channel: PremiumChannel): string {
+  if (channel.type === 'videos') return '🎬'
+  if (channel.type === 'images') return '📸'
+  return '🔥'
+}
+
+function ChannelRow({ channel, media, onOpen }: { channel: PremiumChannel; media: PremiumMedia[]; onOpen: () => void }): React.JSX.Element {
+  const latest = [...media].sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))[0]
+  const previews = media.filter((item) => item.thumbnail || item.type === 'image').slice(0, 3)
+  const videos = media.filter((item) => item.type === 'video').length
+  const label = media.length > 1 ? `${media.length} media` : videos ? 'Video' : media.length ? 'Photo' : 'No media yet'
+
   return (
-    <div className="hp-grid">
-      {cards.map((card) => (
-        <button key={`${card.kind}-${card.id}`} className="hp-card" type="button" onClick={() => onOpen(card)}>
-          <span className="hp-card__media" style={card.cover ? { backgroundImage: `url(${card.cover})` } : undefined}>
-            {(card.kind === 'video' || card.hasVideo) && <i className="hp-card__play"><PlayIcon size={18} /></i>}
-          </span>
-          <strong>{card.title}</strong>
-          {card.owner && <small>@{card.owner}</small>}
-        </button>
-      ))}
-    </div>
+    <button className="tg-channel-row" type="button" onClick={onOpen}>
+      <span className="tg-channel-avatar">
+        {channel.cover ? <img src={channel.cover} alt="" /> : channelEmoji(channel)}
+      </span>
+      <span className="tg-channel-main">
+        <span className="tg-channel-top">
+          <strong>{channel.name}</strong>
+          <span className="tg-channel-date"><i>✓✓</i>{shortDate(latest?.createdAt || channel.createdAt)}</span>
+        </span>
+        <span className="tg-channel-preview">
+          <b>You:</b>
+          {previews.length > 0 && <span className="tg-mini-thumbs">{previews.map((item) => <img key={item.id} src={item.thumbnail || item.url} alt="" loading="lazy" />)}</span>}
+          <span>{label}</span>
+          {media.length > 0 && <em>{Math.min(media.length, 99)}</em>}
+        </span>
+      </span>
+    </button>
+  )
+}
+
+function PremiumInbox(): React.JSX.Element {
+  const navigate = useNavigate()
+  const { account } = useApp()
+  const [catalog, setCatalog] = useState<PremiumCatalog | null>(null)
+  const [error, setError] = useState('')
+  const [query, setQuery] = useState('')
+
+  useEffect(() => {
+    void fetchPremiumCatalog().then(setCatalog).catch((reason) => setError(reason instanceof Error ? reason.message : 'Channels could not load.'))
+  }, [])
+
+  const channels = useMemo(() => {
+    const needle = query.trim().toLowerCase()
+    return (catalog?.channels ?? [])
+      .filter((channel) => channel.status === 'on')
+      .filter((channel) => !needle || channel.name.toLowerCase().includes(needle) || channel.description.toLowerCase().includes(needle) || channel.type.includes(needle))
+      .sort((a, b) => a.order - b.order)
+  }, [catalog, query])
+
+  const categories = useMemo(() => Array.from(new Set((catalog?.channels ?? []).filter((channel) => channel.status === 'on').map((channel) => channel.type))), [catalog])
+
+  return (
+    <section className="screen tg-premium-screen">
+      <header className="tg-premium-header">
+        <div><span className="tg-logo">X</span><div><h1>X-Sutra</h1><small>{roleLabel(account?.role)} channels</small></div></div>
+        <button type="button" onClick={() => navigate('/you')} aria-label="Profile">{account?.name?.slice(0, 1).toUpperCase() || 'P'}</button>
+      </header>
+
+      <label className="tg-search"><SearchIcon size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search channels and categories" /></label>
+
+      {categories.length > 0 && <div className="tg-category-strip">{categories.map((category) => <button key={category} type="button" onClick={() => setQuery(category)}>{category === 'videos' ? '🎬' : category === 'images' ? '📸' : '🗂️'} {category}</button>)}</div>}
+
+      <div className="tg-list-title"><strong>Channels</strong><span>{channels.length}</span></div>
+      <div className="tg-channel-list">
+        {!catalog && !error && Array.from({ length: 5 }, (_, index) => <div className="tg-channel-skeleton" key={index}><i /><span /></div>)}
+        {error && <div className="tg-inbox-empty"><strong>Could not load channels</strong><p>{error}</p><button className="secondary-button" type="button" onClick={() => window.location.reload()}>Retry</button></div>}
+        {catalog && channels.map((channel) => <ChannelRow key={channel.id} channel={channel} media={catalog.media.filter((item) => item.channelId === channel.id)} onOpen={() => navigate(`/premium/channel/${channel.id}`)} />)}
+        {catalog && channels.length === 0 && <div className="tg-inbox-empty"><span>📭</span><strong>{query ? 'No matching channels' : 'No channels published yet'}</strong><p>{query ? 'Try another channel name or category.' : 'New channels published by X-Sutra will appear here.'}</p></div>}
+      </div>
+      <p className="tg-private-note">🔒 Protected X-Sutra feed · Private source details are never shown</p>
+    </section>
+  )
+}
+
+function UpgradeScreen(): React.JSX.Element {
+  const navigate = useNavigate()
+  const { account } = useApp()
+  const [plan, setPlan] = useState<PlanId | null>(null)
+  return (
+    <section className="screen premium-gate-screen">
+      <div className="premium-gate-hero">
+        <button className="ott-exit" type="button" onClick={() => navigate('/')}>← Home</button><span className="premium-gate-crown">⭐</span>
+        <p className="eyebrow">X-Sutra membership</p><h1>Unlock Premium</h1>
+        <p>Private channels and protected media stay hidden until your account is activated.</p>
+        {account ? <span className="premium-status-chip">Current status · {roleLabel(account.role)}</span> : <button className="primary-button" type="button" onClick={() => navigate('/login')}>Login or create account</button>}
+      </div>
+      <div className="premium-plan-section"><p className="eyebrow">Choose your access</p><h2>Premium & VIP plans</h2><PlanCards onPick={setPlan} /><p className="form-help">Access appears only after admin verification and role activation.</p></div>
+      {plan && <PayQrModal plan={plan} onClose={() => setPlan(null)} />}
+    </section>
   )
 }
 
 export function PremiumScreen(): React.JSX.Element {
-  const navigate = useNavigate()
-  const { openPlayer } = useApp()
-  const [models, setModels] = useState<Creator[]>([])
-  const [albums, setAlbums] = useState<HotpicAlbumCard[]>([])
-  const [pics, setPics] = useState<HotpicAlbumCard[]>([])
-  const [page, setPage] = useState(1)
-  const desi = usePagedMedia(useCallback((nextPage: number) => publicMediaApi.tag('desi', nextPage, 'latest'), []), [])
-  const [loading, setLoading] = useState(true)
-  const [loadingMore, setLoadingMore] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [query, setQuery] = useState('')
-
-  const merge = (current: HotpicAlbumCard[], next: HotpicAlbumCard[]) => [
-    ...current,
-    ...next.filter((card) => !current.some((entry) => entry.id === card.id && entry.kind === card.kind))
-  ]
-
-  const load = async (nextPage: number, append: boolean) => {
-    if (append) setLoadingMore(true)
-    else setLoading(true)
-    setError(null)
-    try {
-      const feed = await hotpicApi.feed('Desi', nextPage)
-      if (!append) setModels(feed.users)
-      setAlbums((current) => append ? merge(current, feed.albums) : feed.albums)
-      setPics((current) => append ? merge(current, feed.pics) : feed.pics)
-      setPage(nextPage)
-    } catch (reason) {
-      if (!append) {
-        setModels(await hotpicApi.topModels())
-        setError(reason instanceof Error ? reason.message : 'Hotpic feed could not load.')
-      }
-    } finally {
-      setLoading(false)
-      setLoadingMore(false)
-    }
-  }
-
-  useEffect(() => { void load(1, false) }, [])
-
-  const openCard = (card: HotpicAlbumCard) => {
-    if (card.kind === 'album' || !card.kind) {
-      navigate(`/premium/hotpic/${card.id}`)
-      return
-    }
-    const item = hotpicApi.cardToMedia(card)
-    const queue = pics.map(hotpicApi.cardToMedia)
-    openPlayer(item, queue.length ? queue : [item])
-  }
-
-  return (
-    <section className="screen screen--premium screen--ott">
-      <form className="ott-search" onSubmit={(event) => { event.preventDefault(); navigate(`/premium/search${query.trim() ? `?q=${encodeURIComponent(query.trim())}` : ''}`) }}>
-        <SearchIcon size={18} />
-        <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search Hotpic" aria-label="Search Hotpic" />
-        <button className="ott-exit" type="button" onClick={() => navigate('/')}>Exit</button>
-      </form>
-
-      {error && <LiveError message={error} onRetry={() => void load(1, false)} />}
-
-      <div className="ott-row-head"><h3>Accounts</h3></div>
-      {models.length > 0 && (
-        <div className="ott-rail ott-models" aria-label="Hotpic accounts">
-          {models.map((model, index) => (
-            <button key={model.username} className="ott-model" type="button" onClick={() => navigate(`/premium/model/${encodeURIComponent(model.username)}`)}>
-              <CreatorAvatar src={model.avatar} label={model.displayName || model.username} index={index} className="ott-model__avatar" />
-              <strong>{model.displayName || model.username}</strong>
-              <small>@{model.username}</small>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {loading && <div className="media-grid">{Array.from({ length: 6 }, (_, index) => <div className="media-skeleton" key={index} />)}</div>}
-
-      <div className="ott-row-head"><h3>Albums</h3></div>
-      {!loading && albums.length === 0 && <p className="form-help">No public albums on this page.</p>}
-      <CardGrid cards={albums} onOpen={openCard} />
-
-      <div className="ott-row-head"><h3>Pics</h3></div>
-      {!loading && pics.length === 0 && <p className="form-help">No public pics on this page.</p>}
-      <CardGrid cards={pics} onOpen={openCard} />
-
-      <div className="ott-row-head">
-        <h3>Videos · RedGifs Desi</h3>
-        <button type="button" onClick={() => navigate('/premium/videos')} aria-label="All Desi videos">›</button>
-      </div>
-      {desi.error
-        ? <LiveError message={desi.error} onRetry={desi.reload} title="Desi videos could not load." />
-        : <MediaGrid items={desi.items} loading={desi.loading} canLoadMore={desi.canLoadMore} loadingMore={desi.loadingMore} onLoadMore={() => void desi.loadMore()} empty={<div className="empty-state"><strong>No public Desi clips right now.</strong></div>} />}
-
-      {(albums.length > 0 || pics.length > 0) && (
-        <div className="load-more-wrap">
-          <button className="secondary-button" type="button" disabled={loadingMore} onClick={() => void load(page + 1, true)}>
-            {loadingMore ? 'Loading…' : 'Load more albums & pics'}
-          </button>
-        </div>
-      )}
-    </section>
-  )
+  const { account } = useApp()
+  return hasPremiumAccess(account?.role) ? <PremiumInbox /> : <UpgradeScreen />
 }
