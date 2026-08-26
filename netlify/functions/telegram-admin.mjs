@@ -30,8 +30,13 @@ export const handler = async (event) => {
     }
     return json(400, { error: 'Unknown action.' })
   } catch (error) {
-    // 429 passes its friendly message through; 503 names the missing variable.
-    if (Number(error?.statusCode) === 429 || Number(error?.statusCode) === 503) return json(error.statusCode, { error: error.message })
+    const status = Number(error?.statusCode)
+    // Friendly/rate-limit and config errors pass through verbatim.
+    if (status === 429 || status === 503) return json(status, { error: error.message })
+    // For any other server error, surface the real message on this owner-only
+    // endpoint so a bad DATABASE_URL / connection problem is actionable instead
+    // of a generic "Backend operation failed."
+    if (status >= 500 || !status) return json(500, { error: `Backend: ${error?.message || 'operation failed.'}` })
     return safeError(error)
   }
 }
