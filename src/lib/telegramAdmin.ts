@@ -85,6 +85,32 @@ async function request<T extends object>(body?: Record<string, unknown>, fresh =
   return data as T
 }
 
+export interface TelegramChannelRow {
+  id: string
+  title: string
+  avatar?: string | null
+  category: string
+  access_role: string
+  media_count: number
+  latest_at?: string | null
+}
+
+/** Lists the connected Telegram source channels using the saved owner token. */
+export async function fetchTelegramChannels(): Promise<TelegramChannelRow[]> {
+  const owner = readOwnerSession()
+  try {
+    const response = await fetch('/api/telegram/channels', {
+      headers: owner?.token ? { authorization: `Bearer ${owner.token}` } : {},
+      cache: 'no-store'
+    })
+    if (!response.ok) return []
+    const data = (await response.json().catch(() => ({}))) as { channels?: TelegramChannelRow[] }
+    return Array.isArray(data.channels) ? data.channels : []
+  } catch {
+    return []
+  }
+}
+
 export function fetchTelegramStatus(fresh = false): Promise<TelegramAuthStatus> {
   return request<TelegramAuthStatus>(undefined, fresh)
 }

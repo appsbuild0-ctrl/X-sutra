@@ -38,10 +38,12 @@ function StatusBadge({ ok, children }: { ok: boolean; children: React.ReactNode 
  * first success the login is saved on the device and this tab opens already
  * connected.
  */
-export function TelegramAdminCard(): React.JSX.Element {
+export function TelegramAdminCard({ onChanged }: { onChanged?: () => void }): React.JSX.Element {
   const { notify } = useApp()
+  const changed = () => { onChanged?.() }
   const [stage, setStage] = useState<Stage>('loading')
   const [status, setStatus] = useState<TelegramAuthStatus | null>(null)
+  const [phone, setPhone] = useState('')
   const [code, setCode] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
@@ -82,11 +84,12 @@ export function TelegramAdminCard(): React.JSX.Element {
   })
 
   const sendCode = () => void run(async () => {
-    const result = await sendTelegramOtp()
+    const result = await sendTelegramOtp(phone.trim())
     setSavedLogin(ownerSessionActive())
     if (result.status === 'already_authorized') {
       setStage('authorized')
       notify('Already connected — no new code needed', 'success')
+      changed()
       await refreshQuiet()
       return
     }
@@ -104,6 +107,7 @@ export function TelegramAdminCard(): React.JSX.Element {
     setSavedLogin(ownerSessionActive())
     setCode('')
     notify('Connected — login saved on this device', 'success')
+    changed()
     await refreshQuiet()
   })
 
@@ -172,9 +176,18 @@ export function TelegramAdminCard(): React.JSX.Element {
           </p>
 
           {stage === 'ready' && (
-            <button className="primary-button" type="button" disabled={busy} onClick={sendCode}>
-              {busy ? 'Sending…' : 'Send login code'}
-            </button>
+            <>
+              <input
+                value={phone}
+                onChange={(event) => setPhone(event.target.value)}
+                placeholder="Owner phone, e.g. +91… (as set on the server)"
+                inputMode="tel"
+                autoComplete="tel"
+              />
+              <button className="primary-button" type="button" disabled={busy} onClick={sendCode}>
+                {busy ? 'Sending…' : 'Send login code'}
+              </button>
+            </>
           )}
 
           {stage === 'otp' && (
