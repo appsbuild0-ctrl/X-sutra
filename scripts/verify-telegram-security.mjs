@@ -32,18 +32,22 @@ await assert.rejects(async () => requireOwner(event(await token('admin'))), (err
 await assert.rejects(() => requireOwner(secretEvent('wrong-secret')), (error) => error.statusCode === 401)
 await assert.rejects(() => requireOwner({ headers: {} }), (error) => error.statusCode === 401)
 
-// The owner-only admin console must keep the setup secret in memory only and
-// stay behind the admin role gate in the panel. Only the signed owner session
-// token may be persisted, and only by its dedicated module.
+// The console is deliberately simple: it performs the Telegram OTP login and
+// stores only the signed owner session token. No setup secret is ever asked,
+// sent, or persisted by the client; only lib/telegramOwner.ts touches storage.
 const adminClient = await readFile('src/lib/telegramAdmin.ts', 'utf8')
 const adminCard = await readFile('src/components/TelegramAdminCard.tsx', 'utf8')
 const ownerStore = await readFile('src/lib/telegramOwner.ts', 'utf8')
-assert.match(adminClient, /x-admin-setup-secret/, 'Telegram admin client must send the bootstrap secret header')
+assert.doesNotMatch(adminClient, /x-admin-setup-secret|ADMIN_SETUP_SECRET/i, 'The simple console must never send a setup secret')
 assert.match(adminClient, /authorization: `Bearer \$\{owner\.token\}`/, 'Telegram admin client must reuse the saved owner session')
+// Strip comments first: the UI code itself must never render a setup-secret
+// field (doc comments may still explain the design).
+const cardCode = adminCard.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')
+assert.doesNotMatch(cardCode, /setup secret|Admin setup|ADMIN_SETUP_SECRET/i, 'The console must never ask for a setup secret')
 assert.doesNotMatch(
   `${adminClient}\n${adminCard}`,
   /localStorage\.|sessionStorage\.|writeStored\(|readStored\(/,
-  'The admin setup secret must never touch persistent storage'
+  'The console must never touch persistent storage directly'
 )
 assert.match(ownerStore, /x-sutra\.telegram\.owner\.session\.v1/, 'Owner session must live under its own storage key')
 // Comments may explain the rule; the code itself must never touch the secret.

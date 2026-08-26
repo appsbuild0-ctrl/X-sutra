@@ -9,29 +9,23 @@ Copy variable **names** from `.env.example` and configure values in the deployme
 - `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`, `TELEGRAM_PHONE`
 - `ADMIN_TELEGRAM_USER_ID`, `TELEGRAM_SOURCE_CHANNEL`
 - `DATABASE_URL`
-- `ADMIN_SETUP_SECRET`, `SESSION_ENCRYPTION_KEY`, `AUTH_JWT_SECRET`
+- `SESSION_ENCRYPTION_KEY`, `AUTH_JWT_SECRET`
+
+`ADMIN_SETUP_SECRET` is optional and no longer used by the UI (simple OTP login). Keep it only for the trusted CLI.
 
 The database user needs permission to create the `xs_*` tables on first use. PostgreSQL TLS is required.
 
-## Owner authorization
+## Owner login (simple — no setup secret in the UI)
 
-The internal endpoint `/api/internal/telegram-auth` accepts **one** of two credentials; every visitor with neither receives 401:
+Admin Panel → `Telegram` tab shows only a login flow, never a key field:
 
-- `x-admin-setup-secret: $ADMIN_SETUP_SECRET` (timing-safe compared) — the trusted **first login** only.
-- `authorization: Bearer <owner session token>` — issued by the backend right after a successful Telegram login and reused on every later visit.
+1. Tap **Send login code** → `POST { "action": "send_otp" }`. The code goes only to the phone configured as `TELEGRAM_PHONE`; API ID/Hash are never asked.
+2. Enter it → `POST { "action": "verify_otp", "code": "..." }`.
+3. If the account has 2FA → `POST { "action": "verify_2fa", "password": "..." }` once.
 
-It is reachable in two ways:
+The endpoint is unauthenticated by design but safe because: only `TELEGRAM_PHONE` receives codes, code requests are rate-limited per caller (1/minute, 5/hour, stored in `xs_rate`), and authorization succeeds only when the Telegram user ID equals `ADMIN_TELEGRAM_USER_ID`.
 
-1. **Owner-only admin UI** — Admin Panel → `Telegram` tab (admin role only). The owner types the setup secret into the console once; the secret is held in component memory for that tab session only and is never written to `localStorage`, `sessionStorage`, or any cached store (`npm run check:telegram-security` asserts this). The console shows configuration/connection status and walks the owner through the OTP / 2FA flow.
-2. **Trusted terminal** — same JSON calls with `curl`, passing the header manually.
-
-Do not paste commands or screenshots containing secrets into chat, shell history, or source files.
-
-1. POST `{ "action": "send_otp" }` (optionally `"phone": "+<country-code><number>"`; it must equal `TELEGRAM_PHONE`). API ID and API Hash are never requested by the UI.
-2. POST `{ "action": "verify_otp", "code": "..." }`.
-3. If returned status is `2fa_required`, POST `{ "action": "verify_2fa", "password": "..." }`.
-
-The MTProto session is AES-256-GCM encrypted with a key derived from `SESSION_ENCRYPTION_KEY` and stored in PostgreSQL. It is never returned by the API. The Telegram user ID must equal `ADMIN_TELEGRAM_USER_ID`; otherwise authorization fails.
+The MTProto session is AES-256-GCM encrypted with a key derived from `SESSION_ENCRYPTION_KEY` and stored in PostgreSQL. It is never returned by the API.
 
 ## One-time login (no repeated OTP)
 

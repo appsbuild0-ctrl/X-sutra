@@ -1,11 +1,10 @@
 // Owner-only client for the private Telegram source backend.
 //
-// Two credentials exist and they never mix:
-//  • the ADMIN_SETUP_SECRET — typed once, kept in component memory only, never
-//    written to localStorage/sessionStorage or bundled into the app;
-//  • the signed owner session token — issued by the backend after the one-time
-//    Telegram login and stored on the device by lib/telegramOwner.ts, so the
-//    console reopens by itself and never asks for a login again.
+// Deliberately simple: there is NO setup-secret step. The UI only performs the
+// Telegram OTP login; once it succeeds the backend returns a signed owner
+// session token that is stored on the device (lib/telegramOwner.ts) so the
+// console never asks for a login again. No secret is ever sent, stored, or
+// bundled by this module.
 
 import { clearOwnerSession, readOwnerSession, writeOwnerSession } from './telegramOwner'
 
@@ -60,17 +59,14 @@ export function endOwnerSession(): void {
   clearOwnerSession()
 }
 
-async function request<T extends object>(secret: string, body?: Record<string, unknown>, fresh = false): Promise<T> {
-  // A typed secret always wins: it is the trusted first-login path and must
-  // still work when a stale token is sitting in device storage.
-  const owner = secret ? null : readOwnerSession()
+async function request<T extends object>(body?: Record<string, unknown>, fresh = false): Promise<T> {
+  const owner = readOwnerSession()
   let response: Response
   try {
     response = await fetch(fresh ? `${AUTH_ENDPOINT}?refresh=1` : AUTH_ENDPOINT, {
       method: body ? 'POST' : 'GET',
       headers: {
         ...(body ? { 'content-type': 'application/json' } : {}),
-        ...(secret ? { 'x-admin-setup-secret': secret } : {}),
         ...(owner?.token ? { authorization: `Bearer ${owner.token}` } : {})
       },
       body: body ? JSON.stringify(body) : undefined,
@@ -81,12 +77,7 @@ async function request<T extends object>(secret: string, body?: Record<string, u
   }
   const data = (await response.json().catch(() => ({}))) as Record<string, unknown>
   if (!response.ok) {
-    const message = typeof data.error === 'string' ? data.error : 'Telegram backend request failed.'
-    if (response.status === 401 && owner) {
-      clearOwnerSession()
-      throw new TelegramAdminError('Owner session expired. Unlock the console once more.')
-    }
-    throw new TelegramAdminError(message)
+    throw new TelegramAdminError(typeof data.error === 'string' ? data.error : 'Telegram backend request failed.')
   }
   // Persist the one-time login so this device never logs in again.
   const issued = data as OwnerIssued
@@ -94,18 +85,18 @@ async function request<T extends object>(secret: string, body?: Record<string, u
   return data as T
 }
 
-export function fetchTelegramStatus(secret = '', fresh = false): Promise<TelegramAuthStatus> {
-  return request<TelegramAuthStatus>(secret, undefined, fresh)
+export function fetchTelegramStatus(fresh = false): Promise<TelegramAuthStatus> {
+  return request<TelegramAuthStatus>(undefined, fresh)
 }
 
-export function sendTelegramOtp(secret: string, phone: string): Promise<TelegramOtpSent> {
-  return request<TelegramOtpSent>(secret, { action: 'send_otp', phone })
+export function sendTelegramOtp(phone = ''): Promise<TelegramOtpSent> {
+  return request<TelegramOtpSent>(phone ? { action: 'send_otp', phone } : { action: 'send_otp' })
 }
 
-export function verifyTelegramOtp(secret: string, code: string): Promise<TelegramAuthorized | TelegramTwoFactorRequired> {
-  return request<TelegramAuthorized | TelegramTwoFactorRequired>(secret, { action: 'verify_otp', code })
+export function verifyTelegramOtp(code: string): Promise<TelegramAuthorized | TelegramTwoFactorRequired> {
+  return request<TelegramAuthorized | TelegramTwoFactorRequired>({ action: 'verify_otp', code })
 }
 
-export function verifyTelegramTwoFactor(secret: string, password: string): Promise<TelegramAuthorized> {
-  return request<TelegramAuthorized>(secret, { action: 'verify_2fa', password })
+export function verifyTelegramTwoFactor(password: string): Promise<TelegramAuthorized> {
+  return request<TelegramAuthorized>({ action: 'verify_2fa', password })
 }

@@ -1,23 +1,25 @@
-import { json, requireOwner, safeError, signOwnerToken } from './_server/security.mjs'
+import { json, safeError } from './_server/security.mjs'
+import { assertOtpRateLimit } from './_server/database.mjs'
 import { connectionStatus, sendOtp, telegramConfiguration, verifyOtp, verifyTwoFactor } from './_server/telegram.mjs'
+
+// Simple owner login: no setup secret in the UI. The OTP goes only to the
+// phone configured as TELEGRAM_PHONE, only ADMIN_TELEGRAM_USER_ID can finish,
+// and code requests are rate-limited per caller. A successful login returns a
+// long-lived owner token so the device never logs in again.
+const callerIp = (event) =>
+  String(event.headers?.['x-forwarded-for'] || event.headers?.['x-nf-client-ip'] || event.headers?.['x-real-ip'] || 'unknown').split(',')[0].trim() || 'unknown'
 
 export const handler = async (event) => {
   try {
-    // Owner gate: the bootstrap secret works once, an issued owner session
-    // token keeps the console unlocked on every later visit (no new login).
-    const owner = await requireOwner(event)
     if (event.httpMethod === 'GET') {
-      const fresh = event.queryStringParameters?.refresh === '1' || event.queryStringParameters?.fresh === '1'
-      const connection = await connectionStatus({ fresh })
-      const body = { configuration: telegramConfiguration(), connection }
-      // First unlock with the bootstrap secret also receives the long-lived
-      // owner token, so the secret is never needed again on this device.
-      if (owner.via === 'secret' && connection.connected) Object.assign(body, await signOwnerToken(connection.telegramUserId))
-      return json(200, body)
+      return json(200, { configuration: telegramConfiguration(), connection: await connectionStatus() })
     }
     if (event.httpMethod !== 'POST') return json(405, { error: 'Method not allowed.' })
     const body = JSON.parse(event.body || '{}')
-    if (body.action === 'send_otp') return json(200, await sendOtp(body.phone))
+    if (body.action === 'send_otp') {
+      await assertOtpRateLimit(callerIp(event))
+      return json(200, await sendOtp(body.phone))
+    }
     if (body.action === 'verify_otp') {
       if (!/^\d{4,8}$/.test(String(body.code || ''))) return json(400, { error: 'A valid OTP is required.' })
       return json(200, await verifyOtp(body.code))
@@ -28,10 +30,8 @@ export const handler = async (event) => {
     }
     return json(400, { error: 'Unknown action.' })
   } catch (error) {
-    // 503 means the server environment is incomplete. Name the missing
-    // variables for the owner (names only, never values) so the console is
-    // actionable instead of showing a generic failure.
-    if (Number(error?.statusCode) === 503) return json(503, { error: error.message })
+    // 429 passes its friendly message through; 503 names the missing variable.
+    if (Number(error?.statusCode) === 429 || Number(error?.statusCode) === 503) return json(error.statusCode, { error: error.message })
     return safeError(error)
   }
 }

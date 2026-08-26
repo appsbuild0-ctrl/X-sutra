@@ -1,7 +1,9 @@
 import { createHash, randomBytes, createCipheriv, createDecipheriv, timingSafeEqual } from 'node:crypto'
 import { jwtVerify, SignJWT } from 'jose'
 
-const REQUIRED = ['ADMIN_SETUP_SECRET', 'SESSION_ENCRYPTION_KEY', 'AUTH_JWT_SECRET']
+// ADMIN_SETUP_SECRET is no longer required: the console does a plain OTP
+// login. It is still accepted as an optional CLI bootstrap if configured.
+const REQUIRED = ['SESSION_ENCRYPTION_KEY', 'AUTH_JWT_SECRET']
 
 // Owner console session: issued once (after the Telegram login) so the admin
 // never has to unlock the console or repeat the OTP again on the same device.

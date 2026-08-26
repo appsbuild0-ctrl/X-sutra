@@ -62,7 +62,7 @@ export async function connectionStatus({ fresh = false } = {}) {
 function normalizePhone(value) { return String(value || '').replace(/[^\d+]/g, '') }
 
 export function telegramConfiguration() {
-  const names = ['TELEGRAM_API_ID', 'TELEGRAM_API_HASH', 'TELEGRAM_PHONE', 'ADMIN_TELEGRAM_USER_ID', 'DATABASE_URL', 'ADMIN_SETUP_SECRET', 'SESSION_ENCRYPTION_KEY', 'AUTH_JWT_SECRET']
+  const names = ['TELEGRAM_API_ID', 'TELEGRAM_API_HASH', 'TELEGRAM_PHONE', 'ADMIN_TELEGRAM_USER_ID', 'DATABASE_URL', 'SESSION_ENCRYPTION_KEY', 'AUTH_JWT_SECRET']
   const missing = names.filter((name) => !process.env[name]?.trim())
   return { configured: missing.length === 0, missing }
 }
