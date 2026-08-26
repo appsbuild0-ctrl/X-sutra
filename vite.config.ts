@@ -95,7 +95,7 @@ function premiumDevApi(): Plugin {
           }
           return
         }
-        if (path !== '/api/premium' && path !== '/api/premium-scan' && path !== '/api/premium-file' && path !== '/api/hotpic') return next()
+        if (path !== '/api/premium' && path !== '/api/premium-scan' && path !== '/api/premium-file' && path !== '/api/hotpic' && path !== '/api/internal/telegram-auth' && path !== '/api/telegram/channels') return next()
         process.env.PREMIUM_LOCAL_FILE ||= '.premium-data.json'
         process.env.PREMIUM_MEDIA_DIR ||= '.premium-media'
         try {
@@ -108,7 +108,11 @@ function premiumDevApi(): Plugin {
               ? './netlify/functions/premium-scan.mjs'
               : path === '/api/premium-file'
                 ? './netlify/functions/premium-file.mjs'
-                : './netlify/functions/premium.mjs'
+                : path === '/api/internal/telegram-auth'
+                  ? './netlify/functions/telegram-admin.mjs'
+                  : path === '/api/telegram/channels'
+                    ? './netlify/functions/telegram-channels.mjs'
+                    : './netlify/functions/premium.mjs'
           const mod = await import(/* @vite-ignore */ handlerPath) as { handler: (event: unknown) => Promise<{ statusCode: number; body?: string; headers?: Record<string, string>; isBase64Encoded?: boolean }> }
           const result = await mod.handler(event)
           res.statusCode = result.statusCode
