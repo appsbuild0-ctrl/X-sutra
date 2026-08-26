@@ -1,6 +1,6 @@
-import { json, safeError } from './_server/security.mjs'
+import { json, requireOwner, safeError } from './_server/security.mjs'
 import { assertOtpRateLimit } from './_server/database.mjs'
-import { connectionStatus, sendOtp, telegramConfiguration, verifyOtp, verifyTwoFactor } from './_server/telegram.mjs'
+import { connectionStatus, sendOtp, syncChannels, telegramConfiguration, verifyOtp, verifyTwoFactor } from './_server/telegram.mjs'
 
 // Simple owner login: no setup secret in the UI. The OTP goes only to the
 // phone configured as TELEGRAM_PHONE, only ADMIN_TELEGRAM_USER_ID can finish,
@@ -27,6 +27,12 @@ export const handler = async (event) => {
     if (body.action === 'verify_2fa') {
       if (!body.password) return json(400, { error: 'Telegram 2FA password is required.' })
       return json(200, await verifyTwoFactor(body.password))
+    }
+    // Owner-only: imports the owner's Telegram channels into xs_channels so the
+    // Premium "Telegram sources" list has something to show.
+    if (body.action === 'sync_channels') {
+      await requireOwner(event)
+      return json(200, await syncChannels())
     }
     return json(400, { error: 'Unknown action.' })
   } catch (error) {

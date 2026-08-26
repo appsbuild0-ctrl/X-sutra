@@ -5,10 +5,12 @@ import {
   fetchTelegramStatus,
   ownerSessionActive,
   sendTelegramOtp,
+  syncTelegramChannels,
   TelegramAdminError,
   verifyTelegramOtp,
   verifyTelegramTwoFactor,
-  type TelegramAuthStatus
+  type TelegramAuthStatus,
+  type TelegramSyncResult
 } from '../lib/telegramAdmin'
 
 type Stage = 'loading' | 'ready' | 'otp' | '2fa' | 'authorized'
@@ -49,6 +51,7 @@ export function TelegramAdminCard({ onChanged }: { onChanged?: () => void }): Re
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [savedLogin, setSavedLogin] = useState<boolean>(() => ownerSessionActive())
+  const [synced, setSynced] = useState<TelegramSyncResult | null>(null)
   const booted = useRef(false)
 
   const run = async (job: () => Promise<void>) => {
@@ -126,6 +129,18 @@ export function TelegramAdminCard({ onChanged }: { onChanged?: () => void }): Re
       setStatus(await fetchTelegramStatus(true))
     } catch { /* keep the last known status */ }
   }
+
+  /** Imports the owner's Telegram channels so the Premium list is populated. */
+  const syncNow = () => void run(async () => {
+    const result = await syncTelegramChannels()
+    setSynced(result)
+    if (result.channels > 0) {
+      notify(`Imported ${result.channels} Telegram channel${result.channels === 1 ? '' : 's'} — opening Premium now`, 'success')
+    } else {
+      notify(`Scanned ${result.scanned} chats but found no channel or supergroup on this Telegram account`)
+    }
+    changed()
+  })
 
   const forget = () => {
     endOwnerSession()
@@ -216,10 +231,24 @@ export function TelegramAdminCard({ onChanged }: { onChanged?: () => void }): Re
 
       {stage === 'authorized' && (
         <div className="settings-card">
-          <p className="form-help" style={{ margin: 0 }}>
-            ✅ Telegram is connected and the login is saved on this device — you won't be asked again. Premium media
-            keeps flowing through <code>/api/telegram/channels</code>.
+          <div className="setting-row"><span><strong>Source channels</strong></span>
+            <StatusBadge ok={(synced?.channels ?? 0) > 0}>{synced ? `${synced.channels} imported` : 'Not imported yet'}</StatusBadge>
+          </div>
+          <p className="form-help">
+            ✅ Telegram is connected and the login is saved on this device — you won't be asked again. Import your
+            channels once and they appear in Premium under <strong>🔐 Telegram sources</strong> (served by{' '}
+            <code>/api/telegram/channels</code>).
           </p>
+          <div className="home-header-actions">
+            <button className="primary-button" type="button" disabled={busy} onClick={syncNow}>
+              {busy ? 'Importing channels…' : 'Import Telegram channels'}
+            </button>
+          </div>
+          {synced && (
+            <p className="form-help" style={{ margin: 0 }}>
+              Last import: scanned {synced.scanned} chats → {synced.channels} channels/supergroups → {synced.saved} saved.
+            </p>
+          )}
         </div>
       )}
     </>

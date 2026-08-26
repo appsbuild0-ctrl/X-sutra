@@ -40,6 +40,24 @@ export async function assertOtpRateLimit(caller) {
   }
 }
 
+/**
+ * Upsert Telegram source channels discovered from the owner's dialogs.
+ * Only Telegram-owned fields are refreshed: `published` and `access_role` are
+ * deliberately left alone so hiding a source (or opening it to VIP only) in the
+ * admin panel survives the next sync.
+ */
+export async function upsertChannels(rows) {
+  await ensureSchema()
+  const list = Array.isArray(rows) ? rows : []
+  if (!list.length) return 0
+  const sql = db()
+  for (const row of list) {
+    await sql`insert into xs_channels (id,title,avatar,category) values (${String(row.id)},${String(row.title)},${row.avatar ?? null},${String(row.category)})
+              on conflict (id) do update set title=excluded.title, avatar=coalesce(excluded.avatar,xs_channels.avatar), category=excluded.category, updated_at=now()`
+  }
+  return list.length
+}
+
 export async function authState() { await ensureSchema(); const rows = await db()`select * from xs_telegram_auth where id='owner'`; return rows[0] || null }
 export async function saveAuth(patch) {
   await ensureSchema(); const current = await authState()
