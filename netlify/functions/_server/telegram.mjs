@@ -1,6 +1,6 @@
 import teleproto from 'teleproto'
 import { computeCheck } from 'teleproto/Password.js'
-import { authState, saveAuth } from './database.mjs'
+import { authState, saveAuth, upsertChannels } from './database.mjs'
 import { decryptSecret, encryptSecret, signOwnerToken, validateSecurityEnv } from './security.mjs'
 
 const { TelegramClient, Api, sessions: { StringSession } } = teleproto
@@ -118,4 +118,74 @@ export async function verifyTwoFactor(password) {
     return await finish(client, result.user)
   } catch { throw Object.assign(new Error('Invalid Telegram 2FA password.'), { statusCode: 400 }) }
   finally { await client.disconnect() }
+}
+
+// ---------------------------------------------------------------------------
+// Channel discovery: turn the owner's Telegram dialogs into source rows.
+// ---------------------------------------------------------------------------
+
+// One sync reads the dialog list plus one history probe per channel, so the
+// cap keeps a single serverless request well inside its time budget.
+const MAX_SYNC_CHANNELS = 60
+
+const entityId = (entity) => {
+  const raw = entity?.id
+  if (raw === null || raw === undefined) return ''
+  return typeof raw?.toString === 'function' ? String(raw.toString()) : String(raw)
+}
+
+/**
+ * Map Telegram dialogs to channel rows.
+ *
+ * Pure and exported on purpose: the filtering rules (skip private chats and
+ * legacy basic groups, keep broadcast channels and supergroups, dedupe, cap)
+ * can be tested with plain objects instead of a live MTProto connection.
+ */
+export function pickChannelRows(dialogs, limit = MAX_SYNC_CHANNELS) {
+  const rows = []
+  const seen = new Set()
+  for (const dialog of Array.isArray(dialogs) ? dialogs : []) {
+    const entity = dialog?.entity
+    // Only Api.Channel carries a browsable source: broadcast channels and
+    // supergroups. 'User' (private chat) and 'Chat' (basic group) are skipped.
+    if (entity?.className !== 'Channel') continue
+    const id = entityId(entity)
+    if (!id || seen.has(id)) continue
+    const title = String(dialog?.name || dialog?.title || entity?.title || 'Untitled source').trim().slice(0, 120) || 'Untitled source'
+    seen.add(id)
+    rows.push({ id, title, avatar: null, category: entity?.megagroup ? 'group' : 'channel' })
+    if (rows.length >= limit) break
+  }
+  return rows
+}
+
+/**
+ * Fill `xs_channels` from the owner's Telegram dialogs. Nothing else in the
+ * backend writes that table, so without this the Premium "Telegram sources"
+ * list can only ever be empty.
+ *
+ * `createClient` / `save` / `readState` / `persist` are injectable so the whole
+ * flow is testable without Telegram or PostgreSQL (scripts/verify-channel-sync.mjs).
+ */
+export async function syncChannels({ createClient = clientFrom, save = upsertChannels, readState = authState, persist = persistSession } = {}) {
+  const state = await readState()
+  if (!state?.encrypted_session || state.status !== 'authorized') {
+    throw Object.assign(new Error('Log in to Telegram first — the source list is read with the saved owner session.'), { statusCode: 409 })
+  }
+  const client = await createClient(state.encrypted_session)
+  try {
+    if (!(await client.isUserAuthorized())) {
+      throw Object.assign(new Error('The saved Telegram session is no longer authorized. Log in again.'), { statusCode: 409 })
+    }
+    const dialogs = await client.getDialogs({})
+    const rows = pickChannelRows(dialogs)
+    const saved = await save(rows)
+    // Telegram rotates auth keys during use; writing the session back keeps the
+    // one-time login valid (same reason the OTP flow does it).
+    await persist(client)
+    resetStatusCache()
+    return { ok: true, status: 'synced', scanned: Array.isArray(dialogs) ? dialogs.length : 0, channels: rows.length, saved }
+  } finally {
+    await client.disconnect()
+  }
 }

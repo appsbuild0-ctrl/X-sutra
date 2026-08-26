@@ -95,6 +95,17 @@ export interface TelegramChannelRow {
   latest_at?: string | null
 }
 
+export interface TelegramSyncResult extends OwnerIssued {
+  ok: true
+  status: 'synced'
+  /** Dialogs scanned on Telegram. */
+  scanned: number
+  /** Channels/supergroups found in those dialogs. */
+  channels: number
+  /** Rows written to xs_channels. */
+  saved: number
+}
+
 /** Lists the connected Telegram source channels using the saved owner token. */
 export async function fetchTelegramChannels(): Promise<TelegramChannelRow[]> {
   const owner = readOwnerSession()
@@ -125,4 +136,12 @@ export function verifyTelegramOtp(code: string): Promise<TelegramAuthorized | Te
 
 export function verifyTelegramTwoFactor(password: string): Promise<TelegramAuthorized> {
   return request<TelegramAuthorized>({ action: 'verify_2fa', password })
+}
+
+/**
+ * Imports the owner's Telegram channels into the backend (xs_channels) so the
+ * Premium "Telegram sources" list is populated. Owner token required.
+ */
+export function syncTelegramChannels(): Promise<TelegramSyncResult> {
+  return request<TelegramSyncResult>({ action: 'sync_channels' })
 }

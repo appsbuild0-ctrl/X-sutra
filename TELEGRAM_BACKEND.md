@@ -38,6 +38,26 @@ Telegram is authorized **once**; nothing in the flow asks for a second login on 
 - “Forget this device” in the console clears the local owner token, which brings back the one-time unlock screen.
 
 
+## Importing channels (`sync_channels`)
+
+`/api/telegram/channels` only **reads** `xs_channels`; nothing else in the backend writes it, so the Premium
+“🔐 Telegram sources” list stays empty until the owner imports their channels once:
+
+- Admin Panel → `Telegram` tab → **Import Telegram channels** → `POST { "action": "sync_channels" }` with the
+  device's owner bearer token.
+- The handler is owner-gated (`requireOwner`): no token → 401, forged token → 401.
+- Server-side it reuses the stored MTProto session, reads the owner's dialog list, keeps only
+  `Api.Channel` entities (broadcast channels and supergroups — private chats and legacy basic groups are
+  skipped), dedupes, caps at 60 rows, and upserts them into `xs_channels`.
+- `published` and `access_role` are never overwritten by a re-sync, so hiding a source or opening it to VIP
+  only survives repeated imports.
+- Response: `{ "ok": true, "status": "synced", "scanned": <dialogs>, "channels": <found>, "saved": <rows> }`.
+- Requires a completed owner login first (`status: 'authorized'` in `xs_telegram_auth`); otherwise 409.
+- Media (`xs_media`) is not imported yet, so `media_count` stays 0 until a media importer exists.
+
+Verified without Telegram or PostgreSQL by `npm run check:channel-sync`, which runs the real
+`pickChannelRows` / `syncChannels` / handler code against fake dialogs and a fake database.
+
 ## Premium authorization
 
 `/api/telegram/channels` independently verifies an X-Sutra JWT signed with `AUTH_JWT_SECRET`. Only `premium`, `vip`, or `admin` claims pass. A missing/invalid token receives 401; a normal role receives 403. Production account login must issue this JWT as a Secure, HttpOnly, SameSite=Strict cookie or pass it as a bearer token from a trusted auth layer. Never derive server roles from localStorage.
@@ -46,6 +66,7 @@ Telegram is authorized **once**; nothing in the flow asks for a second login on 
 
 ```bash
 npm run check:telegram-security
+npm run check:channel-sync
 npm run build
 ```
 

@@ -47,8 +47,12 @@ export async function requireRole(event, allowed = ['premium', 'vip', 'admin']) 
 
 export function requireBootstrap(event) {
   validateSecurityEnv()
-  const supplied = String(event.headers?.['x-admin-setup-secret'] || '')
   const expected = process.env.ADMIN_SETUP_SECRET
+  // ADMIN_SETUP_SECRET is optional now (the console uses the owner token), so a
+  // request with no token must be a clean 401 — not a TypeError from
+  // Buffer.from(undefined) surfacing as a 500.
+  if (!expected) throw Object.assign(new Error('Owner session required.'), { statusCode: 401 })
+  const supplied = String(event.headers?.['x-admin-setup-secret'] || '')
   const a = Buffer.from(supplied)
   const b = Buffer.from(expected)
   if (!supplied || a.length !== b.length || !timingSafeEqual(a, b)) throw Object.assign(new Error('Unauthorized.'), { statusCode: 401 })
