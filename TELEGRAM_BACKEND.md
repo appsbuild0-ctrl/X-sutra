@@ -13,9 +13,14 @@ Copy variable **names** from `.env.example` and configure values in the deployme
 
 The database user needs permission to create the `xs_*` tables on first use. PostgreSQL TLS is required.
 
-## Owner authorization (trusted server/CLI only)
+## Owner authorization
 
-The internal endpoint `/api/internal/telegram-auth` is intentionally absent from frontend code. Call it only from a trusted terminal, passing `ADMIN_SETUP_SECRET` in `x-admin-setup-secret`. Do not paste commands containing secrets into chat, screenshots, shell history, or source files.
+The internal endpoint `/api/internal/telegram-auth` always requires `ADMIN_SETUP_SECRET` in the `x-admin-setup-secret` header (timing-safe compared); every visitor without the secret receives 401. It is reachable in two ways:
+
+1. **Owner-only admin UI** — Admin Panel → `Telegram` tab (admin role only). The owner types the setup secret into the console; it is held in component memory for that tab session only and is never written to `localStorage`, `sessionStorage`, or any cached store (`npm run check:telegram-security` asserts this). The console shows configuration/connection status and walks the owner through the OTP / 2FA flow.
+2. **Trusted terminal** — same JSON calls with `curl`, passing the header manually.
+
+Do not paste commands or screenshots containing secrets into chat, shell history, or source files.
 
 1. POST `{ "action": "send_otp", "phone": "+<country-code><number>" }`. The backend accepts only the phone already configured as `TELEGRAM_PHONE`; API ID and API Hash are never requested by the UI.
 2. POST `{ "action": "verify_otp", "code": "..." }`.
