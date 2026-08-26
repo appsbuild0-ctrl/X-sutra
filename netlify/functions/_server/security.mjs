@@ -1,7 +1,16 @@
 import { createHash, randomBytes, createCipheriv, createDecipheriv, timingSafeEqual } from 'node:crypto'
-import { jwtVerify } from 'jose'
+import { jwtVerify, SignJWT } from 'jose'
 
-const REQUIRED = ['ADMIN_SETUP_SECRET', 'SESSION_ENCRYPTION_KEY', 'AUTH_JWT_SECRET']
+// ADMIN_SETUP_SECRET is no longer required: the console does a plain OTP
+// login. It is still accepted as an optional CLI bootstrap if configured.
+const REQUIRED = ['SESSION_ENCRYPTION_KEY', 'AUTH_JWT_SECRET']
+
+// Owner console session: issued once (after the Telegram login) so the admin
+// never has to unlock the console or repeat the OTP again on the same device.
+const OWNER_ISSUER = 'x-sutra'
+const OWNER_AUDIENCE = 'x-sutra-telegram-console'
+const OWNER_SCOPE = 'telegram-owner'
+const OWNER_TTL_DAYS = Number(process.env.OWNER_SESSION_DAYS) > 0 ? Number(process.env.OWNER_SESSION_DAYS) : 180
 
 export function validateSecurityEnv(extra = []) {
   const missing = [...REQUIRED, ...extra].filter((name) => !process.env[name]?.trim())
@@ -43,6 +52,56 @@ export function requireBootstrap(event) {
   const a = Buffer.from(supplied)
   const b = Buffer.from(expected)
   if (!supplied || a.length !== b.length || !timingSafeEqual(a, b)) throw Object.assign(new Error('Unauthorized.'), { statusCode: 401 })
+}
+
+/**
+ * Sign a long-lived owner session token. It is returned exactly once — right
+ * after a successful Telegram login (or after the first bootstrap unlock) — and
+ * lets the owner console reconnect on later visits without a new OTP. Rotating
+ * AUTH_JWT_SECRET invalidates every issued token.
+ */
+export async function signOwnerToken(telegramUserId = '') {
+  validateSecurityEnv()
+  const secret = new TextEncoder().encode(process.env.AUTH_JWT_SECRET)
+  const issuedAt = Math.floor(Date.now() / 1000)
+  const expiresAt = issuedAt + OWNER_TTL_DAYS * 86400
+  const ownerToken = await new SignJWT({ role: 'admin', scope: OWNER_SCOPE, tid: String(telegramUserId) })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setSubject('telegram-owner')
+    .setIssuer(OWNER_ISSUER)
+    .setAudience(OWNER_AUDIENCE)
+    .setIssuedAt(issuedAt)
+    .setExpirationTime(expiresAt)
+    .sign(secret)
+  return { ownerToken, expiresAt: new Date(expiresAt * 1000).toISOString(), expiresInDays: OWNER_TTL_DAYS }
+}
+
+export async function verifyOwnerToken(token) {
+  validateSecurityEnv()
+  if (!token) throw Object.assign(new Error('Owner session required.'), { statusCode: 401 })
+  try {
+    const secret = new TextEncoder().encode(process.env.AUTH_JWT_SECRET)
+    const { payload } = await jwtVerify(token, secret, { algorithms: ['HS256'], issuer: OWNER_ISSUER, audience: OWNER_AUDIENCE })
+    if (payload.scope !== OWNER_SCOPE || payload.sub !== 'telegram-owner') throw new Error('scope')
+    return payload
+  } catch (error) {
+    if (error?.statusCode) throw error
+    throw Object.assign(new Error('Owner session expired. Unlock the console once more.'), { statusCode: 401 })
+  }
+}
+
+/**
+ * Owner gate for the Telegram console: either the bootstrap secret (very first
+ * login only) or a previously issued owner session token (every later visit).
+ */
+export async function requireOwner(event) {
+  const token = bearer(event)
+  if (token) {
+    const payload = await verifyOwnerToken(token)
+    return { via: 'token', telegramUserId: String(payload.tid || '') }
+  }
+  requireBootstrap(event)
+  return { via: 'secret', telegramUserId: String(process.env.ADMIN_TELEGRAM_USER_ID || '') }
 }
 
 function key() { return createHash('sha256').update(process.env.SESSION_ENCRYPTION_KEY).digest() }

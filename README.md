@@ -45,6 +45,18 @@ The Vite server listens on `0.0.0.0:5173`.
 npm run build:artifacts
 ```
 
+## Live deployment (Vercel)
+
+Production runs on Vercel and is what the repository homepage points at:
+
+```text
+https://x-sutra.vercel.app
+```
+
+Vercel builds `main` for production and every pull request for preview (preview URLs are behind Vercel Authentication, so open them while logged in to the Vercel account). The backend is shared with Netlify: `api/[...path].mjs` routes `/api/*` to the handlers in `netlify/functions/`, with dedicated filesystem functions for the nested `/api/telegram/channels` and `/api/internal/telegram-auth` paths. Configure the variables from `.env.example` in the Vercel project — without `DATABASE_URL` the one-time Telegram login has nowhere to live and the owner console reports the missing name.
+
+A second Vercel project (`x-sutra-main-2`) builds the same branch but has no server variables configured, so its `/api/*` calls fail; use the main domain above.
+
 ## Git-connected Netlify deployment
 
 The repository includes `netlify.toml` with the required settings:
