@@ -76,7 +76,18 @@ export async function sendOtp(requestedPhone) {
   const existing = await connectionStatus({ fresh: true })
   if (existing.connected) return { ok: true, status: 'already_authorized', ...(await signOwnerToken(existing.telegramUserId)) }
   const state = await authState()
-  const client = await clientFrom(state?.encrypted_session)
+  let client
+  try {
+    client = await clientFrom(state?.encrypted_session)
+  } catch (error) {
+    // If SESSION_ENCRYPTION_KEY was changed, the old database session cannot
+    // be decrypted. Do not block the owner from logging in again: discard only
+    // the unusable encrypted session and start a clean Telegram session.
+    if (!state?.encrypted_session) throw error
+    await saveAuth({ encrypted_session: encryptSecret(''), phone_code_hash: null, status: 'pending', telegram_user_id: null })
+    resetStatusCache()
+    client = await clientFrom('')
+  }
   try {
     const sent = await client.sendCode(credentials(), configuredPhone, false)
     await saveAuth({ encrypted_session: encryptSecret(client.session.save()), phone_code_hash: sent.phoneCodeHash, status: 'otp_sent' })

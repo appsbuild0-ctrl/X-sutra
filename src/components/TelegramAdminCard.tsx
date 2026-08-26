@@ -132,6 +132,17 @@ export function TelegramAdminCard({ onChanged }: { onChanged?: () => void }): Re
 
   /** Imports the owner's Telegram channels so the Premium list is populated. */
   const syncNow = () => void run(async () => {
+    // A server-side Telegram session can predate this browser's owner token
+    // (for example after clearing site data). Reuse the authorized Telegram
+    // session to issue a fresh owner token before calling the owner-only sync.
+    // send_otp returns already_authorized here, so no new code is sent.
+    if (!ownerSessionActive()) {
+      const restored = await sendTelegramOtp('')
+      if (restored.status !== 'already_authorized') {
+        throw new TelegramAdminError('Telegram login needs to be completed before importing channels.')
+      }
+      setSavedLogin(true)
+    }
     const result = await syncTelegramChannels()
     setSynced(result)
     if (result.channels > 0) {
