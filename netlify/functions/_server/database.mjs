@@ -59,9 +59,20 @@ export async function upsertChannels(rows) {
 }
 
 export async function authState() { await ensureSchema(); const rows = await db()`select * from xs_telegram_auth where id='owner'`; return rows[0] || null }
+
+// `??` cannot express "clear this column": an explicit null in the patch must
+// win over the stored value (the OTP hash is wiped the moment a login succeeds,
+// and a discarded session resets telegram_user_id).
+const pick = (patch, current, key, fallback) => (key in patch ? patch[key] : current?.[key] ?? fallback)
+
 export async function saveAuth(patch) {
   await ensureSchema(); const current = await authState()
-  const next = { encrypted_session: patch.encrypted_session ?? current?.encrypted_session ?? '', phone_code_hash: patch.phone_code_hash ?? current?.phone_code_hash ?? null, status: patch.status ?? current?.status ?? 'pending', telegram_user_id: patch.telegram_user_id ?? current?.telegram_user_id ?? null }
+  const next = {
+    encrypted_session: pick(patch, current, 'encrypted_session', ''),
+    phone_code_hash: pick(patch, current, 'phone_code_hash', null),
+    status: pick(patch, current, 'status', 'pending'),
+    telegram_user_id: pick(patch, current, 'telegram_user_id', null)
+  }
   await db()`insert into xs_telegram_auth (id,encrypted_session,phone_code_hash,status,telegram_user_id) values ('owner',${next.encrypted_session},${next.phone_code_hash},${next.status},${next.telegram_user_id}) on conflict (id) do update set encrypted_session=excluded.encrypted_session,phone_code_hash=excluded.phone_code_hash,status=excluded.status,telegram_user_id=excluded.telegram_user_id,updated_at=now()`
   return next
 }

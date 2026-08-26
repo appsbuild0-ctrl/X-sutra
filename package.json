@@ -12,7 +12,9 @@
     "preview": "vite preview --host 0.0.0.0",
     "check": "tsc --noEmit",
     "check:telegram-security": "node scripts/verify-telegram-security.mjs",
+    "check:telegram-login": "node scripts/verify-telegram-login.mjs",
     "check:channel-sync": "node scripts/verify-channel-sync.mjs",
+    "check:telegram": "npm run check:telegram-security && npm run check:telegram-login && npm run check:channel-sync",
     "cap:sync": "npm run build && cap sync android",
     "android:open": "cap open android"
   },

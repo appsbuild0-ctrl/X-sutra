@@ -1,4 +1,4 @@
-import { json, requireOwner, safeError } from './_server/security.mjs'
+import { json, requireOwner } from './_server/security.mjs'
 import { assertOtpRateLimit } from './_server/database.mjs'
 import { connectionStatus, sendOtp, syncChannels, telegramConfiguration, verifyOtp, verifyTwoFactor } from './_server/telegram.mjs'
 
@@ -16,9 +16,11 @@ export const handler = async (event) => {
     }
     if (event.httpMethod !== 'POST') return json(405, { error: 'Method not allowed.' })
     const body = JSON.parse(event.body || '{}')
+    // No phone is accepted from the client: the code always goes to
+    // TELEGRAM_PHONE configured on the server.
     if (body.action === 'send_otp') {
       await assertOtpRateLimit(callerIp(event))
-      return json(200, await sendOtp(body.phone))
+      return json(200, await sendOtp())
     }
     if (body.action === 'verify_otp') {
       if (!/^\d{4,8}$/.test(String(body.code || ''))) return json(400, { error: 'A valid OTP is required.' })
@@ -37,12 +39,15 @@ export const handler = async (event) => {
     return json(400, { error: 'Unknown action.' })
   } catch (error) {
     const status = Number(error?.statusCode)
+    const detail = error?.telegramError ? { telegramError: String(error.telegramError) } : {}
     // Friendly/rate-limit and config errors pass through verbatim.
-    if (status === 429 || status === 503) return json(status, { error: error.message })
+    if (status === 429 || status === 503) return json(status, { error: error.message, ...detail })
     // For any other server error, surface the real message on this owner-only
     // endpoint so a bad DATABASE_URL / connection problem is actionable instead
     // of a generic "Backend operation failed."
-    if (status >= 500 || !status) return json(500, { error: `Backend: ${error?.message || 'operation failed.'}` })
-    return safeError(error)
+    if (status >= 500 || !status) return json(500, { error: `Backend: ${error?.message || 'operation failed.'}`, ...detail })
+    // 4xx (including every Telegram RPC error) is reported exactly as it came
+    // back — the owner must see PHONE_CODE_INVALID, not a vague failure.
+    return json(status, { error: error?.message || 'Backend operation failed.', ...detail })
   }
 }

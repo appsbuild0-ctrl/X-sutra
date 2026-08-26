@@ -13,7 +13,14 @@ import {
   type TelegramSyncResult
 } from '../lib/telegramAdmin'
 
-type Stage = 'loading' | 'ready' | 'otp' | '2fa' | 'authorized'
+/**
+ * `ready`   → one button: send the login code to the server's owner phone
+ * `otp`     → the owner types the code (the only field in the whole flow)
+ * `2fa`     → Telegram 2FA password, only if the account has 2FA on
+ * `finishing` → OTP accepted: saving the owner token and importing channels
+ * `authorized` → connected, channels imported, panel can close itself
+ */
+type Stage = 'loading' | 'ready' | 'otp' | '2fa' | 'finishing' | 'authorized'
 
 function StatusBadge({ ok, children }: { ok: boolean; children: React.ReactNode }): React.JSX.Element {
   return (
@@ -35,17 +42,22 @@ function StatusBadge({ ok, children }: { ok: boolean; children: React.ReactNode 
 }
 
 /**
- * Simple Telegram owner login: tap "Send login code", enter the OTP (and 2FA
- * once if enabled), done. No setup secret or key is ever asked. After the
- * first success the login is saved on the device and this tab opens already
- * connected.
+ * Telegram owner login, kept as short as possible: the phone number comes from
+ * the server environment (TELEGRAM_PHONE), so the owner only ever types the OTP.
+ *
+ * On success the card, in one go:
+ *   1. receives the signed owner token (saved on the device by lib/telegramAdmin),
+ *   2. imports the owner's channels so Premium is populated straight away,
+ *   3. calls `onConnected` so the hosting panel closes itself.
+ *
+ * Failures show the exact backend/Telegram error (for example
+ * `PHONE_CODE_INVALID`), never a generic "authorization failed".
  */
-export function TelegramAdminCard({ onChanged }: { onChanged?: () => void }): React.JSX.Element {
+export function TelegramAdminCard({ onChanged, onConnected }: { onChanged?: () => void; onConnected?: () => void }): React.JSX.Element {
   const { notify } = useApp()
   const changed = () => { onChanged?.() }
   const [stage, setStage] = useState<Stage>('loading')
   const [status, setStatus] = useState<TelegramAuthStatus | null>(null)
-  const [phone, setPhone] = useState('')
   const [code, setCode] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
@@ -60,7 +72,8 @@ export function TelegramAdminCard({ onChanged }: { onChanged?: () => void }): Re
     try {
       await job()
     } catch (caught) {
-      setError(caught instanceof TelegramAdminError ? caught.message : 'Telegram operation failed.')
+      // TelegramAdminError carries the backend's own wording verbatim.
+      setError(caught instanceof TelegramAdminError ? caught.message : caught instanceof Error ? caught.message : 'Telegram operation failed.')
     } finally {
       setBusy(false)
     }
@@ -86,8 +99,15 @@ export function TelegramAdminCard({ onChanged }: { onChanged?: () => void }): Re
     setPassword('')
   })
 
+  const refreshQuiet = async () => {
+    try {
+      setStatus(await fetchTelegramStatus(true))
+    } catch { /* keep the last known status */ }
+  }
+
+  /** Sends the code to the owner phone configured on the server — nothing to type. */
   const sendCode = () => void run(async () => {
-    const result = await sendTelegramOtp(phone.trim())
+    const result = await sendTelegramOtp()
     setSavedLogin(ownerSessionActive())
     if (result.status === 'already_authorized') {
       setStage('authorized')
@@ -97,38 +117,55 @@ export function TelegramAdminCard({ onChanged }: { onChanged?: () => void }): Re
       return
     }
     setStage('otp')
-    notify(result.delivery === 'telegram_app' ? 'Code sent to your Telegram app' : 'Code sent to your phone', 'success')
+    notify(result.delivery === 'telegram_app' ? 'Code sent to your Telegram app' : 'Code sent to the owner phone', 'success')
   })
+
+  /**
+   * Post-OTP finish line: the owner token is already stored by the API client,
+   * so the only work left is the channel import, then handing control back to
+   * the panel so it can close.
+   */
+  const finishLogin = async () => {
+    setStage('finishing')
+    setSavedLogin(ownerSessionActive())
+    setCode('')
+    setPassword('')
+    try {
+      const result = await syncTelegramChannels()
+      setSynced(result)
+      notify(
+        result.channels > 0
+          ? `Connected — imported ${result.channels} Telegram channel${result.channels === 1 ? '' : 's'}`
+          : `Connected — scanned ${result.scanned} chats, no channel found on this account yet`,
+        'success'
+      )
+    } catch (caught) {
+      // The Telegram login itself worked; only the import failed. Keep the
+      // exact error on screen and let the owner retry without logging in again.
+      setError(caught instanceof TelegramAdminError ? caught.message : caught instanceof Error ? caught.message : 'Channel import failed.')
+      notify('Telegram connected, but the channel import failed', 'error')
+    }
+    setStage('authorized')
+    changed()
+    await refreshQuiet()
+    // Give the success state a beat to be seen, then close the panel.
+    window.setTimeout(() => { onConnected?.() }, 1000)
+  }
 
   const confirmOtp = () => void run(async () => {
     const result = await verifyTelegramOtp(code)
     if (result.status === '2fa_required') {
       setStage('2fa')
+      notify('This account uses 2FA — enter the Telegram password to finish', 'success')
       return
     }
-    setStage('authorized')
-    setSavedLogin(ownerSessionActive())
-    setCode('')
-    notify('Connected — login saved on this device', 'success')
-    changed()
-    await refreshQuiet()
+    await finishLogin()
   })
 
   const confirmTwoFactor = () => void run(async () => {
     await verifyTelegramTwoFactor(password)
-    setStage('authorized')
-    setSavedLogin(ownerSessionActive())
-    setPassword('')
-    setCode('')
-    notify('Connected — login saved on this device', 'success')
-    await refreshQuiet()
+    await finishLogin()
   })
-
-  const refreshQuiet = async () => {
-    try {
-      setStatus(await fetchTelegramStatus(true))
-    } catch { /* keep the last known status */ }
-  }
 
   /** Imports the owner's Telegram channels so the Premium list is populated. */
   const syncNow = () => void run(async () => {
@@ -137,7 +174,7 @@ export function TelegramAdminCard({ onChanged }: { onChanged?: () => void }): Re
     // session to issue a fresh owner token before calling the owner-only sync.
     // send_otp returns already_authorized here, so no new code is sent.
     if (!ownerSessionActive()) {
-      const restored = await sendTelegramOtp('')
+      const restored = await sendTelegramOtp()
       if (restored.status !== 'already_authorized') {
         throw new TelegramAdminError('Telegram login needs to be completed before importing channels.')
       }
@@ -173,6 +210,8 @@ export function TelegramAdminCard({ onChanged }: { onChanged?: () => void }): Re
     )
   }
 
+  const phoneHint = status?.configuration.phoneHint || status?.connection.telegramUserId || ''
+
   return (
     <>
       <div className="settings-card">
@@ -197,23 +236,14 @@ export function TelegramAdminCard({ onChanged }: { onChanged?: () => void }): Re
         <div className="premium-post-form settings-card" style={{ padding: 14 }}>
           <strong>Connect Telegram {status && !status.configuration.configured ? '' : '🔐'}</strong>
           <p className="form-help">
-            One-time login. The code goes to the owner phone set on the server; enter it below and you're connected.
-            After this, the tab opens already connected.
+            One-time login{phoneHint && <> for {phoneHint}</>}. The number is read from the server, so there is nothing to
+            type — tap below, then enter the code Telegram sends you. Channels are imported automatically.
           </p>
 
           {stage === 'ready' && (
-            <>
-              <input
-                value={phone}
-                onChange={(event) => setPhone(event.target.value)}
-                placeholder="Owner phone, e.g. +91… (as set on the server)"
-                inputMode="tel"
-                autoComplete="tel"
-              />
-              <button className="primary-button" type="button" disabled={busy} onClick={sendCode}>
-                {busy ? 'Sending…' : 'Send login code'}
-              </button>
-            </>
+            <button className="primary-button" type="button" disabled={busy} onClick={sendCode}>
+              {busy ? 'Sending…' : 'Send login code'}
+            </button>
           )}
 
           {stage === 'otp' && (
@@ -236,6 +266,10 @@ export function TelegramAdminCard({ onChanged }: { onChanged?: () => void }): Re
             </>
           )}
 
+          {stage === 'finishing' && (
+            <p className="form-help" style={{ margin: 0 }}>✅ Login accepted — saving the owner login on this device and importing your channels…</p>
+          )}
+
           {error && <p className="login-error" role="alert">{error}</p>}
         </div>
       )}
@@ -246,13 +280,12 @@ export function TelegramAdminCard({ onChanged }: { onChanged?: () => void }): Re
             <StatusBadge ok={(synced?.channels ?? 0) > 0}>{synced ? `${synced.channels} imported` : 'Not imported yet'}</StatusBadge>
           </div>
           <p className="form-help">
-            ✅ Telegram is connected and the login is saved on this device — you won't be asked again. Import your
-            channels once and they appear in Premium under <strong>🔐 Telegram sources</strong> (served by{' '}
-            <code>/api/telegram/channels</code>).
+            ✅ Telegram is connected and the login is saved on this device — you won't be asked again. Channels appear in
+            Premium under <strong>🔐 Telegram sources</strong> (served by <code>/api/telegram/channels</code>).
           </p>
           <div className="home-header-actions">
             <button className="primary-button" type="button" disabled={busy} onClick={syncNow}>
-              {busy ? 'Importing channels…' : 'Import Telegram channels'}
+              {busy ? 'Importing channels…' : (synced ? 'Import channels again' : 'Import Telegram channels')}
             </button>
           </div>
           {synced && (
@@ -260,6 +293,7 @@ export function TelegramAdminCard({ onChanged }: { onChanged?: () => void }): Re
               Last import: scanned {synced.scanned} chats → {synced.channels} channels/supergroups → {synced.saved} saved.
             </p>
           )}
+          {error && <p className="login-error" role="alert">{error}</p>}
         </div>
       )}
     </>

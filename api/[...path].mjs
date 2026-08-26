@@ -72,14 +72,20 @@ async function proxyHotpicHtml(suffix, res) {
 }
 
 export default async function vercelCatchAll(req, res) {
-  const url = req.url || '/'
-  const path = url.split('?')[0].replace(/\/+$/, '') || '/'
-  if (path.startsWith('/api/hotpic-html/')) return proxyHotpicHtml(url.slice('/api/hotpic-html'.length), res)
-  const handler = ROUTES.get(path)
-  if (!handler) {
-    res.writeHead(404, { 'content-type': 'application/json; charset=utf-8' })
-    return res.end(JSON.stringify({ error: 'Unknown API endpoint.' }))
+  try {
+    const url = req.url || '/'
+    const path = url.split('?')[0].replace(/\/+$/, '') || '/'
+    if (path.startsWith('/api/hotpic-html/')) return proxyHotpicHtml(url.slice('/api/hotpic-html'.length), res)
+    const handler = ROUTES.get(path)
+    if (!handler) {
+      res.writeHead(404, { 'content-type': 'application/json; charset=utf-8' })
+      return res.end(JSON.stringify({ error: 'Unknown API endpoint.' }))
+    }
+    if (req.method !== 'GET' && req.method !== 'HEAD') req._rawBody = await readRawBody(req)
+    send(res, await handler(toNetlifyEvent(req)))
+  } catch (error) {
+    // Never mask the real cause: the console shows this string to the owner.
+    res.writeHead(500, { 'content-type': 'application/json; charset=utf-8' })
+    res.end(JSON.stringify({ error: `Backend: ${error?.message || 'operation failed.'}` }))
   }
-  if (req.method !== 'GET' && req.method !== 'HEAD') req._rawBody = await readRawBody(req)
-  send(res, await handler(toNetlifyEvent(req)))
 }

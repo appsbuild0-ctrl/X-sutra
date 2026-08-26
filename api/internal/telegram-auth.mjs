@@ -34,8 +34,9 @@ export default async function vercelTelegramAuth(req, res) {
   try {
     if (req.method !== 'GET' && req.method !== 'HEAD') req._rawBody = await readRawBody(req)
     send(res, await telegramAdmin(toNetlifyEvent(req)))
-  } catch {
+  } catch (error) {
+    // Never mask the real cause: the console shows this string to the owner.
     res.writeHead(500, { 'content-type': 'application/json; charset=utf-8' })
-    res.end(JSON.stringify({ error: 'Backend operation failed.' }))
+    res.end(JSON.stringify({ error: `Backend: ${error?.message || 'operation failed.'}` }))
   }
 }

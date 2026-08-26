@@ -13,6 +13,9 @@ const AUTH_ENDPOINT = '/api/internal/telegram-auth'
 export interface TelegramConfiguration {
   configured: boolean
   missing: string[]
+  /** Masked owner phone from TELEGRAM_PHONE, e.g. "+91••••••21" — shown so the
+   *  owner knows where the code goes. The full number is never sent. */
+  phoneHint?: string
 }
 
 export interface TelegramConnection {
@@ -37,6 +40,7 @@ export interface TelegramOtpSent extends OwnerIssued {
   ok: true
   status: 'otp_sent' | 'already_authorized'
   delivery?: string
+  phoneHint?: string
 }
 
 export interface TelegramAuthorized extends OwnerIssued {
@@ -49,7 +53,16 @@ export interface TelegramTwoFactorRequired {
   status: '2fa_required'
 }
 
-export class TelegramAdminError extends Error {}
+export class TelegramAdminError extends Error {
+  /** Telegram RPC error code when the backend reported one (PHONE_CODE_INVALID…). */
+  readonly telegramError?: string
+
+  constructor(message: string, telegramError?: string) {
+    super(message)
+    this.name = 'TelegramAdminError'
+    this.telegramError = telegramError
+  }
+}
 
 export function ownerSessionActive(): boolean {
   return Boolean(readOwnerSession()?.token)
@@ -57,6 +70,19 @@ export function ownerSessionActive(): boolean {
 
 export function endOwnerSession(): void {
   clearOwnerSession()
+}
+
+/**
+ * Turns a failed response into the exact backend message. A generic
+ * "Telegram authorization failed." hides whether the code was wrong, expired,
+ * rate-limited, or the database was unreachable — so the real detail (JSON
+ * `error`, else the raw body, else the HTTP status) is always kept.
+ */
+function describeFailure(status: number, data: Record<string, unknown>, raw: string): string {
+  const message = typeof data.error === 'string' ? data.error.trim() : ''
+  if (message) return message
+  const snippet = raw.trim().replace(/\s+/g, ' ').slice(0, 240)
+  return snippet ? `Backend error (HTTP ${status}): ${snippet}` : `Backend error (HTTP ${status}) with no message.`
 }
 
 async function request<T extends object>(body?: Record<string, unknown>, fresh = false): Promise<T> {
@@ -72,12 +98,21 @@ async function request<T extends object>(body?: Record<string, unknown>, fresh =
       body: body ? JSON.stringify(body) : undefined,
       cache: 'no-store'
     })
-  } catch {
-    throw new TelegramAdminError('Telegram backend is unreachable.')
+  } catch (error) {
+    const detail = error instanceof Error && error.message ? error.message : 'network error'
+    throw new TelegramAdminError(`Telegram backend is unreachable (${detail}).`)
   }
-  const data = (await response.json().catch(() => ({}))) as Record<string, unknown>
+  const raw = await response.text()
+  let data: Record<string, unknown> = {}
+  try {
+    const parsed: unknown = raw ? JSON.parse(raw) : {}
+    if (parsed && typeof parsed === 'object') data = parsed as Record<string, unknown>
+  } catch {
+    // Non-JSON body (proxy/HTML error page) — the raw text is shown instead.
+  }
   if (!response.ok) {
-    throw new TelegramAdminError(typeof data.error === 'string' ? data.error : 'Telegram backend request failed.')
+    const telegramError = typeof data.telegramError === 'string' ? data.telegramError : undefined
+    throw new TelegramAdminError(describeFailure(response.status, data, raw), telegramError)
   }
   // Persist the one-time login so this device never logs in again.
   const issued = data as OwnerIssued
@@ -126,8 +161,13 @@ export function fetchTelegramStatus(fresh = false): Promise<TelegramAuthStatus> 
   return request<TelegramAuthStatus>(undefined, fresh)
 }
 
-export function sendTelegramOtp(phone = ''): Promise<TelegramOtpSent> {
-  return request<TelegramOtpSent>(phone ? { action: 'send_otp', phone } : { action: 'send_otp' })
+/**
+ * Asks the backend to send a login code. The phone number is NOT sent: the
+ * server always uses TELEGRAM_PHONE from its own environment, so the only
+ * thing the owner ever types is the OTP.
+ */
+export function sendTelegramOtp(): Promise<TelegramOtpSent> {
+  return request<TelegramOtpSent>({ action: 'send_otp' })
 }
 
 export function verifyTelegramOtp(code: string): Promise<TelegramAuthorized | TelegramTwoFactorRequired> {
