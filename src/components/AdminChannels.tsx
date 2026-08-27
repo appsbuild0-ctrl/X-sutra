@@ -4,6 +4,7 @@ import {
   createChannel,
   deleteChannel,
   fetchAdminChannels,
+  syncChannelNames,
   TelegramLoginError,
   updateChannel,
   type ChannelRecord
@@ -28,6 +29,7 @@ export function AdminChannels(): React.JSX.Element {
   const [newTitle, setNewTitle] = useState('')
   const [newCategory, setNewCategory] = useState('channel')
   const [busy, setBusy] = useState(false)
+  const [syncing, setSyncing] = useState(false)
   const [error, setError] = useState('')
   const [editing, setEditing] = useState<string | null>(null)
 
@@ -40,6 +42,19 @@ export function AdminChannels(): React.JSX.Element {
   }, [])
 
   useEffect(() => { void reload() }, [reload])
+
+  const sync = async (): Promise<void> => {
+    setSyncing(true)
+    setError('')
+    try {
+      setChannels(await syncChannelNames())
+      notify('Channel names refreshed from Telegram', 'success')
+    } catch (caught) {
+      setError(caught instanceof TelegramLoginError ? caught.message : 'Could not refresh names.')
+    } finally {
+      setSyncing(false)
+    }
+  }
 
   const add = async (): Promise<void> => {
     setBusy(true)
@@ -99,7 +114,14 @@ export function AdminChannels(): React.JSX.Element {
       </div>
 
       <div className="settings-card">
-        <div className="setting-row"><span><strong>Channels</strong></span><small>{channels.length}</small></div>
+        <div className="setting-row"><span><strong>Channels</strong></span>
+          <span style={{ display: 'flex', gap: 8 }}>
+            <button className="secondary-button" type="button" disabled={syncing} onClick={() => void sync()}>
+              {syncing ? 'Refreshing…' : 'Refresh names'}
+            </button>
+            <small>{channels.length}</small>
+          </span>
+        </div>
         {channels.length === 0 && <p className="form-help" style={{ margin: 0 }}>No channels yet — the built-in one appears after the first load.</p>}
         {channels.map((channel) => (
           <div className="setting-row" key={channel.id} style={{ flexWrap: 'wrap', gap: 8 }}>

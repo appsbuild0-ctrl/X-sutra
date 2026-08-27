@@ -82,6 +82,31 @@ export async function updateChannel({ id, title, category, accessRole, published
   return publicChannel(next[0])
 }
 
+// The owner adds the bot to the channel as admin, so the Bot API can read its
+// public title. The token is read from the environment at call time and is
+// never stored, returned, or written to code.
+async function fetchChannelTitle(id, token) {
+  try {
+    const response = await fetch(`https://api.telegram.org/bot${token}/getChat?chat_id=${encodeURIComponent(id)}`)
+    const data = await response.json().catch(() => ({}))
+    if (response.ok && data?.ok && data?.result?.title) return String(data.result.title).slice(0, 120)
+  } catch { /* network blip: keep the stored name */ }
+  return ''
+}
+
+/** Pull real channel names from Telegram for every stored source (bot must be a member). */
+export async function syncChannelTitles() {
+  const token = String(process.env.TELEGRAM_BOT_TOKEN || '').trim()
+  if (!token) throw bad('TELEGRAM_BOT_TOKEN is not set — add it in Vercel to pull the real channel names.', 503)
+  await seedDefaultChannels()
+  const rows = await db()`select id from xs_channels`
+  for (const row of rows) {
+    const title = await fetchChannelTitle(String(row.id), token)
+    if (title) await db()`update xs_channels set title=${title}, updated_at=now() where id=${row.id}`
+  }
+  return listChannels({ includeHidden: true })
+}
+
 export async function deleteChannel(id) {
   await ensureSchema()
   const channelId = String(id || '').trim()

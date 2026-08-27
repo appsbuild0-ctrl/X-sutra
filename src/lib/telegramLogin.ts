@@ -393,6 +393,12 @@ export async function deleteChannel(id: string): Promise<void> {
   await call<{ ok: true; id: string }>(CHANNEL_ENDPOINT, { action: 'delete', id })
 }
 
+/** Pulls real channel names from Telegram (bot must be a member). */
+export async function syncChannelNames(): Promise<ChannelRecord[]> {
+  const data = await call<{ ok: true; channels: ChannelRecord[] }>(CHANNEL_ENDPOINT, { action: 'sync' })
+  return data.channels
+}
+
 // ---------------------------------------------------------------------------
 // The official Telegram Login Widget
 // ---------------------------------------------------------------------------

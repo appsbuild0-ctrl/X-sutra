@@ -206,6 +206,14 @@ function driver() {
     if (/^select id from xs_channels where id=\?/i.test(query)) {
       return Promise.resolve(store.channels.filter((row) => row.id === String(params[0])))
     }
+    if (/^select id from xs_channels$/i.test(query)) {
+      return Promise.resolve(store.channels.map((row) => ({ id: row.id })))
+    }
+    if (/^update xs_channels set title=\?, updated_at=now\(\) where id=\?/i.test(query)) {
+      const row = store.channels.find((r) => r.id === String(params[1]))
+      if (row) { row.title = String(params[0]); row.updated_at = now() }
+      return Promise.resolve([row])
+    }
     if (/^update xs_channels set/i.test(query)) {
       const id = String(params[params.length - 1])
       const row = store.channels.find((upload) => upload.id === id)

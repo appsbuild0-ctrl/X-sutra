@@ -13,6 +13,7 @@ import {
   deleteChannel,
   listChannels,
   seedDefaultChannels,
+  syncChannelTitles,
   updateChannel
 } from './_server/channels.mjs'
 
@@ -42,6 +43,10 @@ export const handler = async (event) => {
     if (action === 'delete') {
       await requireAdminUser(event)
       return json(200, await deleteChannel(body.id))
+    }
+    if (action === 'sync') {
+      await requireAdminUser(event)
+      return json(200, { ok: true, channels: await syncChannelTitles() })
     }
 
     return json(400, { error: 'Unknown action.' })

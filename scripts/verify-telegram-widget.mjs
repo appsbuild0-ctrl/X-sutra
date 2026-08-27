@@ -30,9 +30,12 @@ process.env.TELEGRAM_ADMIN_IDS = '4242'
 // getMe is answered locally so no outbound call is needed (and so the failure
 // path can be exercised deterministically).
 let botApiResponse = { ok: true, status: 200, body: { ok: true, result: { username: 'x_sutra_bot', first_name: 'X-Sutra' } } }
+let getChatTitle = 'X-Sutra Official'
 const fetchCalls = []
 globalThis.fetch = async (url) => {
-  fetchCalls.push(String(url))
+  const u = String(url)
+  fetchCalls.push(u)
+  if (u.includes('/getChat')) return { ok: true, status: 200, json: async () => ({ ok: true, result: { title: getChatTitle } }) }
   return { ok: botApiResponse.ok, status: botApiResponse.status, json: async () => botApiResponse.body }
 }
 
@@ -461,7 +464,16 @@ console.log('channels — built-in source is seeded; admin creates/deletes')
   check('a non-numeric id is refused', badId.status, 400)
   const removed = await call(channelsHandler, { action: 'delete', id: '-100222333444' }, auth(adminToken))
   check('and deletes it', removed.body, { ok: true, id: '-100222333444' })
-  check('leaving only the built-in channel', (await call(channelsHandler, { action: 'list' }, auth(adminToken))).body.channels.length, 1)
+
+  const noToken = await call(channelsHandler, { action: 'sync' }, auth(adminToken))
+  const hadToken = Boolean(process.env.TELEGRAM_BOT_TOKEN)
+  if (hadToken) {
+    getChatTitle = 'X-Sutra Official Channel'
+    const synced = await call(channelsHandler, { action: 'sync' }, auth(adminToken))
+    check('sync pulls the real channel name from the bot', synced.body.channels.map((row) => row.title), ['X-Sutra Official Channel'])
+  } else {
+    check('sync without a bot token reports the missing env', noToken.status, 503)
+  }
 }
 
 console.log('bootstrap — with zero admins, the first Telegram login becomes the owner')
