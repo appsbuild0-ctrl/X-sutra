@@ -1,18 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PayQrModal, PlanCards, type PlanId } from '../components/PlanPay'
-import { TelegramAdminCard } from '../components/TelegramAdminCard'
 import { SearchIcon } from '../components/icons'
 import { useApp } from '../context/AppContext'
 import { fetchPremiumCatalog, type PremiumCatalog, type PremiumChannel, type PremiumMedia } from '../lib/premium'
-import { fetchTelegramChannels, fetchTelegramStatus, type TelegramChannelRow } from '../lib/telegramAdmin'
-import {
-  absoluteUploadUrl,
-  fetchChannels,
-  fetchUploads,
-  uploadToMediaItem,
-  type UploadRecord
-} from '../lib/telegramLogin'
+import { discordToMediaItem, fetchDiscordMedia, type DiscordMedia } from '../lib/discord'
 import { hasPremiumAccess, roleLabel } from '../lib/roles'
 
 function shortDate(value?: string): string {
@@ -63,47 +55,20 @@ function PremiumInbox(): React.JSX.Element {
   const [catalog, setCatalog] = useState<PremiumCatalog | null>(null)
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
-  const [telegramConnected, setTelegramConnected] = useState<boolean | null>(null)
-  const [telegramChannels, setTelegramChannels] = useState<TelegramChannelRow[]>([])
-  // Sources managed in the admin Channels tab (bot/db) — merged below so the
-  // owner's main channel shows even when the MTProto owner-import is off.
-  const [dbChannels, setDbChannels] = useState<TelegramChannelRow[]>([])
-  // Content uploaded from the admin panel, served from the X-Sutra database.
-  const [uploads, setUploads] = useState<UploadRecord[]>([])
+  // Discord-backed content: real Discord messages mapped in the X-Sutra database.
+  const [discordMedia, setDiscordMedia] = useState<DiscordMedia[]>([])
 
   useEffect(() => {
     void fetchPremiumCatalog().then(setCatalog).catch((reason) => setError(reason instanceof Error ? reason.message : 'Channels could not load.'))
-    void fetchTelegramStatus().then((status) => {
-      setTelegramConnected(status.connection.connected)
-      if (status.connection.connected) void fetchTelegramChannels().then(setTelegramChannels)
-    }).catch(() => setTelegramConnected(false))
-    // A failed upload list must never hide the rest of the screen.
-    void fetchUploads().then((data) => setUploads(data.uploads)).catch(() => setUploads([]))
-    // Database-backed sources (built-in main channel + admin-added ones).
-    void fetchChannels()
-      .then((rows) => setDbChannels(rows.map((row) => ({ id: row.id, title: row.title, avatar: row.avatar, category: row.category, access_role: row.accessRole, media_count: row.mediaCount, latest_at: null }))))
-      .catch(() => setDbChannels([]))
+    // A failed Discord list must never hide the rest of the screen.
+    void fetchDiscordMedia().then((data) => setDiscordMedia(data.media)).catch(() => setDiscordMedia([]))
   }, [])
 
-  // Merge the owner-import (MTProto) sources with the db sources, deduped by id,
-  // so the main channel is always present without hiding the imported ones.
-  const telegramSources = useMemo(() => {
-    const byId = new Map<string, TelegramChannelRow>()
-    for (const row of dbChannels) byId.set(row.id, row)
-    for (const row of telegramChannels) if (!byId.has(row.id)) byId.set(row.id, row)
-    return [...byId.values()]
-  }, [dbChannels, telegramChannels])
-
-  const playable = (upload: UploadRecord): boolean => upload.kind === 'video' || upload.kind === 'audio'
-
-  const openUpload = (upload: UploadRecord): void => {
-    if (!playable(upload)) {
-      window.open(absoluteUploadUrl(upload), '_blank', 'noopener,noreferrer')
-      return
-    }
-    // Same MediaItem shape the rest of the app plays, so the existing player
-    // and download flow handle uploads unchanged.
-    openPlayer(uploadToMediaItem(upload), uploads.filter(playable).map(uploadToMediaItem))
+  const openDiscord = (media: DiscordMedia): void => {
+    const item = discordToMediaItem(media)
+    const playableQueue = discordMedia.filter((row) => row.kind === 'video' || row.kind === 'audio').map(discordToMediaItem)
+    if (media.kind === 'video' || media.kind === 'audio') openPlayer(item, playableQueue)
+    else window.open(media.url, '_blank', 'noopener,noreferrer')
   }
 
   const channels = useMemo(() => {
@@ -116,14 +81,6 @@ function PremiumInbox(): React.JSX.Element {
 
   const categories = useMemo(() => Array.from(new Set((catalog?.channels ?? []).filter((channel) => channel.status === 'on').map((channel) => channel.type))), [catalog])
 
-  const reloadTelegram = (): void => {
-    void fetchTelegramStatus().then((status) => {
-      setTelegramConnected(status.connection.connected)
-      if (status.connection.connected) void fetchTelegramChannels().then(setTelegramChannels)
-      else setTelegramChannels([])
-    }).catch(() => setTelegramConnected(false))
-  }
-
   return (
     <section className="screen tg-premium-screen">
       <header className="tg-premium-header">
@@ -133,43 +90,18 @@ function PremiumInbox(): React.JSX.Element {
 
       <label className="tg-search"><SearchIcon size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search channels and categories" /></label>
 
-      {telegramConnected === false && (
-        <div className="tg-telegram-connect">
-          <TelegramAdminCard onChanged={reloadTelegram} />
-        </div>
-      )}
-
-      {telegramSources.length > 0 && (
+      {discordMedia.length > 0 && (
         <>
-          <div className="tg-list-title"><strong>🔐 Telegram sources</strong><span>{telegramSources.length}</span></div>
+          <div className="tg-list-title"><strong>🎬 Discord library</strong><span>{discordMedia.length}</span></div>
           <div className="tg-channel-list">
-            {telegramSources.map((channel) => (
-              <div className="tg-channel-row" key={channel.id} role="listitem">
-                <span className="tg-channel-avatar">🔐</span>
-                <span className="tg-channel-main">
-                  <span className="tg-channel-top"><strong>{channel.title}</strong></span>
-                  <span className="tg-channel-preview"><span>{channel.category}</span><em>{channel.media_count}</em></span>
-                </span>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-
-      {uploads.length > 0 && (
-        <>
-          <div className="tg-list-title"><strong>📤 X-Sutra uploads</strong><span>{uploads.length}</span></div>
-          <div className="tg-channel-list">
-            {uploads.map((upload) => (
-              <button className="tg-channel-row" type="button" key={upload.id} onClick={() => openUpload(upload)}>
+            {discordMedia.map((media) => (
+              <button className="tg-channel-row" type="button" key={media.id} onClick={() => openDiscord(media)}>
                 <span className="tg-channel-avatar">
-                  {upload.thumbnail
-                    ? <img src={upload.thumbnail} alt="" />
-                    : upload.kind === 'video' ? '🎬' : upload.kind === 'image' ? '📸' : upload.kind === 'audio' ? '🎵' : '📄'}
+                  {media.kind === 'video' ? '🎬' : media.kind === 'image' ? '📸' : media.kind === 'audio' ? '🎵' : '📄'}
                 </span>
                 <span className="tg-channel-main">
-                  <span className="tg-channel-top"><strong>{upload.title}</strong></span>
-                  <span className="tg-channel-preview"><span>{upload.category}</span><em>{upload.kind}</em></span>
+                  <span className="tg-channel-top"><strong>{media.title}</strong></span>
+                  <span className="tg-channel-preview"><span>{media.kind}</span><em>{Math.round(media.bytes / 1024)} KB</em></span>
                 </span>
               </button>
             ))}

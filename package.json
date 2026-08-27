@@ -11,13 +11,9 @@
     "build:artifacts": "npm run build:drop && node scripts/build-release-artifacts.mjs",
     "preview": "vite preview --host 0.0.0.0",
     "check": "tsc --noEmit",
-    "check:telegram-security": "node scripts/verify-telegram-security.mjs",
-    "check:telegram-login": "node scripts/verify-telegram-login.mjs",
-    "check:telegram-widget": "node scripts/verify-telegram-widget.mjs",
-    "check:channel-sync": "node scripts/verify-channel-sync.mjs",
-    "check:telegram": "npm run check:telegram-security && npm run check:telegram-login && npm run check:telegram-widget && npm run check:channel-sync",
     "cap:sync": "npm run build && cap sync android",
-    "android:open": "cap open android"
+    "android:open": "cap open android",
+    "check:discord": "node scripts/verify-discord.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^6.2.1",

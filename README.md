@@ -16,104 +16,53 @@
 - Local accounts store only a SHA-256 password hash on the device; the raw password is never persisted or transmitted
 - No demo/fake feed data and no external account password/token capture
 
-- **Login with Telegram** (`#/login`): the official Telegram Login Widget, verified server-side, with accounts stored in PostgreSQL and admin-gated uploads
+- **Discord-backed Premium content**: admins upload files from the panel; the backend posts them to a configured Discord channel and maps the real message id in PostgreSQL
 
-## Login with Telegram + admin uploads
+## Discord integration (no Telegram)
 
-Users sign in with Telegram (no password, no OTP, no MTProto session, no `API_ID`/`API_HASH` —
-this flow needs only a **bot**). The Telegram user id is the account identifier, the backend issues a
-signed X-Sutra JWT, and admins upload content straight into the existing Neon database.
+X-Sutra no longer depends on Telegram in any way. Content storage/delivery for Premium uses the
+**Discord Bot REST API**, called server-side from the existing backend — there is **no** long-running
+WebSocket bot, no separate hosting, no Telegram login/OTP/session, and no Discord OAuth.
 
-Everything runs on same-origin `/api/...` routes in this deployment — **there is no `BACKEND_URL`**:
+Flow: **Admin → X-Sutra backend → Discord REST API → your Discord bot → configured channel.**
 
 | Route | Purpose |
 | --- | --- |
-| `GET /api/auth/telegram` | public widget config (bot `@username` only, never the token) |
-| `POST /api/auth/telegram` | `login` / `session` / `logout`, plus admin-only `listAdmins`, `addAdmin`, `removeAdmin`, `listUsers`, `setUserRole`, `setUserStatus` |
-| `GET /api/uploads` | published upload metadata (role-filtered) |
-| `POST /api/uploads` | admin-only `start` / `chunk` / `finish` / `update` / `delete` |
-| `GET /api/uploads/<id>` | the file itself, with real HTTP Range support so the existing player seeks |
-| `GET /api/channels` | Telegram source channel names (the owner's channel is seeded automatically) |
-| `POST /api/channels` | admin-only `list` / `create` / `update` / `delete` of source channels |
+| `GET /api/discord/media` | published content (display fields only — no token, no guild/channel/message ids) |
+| `POST /api/discord/media` | admin-only (X-Sutra admin password): `status` / `start` / `chunk` / `finish` / `list` / `delete` |
+| `POST /api/discord/status` | admin health check: API / guild / channel / permissions, never the token |
 
-Admin Panel → **Channels** lists every source channel by name (the built-in `-1004400682253` is
-seeded on first run) and lets the admin add, rename, hide and delete them.
+### Environment variables (Vercel)
 
-Uploaded files are stored as 3 MB chunk rows in PostgreSQL (a Vercel function body is capped at
-~4.5 MB) and reassembled on read. Videos/images appear automatically in Premium under
-**📤 X-Sutra uploads** and play through the existing player and download flow.
+`DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, `DISCORD_CHANNEL_ID`, `DISCORD_ADMIN_USER_ID`
+(+ `DATABASE_URL`, `AUTH_JWT_SECRET`, optional `DISCORD_MAX_UPLOAD_MB`, `PREMIUM_ADMIN_PASSWORD`).
+All are server-side only; none are bundled, rendered, or returned to the browser.
 
-### 1. BotFather — what to do
+### Bot permissions (minimum)
 
-1. Open Telegram and message **@BotFather** → `/newbot`.
-2. Choose a display name (e.g. `X-Sutra`) and a username ending in `bot` (e.g. `x_sutra_login_bot`).
-3. Copy the **HTTP API token** it replies with — that value is `TELEGRAM_BOT_TOKEN`.
-4. Set the domain the login button will run on: `/setdomain` → pick your bot → enter your production
-   domain **without** `https://` and without a path (e.g. `x-sutra.vercel.app`).
-5. Nothing else is needed. No `API_ID`/`API_HASH`, no phone number, no session string.
+View Channel, Send Messages, Attach Files, Read Message History, Embed Links, and Manage Messages
+(for deletion). Nothing more.
 
-### 2. Vercel environment variables
+### Upload / delete behaviour
 
-Required for Telegram login + uploads:
+- A Discord message is created **first**; the DB row (`xs_discord_media`) is written only after Discord
+  returns a real message id. A Discord failure never marks a success and never leaves a fake row.
+- Files larger than the Discord limit (8 MB default) are rejected with a clear message.
+- Deletion removes the real Discord message (an already-deleted message is handled gracefully) and then
+  updates the DB.
+- Rate limits (HTTP 429 + `retry_after`) are retried a bounded number of times — never an infinite loop.
 
-| Variable | Value |
-| --- | --- |
-| `TELEGRAM_BOT_TOKEN` | the token from @BotFather (server-side only) |
-| `DATABASE_URL` | your existing Neon PostgreSQL connection string |
-| `AUTH_JWT_SECRET` | a long random string — signs the X-Sutra session JWT |
-| `TELEGRAM_ADMIN_IDS` | your Telegram user id(s), comma-separated (first-run bootstrap) |
-
-Optional: `USER_SESSION_DAYS` (default 30), `TELEGRAM_AUTH_MAX_AGE` (default 3600),
-`MAX_UPLOAD_MB` (default 200). The `TELEGRAM_API_ID` / `TELEGRAM_API_HASH` / `TELEGRAM_PHONE` /
-`ADMIN_TELEGRAM_USER_ID` / `SESSION_ENCRYPTION_KEY` variables belong to the separate owner-only
-**Source** tab (private Telegram channel import) and are not needed for user login.
-
-### 3. Telegram domain configuration
-
-The widget only renders on the domain registered with `/setdomain`, and only over HTTPS.
-
-- Production: `/setdomain` → `x-sutra.vercel.app` (your real domain).
-- Every additional domain you use (a second Vercel project, a custom domain) needs its own bot or a
-  `/setdomain` update — Telegram allows one domain per bot.
-- Local development: Telegram does not accept `localhost`, so use a tunnel with a real domain
-  (`cloudflared tunnel --url http://localhost:5173`) and register that domain, or test the API
-  directly with `npm run check:telegram-widget`.
-
-### 4. Where admin Telegram IDs go
-
-- **First admin (recommended):** set `TELEGRAM_ADMIN_IDS` in Vercel (find your id by messaging
-  **@userinfobot**).
-- **Or zero-config bootstrap:** if there is *no* `TELEGRAM_ADMIN_IDS` and the admin table is empty,
-  the **first** Telegram account to log in becomes the admin — the id is written to the database,
-  never to the code, and the door shuts once one admin exists.
-- **After that:** Admin Panel → **Accounts** tab → *Admin Telegram IDs* → add/remove. These live in
-  the `xs_admin_telegram_ids` table; the same tab lists every Telegram account with role and
-  enable/disable controls. If you open the tab without a Telegram session, it shows a single
-  **Connect with Telegram** button instead of an error.
-- No admin secret or token exists in the frontend bundle. The server re-checks the role against the
-  database on every upload call, so hiding the UI is never the only defence.
-
-### 5. Testing after deployment
-
-1. Open the site → **Login** → the Telegram button appears (if it does not, the message under it says
-   why — usually a missing `TELEGRAM_BOT_TOKEN` or an unregistered domain).
-2. Tap **Login with Telegram** → Telegram asks to confirm → you land on **You** (admins land on the
-   admin panel).
-3. Check the session: `curl https://<your-domain>/api/auth/telegram` returns
-   `{"enabled":true,"botUsername":"…","botName":"…"}` and **never** the token.
-4. As an admin: Admin Panel → **Uploads** → pick a file, set a title/category, upload → it appears in
-   Premium under **📤 X-Sutra uploads** and plays in the existing player.
-5. Negative checks: sign in with a non-admin Telegram account → the Uploads/Accounts tabs are absent
-   and `POST /api/uploads` returns `403 Only an admin Telegram account can do this.`
-6. Logout from **You** → the session is invalidated server-side, not just cleared locally.
-
-Local verification (no Telegram account or database needed):
+### Verification
 
 ```bash
-npm run check:telegram-widget   # login signature, JWT, admin gate, chunked upload, Range reads
-npm run check:telegram          # security + OTP source login + widget login + channel import
+npm run check:discord   # real handler + REST logic, in-memory pg + scripted Discord API
+npm run check           # tsc --noEmit
 npm run build
 ```
+
+Live Discord calls require your real bot token in the deployed environment; the sandbox used for
+development cannot reach discord.com, so the production round-trip must be confirmed once after deploy.
+
 
 ## How live API data works
 
@@ -152,7 +101,7 @@ Production runs on Vercel and is what the repository homepage points at:
 https://x-sutra.vercel.app
 ```
 
-Vercel builds `main` for production and every pull request for preview (preview URLs are behind Vercel Authentication, so open them while logged in to the Vercel account). The backend is shared with Netlify: `api/[...path].mjs` routes `/api/*` to the handlers in `netlify/functions/`, with dedicated filesystem functions for the nested `/api/telegram/channels` and `/api/internal/telegram-auth` paths. Frontend requests use same-origin relative `/api/...` paths, so there is no `BACKEND_URL` setting and no separate backend deployment to configure. Configure the variables from `.env.example` in the Vercel project — without `DATABASE_URL` the one-time Telegram login has nowhere to live and the owner console reports the missing name.
+Vercel builds `main` for production and every pull request for preview (preview URLs are behind Vercel Authentication, so open them while logged in to the Vercel account). The backend is shared with Netlify: `api/[...path].mjs` routes `/api/*` to the handlers in `netlify/functions/`, with dedicated filesystem functions for the nested `/api/discord/media` and `/api/discord/status` paths. Frontend requests use same-origin relative `/api/...` paths, so there is no `BACKEND_URL` setting and no separate backend deployment to configure. Configure the variables from `.env.example` in the Vercel project — without `DATABASE_URL` the Discord message mapping has nowhere to live, and without `DISCORD_BOT_TOKEN` the status endpoint reports the missing names.
 
 A second Vercel project (`x-sutra-main-2`) builds the same branch but has no server variables configured, so its `/api/*` calls fail; use the main domain above.
 

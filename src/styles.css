@@ -1111,7 +1111,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .premium-benefit-grid p { margin: 5px 0 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
 @media (max-width:520px) { .premium-benefit-grid { grid-template-columns: 1fr; } .home-header-actions { gap: 5px; } .home-cta { padding-inline: 9px; } }
 
-/* Telegram-inspired X-Sutra premium channel inbox (original branding). */
+/* X-Sutra premium channel inbox (original branding). */
 .tg-premium-screen { padding: 0; background: #080a0e; min-height: calc(100vh - 70px); }
 .tg-premium-header { display:flex; align-items:center; justify-content:space-between; padding:14px 15px 10px; background:#101319; border-bottom:1px solid #20242c; }
 .tg-premium-header > div { display:flex; align-items:center; gap:11px; }
@@ -1150,47 +1150,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .tg-inbox-empty p { max-width:300px; color:#758292; font-size:11px; line-height:1.5; }
 .tg-private-note { margin:18px; color:#586575; text-align:center; font-size:9px; }
 
-/* ---- Telegram login + admin uploads ------------------------------------ */
-.login-divider {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin: 16px 0 12px;
-  color: rgba(255, 255, 255, .55);
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: .08em;
-}
-.login-divider::before,
-.login-divider::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: rgba(255, 255, 255, .12);
-}
-
-.telegram-login {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.telegram-login__label {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: .08em;
-  color: rgba(255, 255, 255, .6);
-}
-.telegram-login__widget {
-  min-height: 42px;
-  display: flex;
-  align-items: center;
-}
-.telegram-login__notice {
-  margin: 4px 0 0;
-  font-size: 12px;
-  color: rgba(255, 255, 255, .6);
-}
-
+/* ---- Admin uploads (Discord) ---- */
 .upload-progress {
   position: relative;
   height: 26px;

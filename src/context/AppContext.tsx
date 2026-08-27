@@ -12,14 +12,6 @@ import { playbackCandidates } from '../lib/media'
 import { hotpicApi } from '../lib/hotpic'
 import { publicMediaApi } from '../lib/redgifs'
 import { createUser, onAccountsChange, readSession, verifyLogin, writeSession } from '../lib/accounts'
-import {
-  clearUserSession,
-  loginWithTelegram,
-  logoutUser,
-  readUserSession,
-  refreshUserSession,
-  type TelegramWidgetUser
-} from '../lib/telegramLogin'
 import { readStored, writeStored, removeStored } from '../lib/storage'
 import type { AuthResult, Creator, DownloadRecord, DownloadStatus, LocalAccount, LocalCollection, MediaItem, Preferences } from '../types'
 
@@ -44,8 +36,6 @@ interface AppContextValue {
   account: LocalAccount | null
   signIn: (username: string, password: string) => Promise<AuthResult>
   signUp: (name: string, username: string, password: string) => Promise<AuthResult>
-  /** Finishes a Telegram Login Widget authentication and stores the JWT. */
-  signInWithTelegram: (auth: TelegramWidgetUser) => Promise<AuthResult>
   signOut: () => void
   toast: ToastMessage | null
   isSaved: (id: string) => boolean
@@ -88,28 +78,6 @@ export function validUsername(username: string): boolean {
   return usernamePattern.test(username.trim())
 }
 
-/** A Telegram session mapped onto the account shape the whole app already uses. */
-function telegramAccount(): LocalAccount | null {
-  const session = readUserSession()
-  if (!session) return null
-  return {
-    name: session.user.name,
-    username: session.user.username || `tg${session.user.telegramId.slice(-6)}`,
-    passwordHash: '',
-    createdAt: session.user.createdAt,
-    role: session.user.role,
-    status: session.user.status,
-    telegramId: session.user.telegramId,
-    photoUrl: session.user.photoUrl,
-    source: 'telegram'
-  }
-}
-
-/** Telegram login wins when both exist; otherwise the device-local account. */
-export function readActiveSession(): LocalAccount | null {
-  return telegramAccount() ?? readSession()
-}
-
 function readRealSaved(): MediaItem[] {
   return readStored<MediaItem[]>(SAVED_KEY, [])
     .filter((item) => item?.id && !item.id.startsWith('xs-demo-'))
@@ -140,21 +108,14 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
   const [playerQueue, setPlayerQueue] = useState<MediaItem[]>([])
   const [playerIndex, setPlayerIndex] = useState(0)
   const [toast, setToast] = useState<ToastMessage | null>(null)
-  const [account, setAccount] = useState<LocalAccount | null>(readActiveSession)
+  const [account, setAccount] = useState<LocalAccount | null>(readSession)
 
   useEffect(() => onAccountsChange(() => {
     setAccount((current) => {
       if (!current) return current
-      return readActiveSession()
+      return readSession()
     })
   }), [])
-
-  // A Telegram session is re-validated on start, so a role change or a
-  // server-side logout applies immediately instead of when the JWT expires.
-  useEffect(() => {
-    if (!readUserSession()) return
-    void refreshUserSession().then((session) => setAccount(session ? telegramAccount() : readSession()))
-  }, [])
 
   useEffect(() => writeStored(SAVED_KEY, saved), [saved])
   useEffect(() => writeStored(LIKED_KEY, liked), [liked])
@@ -190,29 +151,7 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
     return { ok: true }
   }, [notify])
 
-  /**
-   * Completes a Telegram Login Widget authentication. The widget payload is
-   * verified by the backend against the bot token; the role that comes back is
-   * the one stored in PostgreSQL, never something the client picked.
-   */
-  const signInWithTelegram = useCallback(async (auth: TelegramWidgetUser): Promise<AuthResult> => {
-    try {
-      const session = await loginWithTelegram(auth)
-      setAccount(telegramAccount())
-      notify(session.user.role === 'admin' ? `Admin signed in — ${session.user.name}` : `Signed in with Telegram — ${session.user.name}`, 'success')
-      return { ok: true }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Telegram login failed'
-      notify(message, 'error')
-      return { ok: false, error: message }
-    }
-  }, [notify])
-
   const signOut = useCallback(() => {
-    // A Telegram session is invalidated server-side too, so the token stops
-    // working instead of staying valid until it expires.
-    if (readUserSession()) void logoutUser()
-    clearUserSession()
     removeStored(SESSION_KEY)
     setAccount(null)
     notify('Signed out. Data stays on this device')
@@ -415,7 +354,6 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
     account,
     signIn,
     signUp,
-    signInWithTelegram,
     signOut,
     toast,
     isSaved,
@@ -444,7 +382,7 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
     },
     updatePreferences: (patch) => setPreferences((current) => ({ ...current, ...patch })),
     notify
-  }), [account, activeMedia, addToCollection, collectionItems, collections, createCollection, deleteCollection, downloads, follows, isFollowing, isLiked, isSaved, liked, notify, openPlayer, playerIndex, playerQueue, clearLocalData, preferences, refreshActiveMedia, requestDownload, saved, signIn, signInWithTelegram, signOut, signUp, stepPlayer, toast, toggleFollow, toggleLike, toggleSaved])
+  }), [account, activeMedia, addToCollection, collectionItems, collections, createCollection, deleteCollection, downloads, follows, isFollowing, isLiked, isSaved, liked, notify, openPlayer, playerIndex, playerQueue, clearLocalData, preferences, refreshActiveMedia, requestDownload, saved, signIn, signOut, signUp, stepPlayer, toast, toggleFollow, toggleLike, toggleSaved])
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>
 }
