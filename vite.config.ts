@@ -95,7 +95,7 @@ function premiumDevApi(): Plugin {
           }
           return
         }
-        if (path !== '/api/premium' && path !== '/api/premium-scan' && path !== '/api/premium-file' && path !== '/api/hotpic' && path !== '/api/internal/telegram-auth' && path !== '/api/telegram/channels') return next()
+        if (path !== '/api/premium' && path !== '/api/premium-scan' && path !== '/api/premium-file' && path !== '/api/hotpic' && path !== '/api/discord/health' && path !== '/api/discord/upload' && path !== '/api/discord/delete') return next()
         process.env.PREMIUM_LOCAL_FILE ||= '.premium-data.json'
         process.env.PREMIUM_MEDIA_DIR ||= '.premium-media'
         try {
@@ -108,11 +108,13 @@ function premiumDevApi(): Plugin {
               ? './netlify/functions/premium-scan.mjs'
               : path === '/api/premium-file'
                 ? './netlify/functions/premium-file.mjs'
-                : path === '/api/internal/telegram-auth'
-                  ? './netlify/functions/telegram-admin.mjs'
-                  : path === '/api/telegram/channels'
-                    ? './netlify/functions/telegram-channels.mjs'
-                    : './netlify/functions/premium.mjs'
+                : path === '/api/discord/health'
+                  ? './netlify/functions/discord-health.mjs'
+                  : path === '/api/discord/upload'
+                    ? './netlify/functions/discord-upload.mjs'
+                    : path === '/api/discord/delete'
+                      ? './netlify/functions/discord-delete.mjs'
+                      : './netlify/functions/premium.mjs'
           const mod = await import(/* @vite-ignore */ handlerPath) as { handler: (event: unknown) => Promise<{ statusCode: number; body?: string; headers?: Record<string, string>; isBase64Encoded?: boolean }> }
           const result = await mod.handler(event)
           res.statusCode = result.statusCode

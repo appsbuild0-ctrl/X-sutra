@@ -18,15 +18,15 @@ const redirects = `# Tier 1: bundled function proxy with the app User-Agent.
 /api/premium-scan  /.netlify/functions/premium-scan  200
 /api/premium-file  /.netlify/functions/premium-file  200
 /api/hotpic  /.netlify/functions/hotpic  200
-# Private Telegram source. telegram-auth is owner-only: the function requires
-# the x-admin-setup-secret header, so public visitors always get 401.
-/api/telegram/channels  /.netlify/functions/telegram-channels  200
-/api/internal/telegram-auth  /.netlify/functions/telegram-admin  200
+# Discord bot integration (server-side only — bot token never exposed).
+/api/discord/health  /.netlify/functions/discord-health  200
+/api/discord/upload  /.netlify/functions/discord-upload  200
+/api/discord/delete  /.netlify/functions/discord-delete  200
 # Drop sites often have no functions — proxy public Hotpic HTML same-origin.
 /api/hotpic-html/*  https://hotpic.vip/:splat  200!
 # Tier 2: static rewrite fallback for deployments without functions.
 /api/redgifs/*  https://api.redgifs.com/:splat  200!
-# Hash routing is used by X-sutra, but this keeps any future direct paths safe.
+# Hash routing is used by RedGrab, but this keeps any future direct paths safe.
 /*  /index.html  200
 `
 

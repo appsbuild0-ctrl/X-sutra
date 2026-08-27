@@ -39,7 +39,7 @@ function extensionFor(url: string, contentType = ''): string {
 }
 
 function fileNameFor(item: MediaItem, url: string, contentType = ''): string {
-  if (Capacitor.isNativePlatform()) return `X-Sutra_${Date.now()}.${extensionFor(url, contentType)}`
+  if (Capacitor.isNativePlatform()) return `RedGrab_${Date.now()}.${extensionFor(url, contentType)}`
   const clean = `${item.creator}-${item.title}`
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')

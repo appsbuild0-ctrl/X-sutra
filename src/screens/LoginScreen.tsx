@@ -84,7 +84,7 @@ export function LoginScreen(): React.JSX.Element {
       <div className="login-card">
           <span className="login-card__mark"><CrownMark size={34} /></span>
         <p className="eyebrow">{creating ? 'Create local account' : 'Welcome back'}</p>
-        <h2>{creating ? 'Set up your profile' : 'Sign in to X-sutra'}</h2>
+        <h2>{creating ? 'Set up your profile'            : 'Sign in to RedGrab'}</h2>
         <p className="login-card__lead">
           {creating
             ? 'Your account lives only on this device — nothing is uploaded anywhere.'

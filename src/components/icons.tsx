@@ -149,3 +149,31 @@ export function DiscordIcon(props: IconProps): React.JSX.Element {
 export function TelegramIcon(props: IconProps): React.JSX.Element {
   return <IconFrame {...props}><path d="M20.4 5.2 3.8 11.4c-1.1.4-1.1 1.1-.2 1.4l4.2 1.3 1.6 5c.2.6.1.8.8.8.4 0 .6-.2.8-.4l2.4-2.3 4.6 3.4c.8.5 1.4.2 1.6-.8l2.9-13.7c.3-1.2-.4-1.8-1.5-1.4Z" /><path d="m9.8 14.1 8.6-5.4c.4-.3.8 0 .5.3l-7 6.4-.3 3.2" /></IconFrame>
 }
+
+export function HashIcon(props: IconProps): React.JSX.Element {
+  return <IconFrame {...props}><path d="M5 5h2l1.5 6h-3L4 18h2l1.5-6h3L7 18h2l1.5-6h3L10 5h2l1.5 6h3L13 5h2l1.5 6H14l1 6h-2l-1.5-6h-3L9 18H7l-1-6H4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></IconFrame>
+}
+
+export function SendIcon(props: IconProps): React.JSX.Element {
+  return <IconFrame {...props}><path d="M3.5 12L20.5 3 12 20.5l-2-6.5L3.5 12Z" /><path d="m12 20.5 8.5-8.5" /></IconFrame>
+}
+
+export function PinIcon(props: IconProps): React.JSX.Element {
+  return <IconFrame {...props}><path d="M12 17v5" /><path d="M9 3h6l1 4-4 2-4-2 1-4Z" /><path d="M9 7l-2 6h10l-2-6" /></IconFrame>
+}
+
+export function EditIcon(props: IconProps): React.JSX.Element {
+  return <IconFrame {...props}><path d="M15.2 3.8l5 5L7.8 21.2H2.8v-5L15.2 3.8Z" /></IconFrame>
+}
+
+export function SmileIcon(props: IconProps): React.JSX.Element {
+  return <IconFrame {...props}><circle cx="12" cy="12" r="9.5" /><path d="M8.5 13.5s1 1.5 3.5 1.5 3.5-1.5 3.5-1.5" /><circle cx="9" cy="10" r="1" fill="currentColor" /><circle cx="15" cy="10" r="1" fill="currentColor" /></IconFrame>
+}
+
+export function ReplyIcon(props: IconProps): React.JSX.Element {
+  return <IconFrame {...props}><path d="M9 17 4 12l5-5" /><path d="M4 12h11a4 4 0 0 1 0 8h-1" /></IconFrame>
+}
+
+export function XIcon(props: IconProps): React.JSX.Element {
+  return <IconFrame {...props}><path d="m18 6-12 12M6 6l12 12" /></IconFrame>
+}

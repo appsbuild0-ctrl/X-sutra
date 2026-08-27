@@ -1,23 +1,18 @@
 /**
- * PremiumScreen — Discord-style community channel system.
- * Stack-based: channel list → chat view. Accessible from Home → Premium.
+ * CommunityScreen — Stack-based navigation: channel list → chat view.
+ * Mobile-first, no sidebar. Back button returns to channel list.
  */
 
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { PayQrModal, PlanCards, type PlanId } from '../components/PlanPay'
-import { useApp } from '../context/AppContext'
 import { useCommunity } from '../context/CommunityContext'
-import { uploadToCloudinary, isCloudinaryConfigured } from '../lib/cloudinary'
-import { hasPremiumAccess, roleLabel } from '../lib/roles'
+import { useApp } from '../context/AppContext'
 import type { CommunityChannel, CommunityCategory, CommunityMessage, MessageAttachment } from '../lib/community'
-import { ChevronRightIcon, PlusIcon, SendIcon, PinIcon, TrashIcon, EditIcon, SmileIcon, ReplyIcon, XIcon } from '../components/icons'
+import { HashIcon, ChevronRightIcon, SearchIcon, PlusIcon, SendIcon, PinIcon, TrashIcon, EditIcon, SmileIcon, ReplyIcon, XIcon } from '../components/icons'
 
 const CHANNEL_EMOJIS = ['#', '💬', '📢', '🖼️', '🎨', '⭐', '💎', '🔥', '🎮', '🎵', '🎬', '📸', '🤖', '🔒', '🏠', '🎉', '❤️', '💀', '📰', '🛒', '⚽', '🌍', '🧪', '🎯', '📁', '🎶']
-let _longPressFired = false
 const REACTION_EMOJIS = ['👍', '❤️', '😂', '🔥', '🎉', '👀', '💯', '😮', '😢', '🤔', '👏', '🙌', '💀', '✅', '❌', '⭐']
 
-// ─── Helpers ───
+// ─── Small helpers ───
 function EmojiPicker({ emojis, onSelect, onClose }: { emojis: string[]; onSelect: (e: string) => void; onClose: () => void }): React.JSX.Element {
   return (
     <div className="emoji-picker" onClick={(e) => e.stopPropagation()}>
@@ -31,7 +26,9 @@ function EmojiPicker({ emojis, onSelect, onClose }: { emojis: string[]; onSelect
 }
 
 function formatTime(iso: string): string {
-  const d = new Date(iso); const now = new Date(); const diff = now.getTime() - d.getTime()
+  const d = new Date(iso)
+  const now = new Date()
+  const diff = now.getTime() - d.getTime()
   if (diff < 86400000 && d.getDate() === now.getDate()) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   if (diff < 604800000) return d.toLocaleDateString([], { weekday: 'short' }) + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
   return d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -43,84 +40,46 @@ function formatSize(bytes: number): string {
   return `${(bytes / 1048576).toFixed(1)} MB`
 }
 
-// ─── Image grid (Telegram-style) ───
-function ImageGrid({ attachments, authorName }: { attachments: MessageAttachment[]; authorName?: string }): React.JSX.Element {
+// ─── Image grid ───
+function ImageGrid({ attachments }: { attachments: MessageAttachment[] }): React.JSX.Element {
   const images = attachments.filter((a) => a.type === 'image')
   const videos = attachments.filter((a) => a.type === 'video')
   const files = attachments.filter((a) => a.type === 'file')
   const [lbIdx, setLbIdx] = useState<number | null>(null)
-  const [swipeX, setSwipeX] = useState(0)
-  const touchStart = useRef<{ x: number; y: number } | null>(null)
-  const [zoomScale, setZoomScale] = useState(1)
-  const lastTap = useRef<number>(0)
-
-  const handleTouchStart = (e: React.TouchEvent) => {
-    touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
-    setSwipeX(0)
-  }
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (!touchStart.current) return
-    const dx = e.touches[0].clientX - touchStart.current.x
-    setSwipeX(dx)
-  }
-  const handleTouchEnd = () => {
-    if (swipeX > 80) {
-      setLbIdx(null)
-    } else if (swipeX < -80 && lbIdx !== null && lbIdx < images.length - 1) {
-      setLbIdx((i) => i! + 1)
-    } else if (swipeX < -80 && lbIdx !== null && lbIdx >= images.length - 1) {
-      setLbIdx(null)
-    }
-    setSwipeX(0); touchStart.current = null
-  }
-  const handleDoubleTap = () => {
-    const now = Date.now()
-    if (now - lastTap.current < 300) { setZoomScale((z) => z > 1 ? 1 : 2.5) }
-    lastTap.current = now
-  }
-
-  const gridCols = Math.min(images.length, 4)
-  const gridClass = `tg-image-grid tg-image-grid--${gridCols}`
 
   return (
     <div className="msg-attachments">
       {images.length > 0 && (
-        <div className={gridClass} style={{ display: 'grid', gap: 3, borderRadius: 12, overflow: 'hidden', maxWidth: 420, gridTemplateColumns: gridCols === 1 ? '1fr' : '1fr 1fr', gridTemplateRows: gridCols >= 3 ? '1fr 1fr' : undefined }}>
+        <div className={`msg-image-grid msg-image-grid--${Math.min(images.length, 4)}`}>
           {images.slice(0, 4).map((img, i) => (
-            <button key={img.id} type="button" className="tg-image-btn" onClick={() => { setLbIdx(i); setZoomScale(1) }} style={{ position: 'relative', display: 'block', overflow: 'hidden', borderRadius: 12, background: '#1a1415', border: 'none', padding: 0, cursor: 'pointer', minHeight: 100 }}>
-              <img src={img.url} alt={img.name} loading="lazy" draggable={false} style={{ width: '100%', height: 'auto', display: 'block', minHeight: 100, maxHeight: 320, objectFit: 'cover' }} />
-              {i === 3 && images.length > 4 && <span className="tg-image-overflow">+{images.length - 4}</span>}
+            <button key={img.id} type="button" className="msg-image-btn" onClick={() => setLbIdx(i)}>
+              <img src={img.url} alt={img.name} loading="lazy" />
+              {i === 3 && images.length > 4 && <span className="msg-image-overflow">+{images.length - 4}</span>}
             </button>
           ))}
         </div>
       )}
       {videos.map((v) => (
-        <div key={v.id} className="tg-video-card" onClick={(e) => e.stopPropagation()}>
-          <video src={v.url} controls preload="metadata" playsInline className="tg-video" />
-          <div className="tg-video-meta"><span className="tg-video-name">{v.name}</span><span className="tg-video-size">{formatSize(v.size)}</span></div>
+        <div key={v.id} className="msg-video-card">
+          <video src={v.url} controls preload="metadata" className="msg-video" />
+          <div className="msg-video-info"><span>{v.name}</span><span>{formatSize(v.size)}</span></div>
         </div>
       ))}
       {files.map((f) => (
-        <div key={f.id} className="tg-file-card">
-          <div className="tg-file-icon">📄</div>
-          <div className="tg-file-info"><span className="tg-file-name">{f.name}</span><span className="tg-file-size">{formatSize(f.size)}</span></div>
-          <a href={f.url} download={f.name} className="tg-file-dl" onClick={(e) => e.stopPropagation()}>⬇</a>
+        <div key={f.id} className="msg-file-card">
+          <div className="msg-file-icon">📄</div>
+          <div className="msg-file-info"><span className="msg-file-name">{f.name}</span><span className="msg-file-size">{formatSize(f.size)}</span></div>
+          <a href={f.url} download={f.name} className="msg-file-dl">⬇</a>
         </div>
       ))}
       {lbIdx !== null && (
-        <div className="tg-lightbox" onClick={() => setLbIdx(null)}>
-          <div className="tg-lightbox__header">
-            <button type="button" className="tg-lightbox__back" onClick={() => setLbIdx(null)}>←</button>
-            <span className="tg-lightbox__title">{authorName || 'Photo'}</span>
-            <span className="tg-lightbox__counter">{lbIdx + 1} / {images.length}</span>
-          </div>
-          <div className="tg-lightbox__stage"
-            onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
-            onClick={(e) => e.stopPropagation()}>
-            <img src={images[lbIdx].url} alt=""
-              className="tg-lightbox__img"
-              style={{ transform: `translateX(${swipeX * 0.4}px) scale(${zoomScale})`, transition: swipeX ? 'none' : 'transform .2s', opacity: Math.max(0.3, 1 - Math.abs(swipeX) / 300) }}
-              onDoubleClick={handleDoubleTap} draggable={false} />
+        <div className="lightbox" onClick={() => setLbIdx(null)}>
+          <div className="lightbox__inner" onClick={(e) => e.stopPropagation()}>
+            <button type="button" className="lightbox__close" onClick={() => setLbIdx(null)}><XIcon size={24} /></button>
+            <button type="button" className="lightbox__prev" disabled={lbIdx === 0} onClick={() => setLbIdx((i) => i! - 1)}>‹</button>
+            <img src={images[lbIdx].url} alt="" className="lightbox__img" />
+            <button type="button" className="lightbox__next" disabled={lbIdx >= images.length - 1} onClick={() => setLbIdx((i) => i! + 1)}>›</button>
+            <div className="lightbox__counter">{lbIdx + 1} / {images.length}</div>
           </div>
         </div>
       )}
@@ -137,6 +96,7 @@ function MessageBubble({ msg, onReply, onEdit, onDelete, onPin, onReact, me }: {
   const own = msg.author === me
   const rc = msg.authorRole === 'admin' ? 'var(--ember-strong)' : msg.authorRole === 'premium' ? 'var(--gold)' : 'var(--text)'
   const badge = msg.authorRole === 'admin' ? '👑' : msg.authorRole === 'premium' ? '⭐' : ''
+
   return (
     <div className={`msg-bubble ${msg.pinned ? 'msg-bubble--pinned' : ''}`}
       onPointerEnter={() => setShowBar(true)} onPointerLeave={() => { setShowBar(false); setShowEmoji(false) }}>
@@ -154,7 +114,7 @@ function MessageBubble({ msg, onReply, onEdit, onDelete, onPin, onReact, me }: {
             {msg.edited && <span className="msg-edited">(edited)</span>}
           </div>
           <div className="msg-content">{msg.content}</div>
-          {msg.attachments.length > 0 && <ImageGrid attachments={msg.attachments} authorName={msg.authorName} />}
+          {msg.attachments.length > 0 && <ImageGrid attachments={msg.attachments} />}
           {msg.reactions.length > 0 && (
             <div className="msg-reactions">
               {msg.reactions.map((r) => (
@@ -182,7 +142,9 @@ function MessageBubble({ msg, onReply, onEdit, onDelete, onPin, onReact, me }: {
 // ─── Context Menu ───
 function CtxMenu({ x, y, items, onClose }: { x: number; y: number; items: Array<{ label: string; onClick: () => void; danger?: boolean }>; onClose: () => void }): React.JSX.Element {
   useEffect(() => {
-    const h = () => onClose(); window.addEventListener('click', h); window.addEventListener('contextmenu', h)
+    const h = () => onClose()
+    window.addEventListener('click', h)
+    window.addEventListener('contextmenu', h)
     return () => { window.removeEventListener('click', h); window.removeEventListener('contextmenu', h) }
   }, [onClose])
   return (
@@ -198,9 +160,7 @@ function CtxMenu({ x, y, items, onClose }: { x: number; y: number; items: Array<
 // ═══════════════════════════════════════════════════════
 //  VIEW 1: Channel List
 // ═══════════════════════════════════════════════════════
-function PremiumChannelList({ onOpen }: { onOpen: (ch: CommunityChannel) => void }): React.JSX.Element {
-  const navigate = useNavigate()
-  const { account } = useApp()
+function ChannelListView({ onOpen }: { onOpen: (ch: CommunityChannel) => void }): React.JSX.Element {
   const { state, isAdmin, toggleCategoryCollapse, addChannel, removeCategory, deleteChannel, canView, refresh } = useCommunity()
   const { notify } = useApp()
   const [creating, setCreating] = useState<string | null>(null)
@@ -220,7 +180,8 @@ function PremiumChannelList({ onOpen }: { onOpen: (ch: CommunityChannel) => void
 
   const doCreate = (catId: string) => {
     if (!newName.trim()) return
-    addChannel({ categoryId: catId, name: newName }); setNewName(''); setCreating(null); notify('Channel created', 'success')
+    addChannel({ categoryId: catId, name: newName })
+    setNewName(''); setCreating(null); notify('Channel created', 'success')
   }
 
   const onCtx = (e: React.MouseEvent | React.TouchEvent, type: 'channel' | 'category', target: CommunityChannel | CommunityCategory) => {
@@ -244,47 +205,37 @@ function PremiumChannelList({ onOpen }: { onOpen: (ch: CommunityChannel) => void
   }
 
   return (
-    <section className="screen comm-view comm-list">
-      <header className="comm-list__header">
-        <div style={{ flex: 1 }}>
-          <button type="button" className="comm-back-btn" onClick={() => navigate('/')}>← </button>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 22 }}>💎</span>
-            <div>
-              <h2 style={{ margin: 0, fontSize: 20 }}>Premium</h2>
-              <small style={{ color: 'var(--muted)', fontSize: 10 }}>{roleLabel(account?.role)} · {state.channels.filter((c) => canView(c)).length} channels</small>
-            </div>
-          </span>
-        </div>
-      </header>
+    <div className="comm-view comm-list">
+      <div className="comm-list__header">
+        <div><h2>Community</h2><span className="comm-list__sub">RedGrab Server</span></div>
+        <SearchIcon size={20} />
+      </div>
 
       <div className="comm-list__body">
         {cats.map((cat) => {
           const chs = state.channels.filter((c) => c.categoryId === cat.id).sort((a, b) => a.order - b.order).filter((c) => canView(c))
-          if (chs.length === 0 && cat.collapsed) return null
           return (
             <div key={cat.id} className="cat-section">
-              <div className="cat-header" style={{ display: 'flex', alignItems: 'center' }}>
-                <button type="button" className="cat-header__main" onClick={() => toggleCategoryCollapse(cat.id)} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'inherit', textAlign: 'left' }}>
-                  <ChevronRightIcon size={12} className={`cat-chevron ${cat.collapsed ? '' : 'cat-chevron--open'}`} />
-                  <span className="cat-name">{cat.name}</span>
-                </button>
-                {isAdmin && <button type="button" className="cat-add" onClick={() => setCreating(cat.id)} style={{ background: 'none', border: 'none', color: 'var(--muted)', padding: '2px 4px', cursor: 'pointer' }}><PlusIcon size={14} /></button>}
-                {isAdmin && <button type="button" className="ch-dots" onClick={(ev) => { ev.stopPropagation(); onCtx(ev, 'category', cat) }} style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 18, padding: '4px 6px', cursor: 'pointer', lineHeight: 1 }}>⋮</button>}
-              </div>
+              <button type="button" className="cat-header" onClick={() => toggleCategoryCollapse(cat.id)}
+                onContextMenu={(e) => onCtx(e, 'category', cat)}
+                onPointerDown={(e) => { if (isAdmin && e.pointerType === 'touch') { let t: ReturnType<typeof setTimeout>; const cl = () => { clearTimeout(t); window.removeEventListener('pointerup', cl) }; t = setTimeout(() => { onCtx(e, 'category', cat); cl() }, 500); window.addEventListener('pointerup', cl, { once: true }) } }}>
+                <ChevronRightIcon size={12} className={`cat-chevron ${cat.collapsed ? '' : 'cat-chevron--open'}`} />
+                <span className="cat-name">{cat.name}</span>
+                {isAdmin && <button type="button" className="cat-add" onClick={(ev) => { ev.stopPropagation(); setCreating(cat.id) }}><PlusIcon size={14} /></button>}
+              </button>
               {!cat.collapsed && chs.map((ch) => (
-                <div key={ch.id} className={`ch-item ${ch.premiumOnly ? 'ch-item--premium' : ''}`} style={{ display: 'flex', alignItems: 'center' }}>
-                  <button type="button" className="ch-item__main" onClick={() => onOpen(ch)} style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 0, background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'inherit', textAlign: 'left', minWidth: 0 }}>
-                    <span className="ch-emoji">{ch.emoji || '#'}</span>
-                    <div className="ch-info">
-                      <span className="ch-name">{ch.name}</span>
-                      {ch.description && <span className="ch-desc">{ch.description}</span>}
-                    </div>
-                    {ch.premiumOnly && <span className="ch-badge">⭐</span>}
-                    {ch.unreadCount > 0 && <span className="ch-unread">{ch.unreadCount}</span>}
-                  </button>
-                  {isAdmin && <button type="button" className="ch-dots" onClick={(ev) => { ev.stopPropagation(); onCtx(ev, 'channel', ch) }} style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 18, padding: '4px 8px', cursor: 'pointer', flexShrink: 0, lineHeight: 1 }}>⋮</button>}
-                </div>
+                <button key={ch.id} type="button" className={`ch-item ${ch.premiumOnly ? 'ch-item--premium' : ''}`}
+                  onClick={() => onOpen(ch)}
+                  onContextMenu={(e) => onCtx(e, 'channel', ch)}
+                  onPointerDown={(e) => { if (isAdmin && e.pointerType === 'touch') { let t: ReturnType<typeof setTimeout>; const cl = () => { clearTimeout(t); window.removeEventListener('pointerup', cl) }; t = setTimeout(() => { onCtx(e, 'channel', ch); cl() }, 500); window.addEventListener('pointerup', cl, { once: true }) } }}>
+                  <span className="ch-emoji">{ch.emoji || '#'}</span>
+                  <div className="ch-info">
+                    <span className="ch-name">{ch.name}</span>
+                    {ch.description && <span className="ch-desc">{ch.description}</span>}
+                  </div>
+                  {ch.premiumOnly && <span className="ch-badge">⭐</span>}
+                  {ch.unreadCount > 0 && <span className="ch-unread">{ch.unreadCount}</span>}
+                </button>
               ))}
             </div>
           )
@@ -313,13 +264,10 @@ function PremiumChannelList({ onOpen }: { onOpen: (ch: CommunityChannel) => void
         <div className="comm-modal" onClick={() => setEditCh(null)}>
           <div className="comm-modal__box" onClick={(e) => e.stopPropagation()}>
             <h3>Edit Channel</h3>
-            <label className="comm-field"><span>Emoji (type any emoji from keyboard)</span>
+            <label className="comm-field"><span>Emoji</span>
               <div className="emoji-row">
-                <input type="text" className="emoji-row__input" value={editEmoji} onChange={(ev) => setEditEmoji(ev.target.value)} placeholder="💬" maxLength={4} inputMode="text" style={{ fontSize: 22, width: 60, textAlign: 'center', background: 'var(--card)', border: '1px solid var(--line)', borderRadius: 8, padding: '6px 4px', color: 'var(--text)' }} />
-                <span style={{ fontSize: 24, marginLeft: 8 }}>{editEmoji || '💬'}</span>
-              </div>
-              <div className="emoji-row" style={{ marginTop: 4 }}>
-                {CHANNEL_EMOJIS.slice(0, 12).map((e) => <button key={e} type="button" className="emoji-btn" onClick={() => setEditEmoji(e)} style={{ fontSize: 18 }}>{e}</button>)}
+                <button type="button" className="emoji-row__cur" onClick={() => setShowEmojiPicker(!showEmojiPicker)}>{editEmoji}</button>
+                {showEmojiPicker && <div className="emoji-row__grid">{CHANNEL_EMOJIS.map((e) => <button key={e} type="button" className="emoji-btn" onClick={() => { setEditEmoji(e); setShowEmojiPicker(false) }}>{e}</button>)}</div>}
               </div>
             </label>
             <label className="comm-field"><span>Name</span><input value={editName} onChange={(e) => setEditName(e.target.value)} /></label>
@@ -349,14 +297,14 @@ function PremiumChannelList({ onOpen }: { onOpen: (ch: CommunityChannel) => void
           </div>
         </div>
       )}
-    </section>
+    </div>
   )
 }
 
 // ═══════════════════════════════════════════════════════
 //  VIEW 2: Chat
 // ═══════════════════════════════════════════════════════
-function PremiumChatView({ channel, onBack }: { channel: CommunityChannel; onBack: () => void }): React.JSX.Element {
+function ChatView({ channel, onBack }: { channel: CommunityChannel; onBack: () => void }): React.JSX.Element {
   const { postMessage, updateMessage, removeMessage, pinMessage, reactMessage, markRead, loadMessages, canSend, canUpload } = useCommunity()
   const { account, notify } = useApp()
   const [msgs, setMsgs] = useState<CommunityMessage[]>([])
@@ -373,45 +321,30 @@ function PremiumChatView({ channel, onBack }: { channel: CommunityChannel; onBac
   const fileRef = useRef<HTMLInputElement>(null)
 
   const reload = useCallback(() => setMsgs(loadMessages(channel.id)), [channel.id, loadMessages])
+
   useEffect(() => { reload(); markRead(channel.id); setReplyTo(null); setEditId(null) }, [channel.id]) // eslint-disable-line
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [msgs.length])
 
   const send = useCallback(() => {
-    const t = input.trim(); if (!t || !account) return
-    postMessage(channel.id, t, undefined, replyTo?.id); reload(); setInput(''); setReplyTo(null)
+    const t = input.trim()
+    if (!t || !account) return
+    postMessage(channel.id, t, undefined, replyTo?.id)
+    reload(); setInput(''); setReplyTo(null)
   }, [input, account, channel.id, postMessage, reload, replyTo])
 
   const doUpload = async (files: FileList | null) => {
     if (!files || !account) return
-    setUploading(true); setUpProg('Uploading...'); const atts: MessageAttachment[] = []
-    const useCloudinary = isCloudinaryConfigured()
+    setUploading(true); setUpProg('Uploading...')
+    const atts: MessageAttachment[] = []
     for (let i = 0; i < files.length; i++) {
-      const f = files[i]
+      const f = files[i]; setUpProg(`${i + 1}/${files.length}...`)
       try {
-        if (useCloudinary) {
-          setUpProg(`Uploading ${i + 1}/${files.length}...`)
-          const res = await uploadToCloudinary(f, 'x-sutra', (pct) => setUpProg(`${f.name} ${pct}%`))
-          const type: MessageAttachment['type'] = f.type.startsWith('video/') ? 'video' : f.type.startsWith('image/') ? 'image' : 'file'
-          atts.push({ id: `att-${Date.now()}-${i}-${Math.random().toString(36).slice(2,6)}`, type, url: res.secure_url, name: f.name, size: f.size, mimeType: f.type, width: res.width, height: res.height })
-        } else {
-          setUpProg(`Compressing ${i + 1}/${files.length}...`)
-          const { compressToFile } = await import('../lib/compressMedia')
-          const url = await compressToFile(f)
-          const type: MessageAttachment['type'] = f.type.startsWith('video/') ? 'video' : f.type.startsWith('image/') ? 'image' : 'file'
-          atts.push({ id: `att-${Date.now()}-${i}-${Math.random().toString(36).slice(2,6)}`, type, url, name: f.name, size: f.size, mimeType: f.type })
-        }
-      } catch (err) { notify(`Upload failed: ${f.name} — ${err instanceof Error ? err.message : 'Unknown error'}`, 'error') }
+        const url = URL.createObjectURL(f)
+        const type: MessageAttachment['type'] = f.type.startsWith('video/') ? 'video' : f.type.startsWith('image/') ? 'image' : 'file'
+        atts.push({ id: `att-${Date.now()}-${i}`, type, url, name: f.name, size: f.size, mimeType: f.type })
+      } catch { notify(`Failed: ${f.name}`, 'error') }
     }
-    if (atts.length) {
-      postMessage(channel.id, input.trim() || '', atts, replyTo?.id); reload(); setInput(''); setReplyTo(null)
-      // Verify storage succeeded
-      try {
-        const testKey = '__storage_test__'
-        localStorage.setItem(testKey, '1'); localStorage.removeItem(testKey)
-      } catch {
-        notify('Storage full — images may not persist after refresh. Set up Cloudinary for permanent storage.', 'error')
-      }
-    }
+    if (atts.length) { postMessage(channel.id, input.trim() || '', atts, replyTo?.id); reload(); setInput(''); setReplyTo(null) }
     setUploading(false); setUpProg(''); setShowUploadMenu(false)
   }
 
@@ -419,34 +352,43 @@ function PremiumChatView({ channel, onBack }: { channel: CommunityChannel; onBac
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); editId ? doEdit(editId) : send() }
     if (e.key === 'Escape') { setReplyTo(null); setEditId(null) }
   }
+
   const doEdit = (id: string) => { if (!editTxt.trim()) return; updateMessage(channel.id, id, editTxt); reload(); setEditId(null); setEditTxt('') }
   const doDelete = (id: string) => { if (!window.confirm('Delete?')) return; removeMessage(channel.id, id); reload() }
 
   return (
-    <section className="screen comm-view comm-chat">
+    <div className="comm-view comm-chat">
       <div className="chat-header">
         <button type="button" className="chat-back" onClick={onBack}>←</button>
         <div className="chat-header__info">
           <span className="chat-header__emoji">{channel.emoji || '#'}</span>
-          <div><span className="chat-header__name">{channel.name}</span>{channel.description && <span className="chat-header__desc">{channel.description}</span>}</div>
+          <div>
+            <span className="chat-header__name">{channel.name}</span>
+            {channel.description && <span className="chat-header__desc">{channel.description}</span>}
+          </div>
         </div>
         {channel.premiumOnly && <span className="chat-header__premium">⭐</span>}
       </div>
+
       <div className="chat-messages">
         {msgs.length === 0 && (
           <div className="chat-empty">
             <div className="chat-empty__icon"><span style={{ fontSize: 32 }}>{channel.emoji || '#'}</span></div>
-            <strong>Welcome to #{channel.name}</strong><span>This is the start of #{channel.name}</span>
+            <strong>Welcome to #{channel.name}</strong>
+            <span>This is the start of #{channel.name}</span>
           </div>
         )}
         {msgs.map((m) => (
           <MessageBubble key={m.id} msg={m} me={account?.username}
-            onReply={() => setReplyTo(m)} onEdit={() => { setEditId(m.id); setEditTxt(m.content) }}
-            onDelete={() => doDelete(m.id)} onPin={() => { pinMessage(channel.id, m.id); reload() }}
+            onReply={() => setReplyTo(m)}
+            onEdit={() => { setEditId(m.id); setEditTxt(m.content) }}
+            onDelete={() => doDelete(m.id)}
+            onPin={() => { pinMessage(channel.id, m.id); reload() }}
             onReact={(e) => { reactMessage(channel.id, m.id, e); reload() }} />
         ))}
         <div ref={bottomRef} />
       </div>
+
       {(replyTo || editId) && (
         <div className="chat-reply-bar">
           {replyTo && <><ReplyIcon size={16} /><span>Reply to <strong>{replyTo.authorName}</strong></span></>}
@@ -454,6 +396,7 @@ function PremiumChatView({ channel, onBack }: { channel: CommunityChannel; onBac
           <button type="button" onClick={() => { setReplyTo(null); setEditId(null) }}><XIcon size={16} /></button>
         </div>
       )}
+
       {canSend(channel) ? (
         <div className="chat-input-area">
           {canUpload(channel) && (
@@ -477,40 +420,21 @@ function PremiumChatView({ channel, onBack }: { channel: CommunityChannel; onBac
           <button type="button" className="chat-send" onClick={editId ? () => doEdit(editId) : send}
             disabled={editId ? !editTxt.trim() : !input.trim()}><SendIcon size={18} /></button>
         </div>
-      ) : <div className="chat-locked">No permission to send messages here.</div>}
-      {uploading && <div className="chat-upload-status">{upProg}</div>}
-    </section>
-  )
-}
+      ) : (
+        <div className="chat-locked">No permission to send messages here.</div>
+      )}
 
-// ═══════════════════════════════════════════════════════
-//  GATE: Premium check + Plan picker
-// ═══════════════════════════════════════════════════════
-function UpgradeScreen(): React.JSX.Element {
-  const navigate = useNavigate()
-  const { account } = useApp()
-  const [plan, setPlan] = useState<PlanId | null>(null)
-  return (
-    <section className="screen premium-gate-screen">
-      <div className="premium-gate-hero">
-        <button className="ott-exit" type="button" onClick={() => navigate('/')}>← Home</button><span className="premium-gate-crown">⭐</span>
-        <p className="eyebrow">X-Sutra membership</p><h1>Unlock Premium</h1>
-        <p>Private channels and protected media stay hidden until your account is activated.</p>
-        {account ? <span className="premium-status-chip">Current status · {roleLabel(account.role)}</span> : <button className="primary-button" type="button" onClick={() => navigate('/login')}>Login or create account</button>}
-      </div>
-      <div className="premium-plan-section"><p className="eyebrow">Choose your access</p><h2>Premium & VIP plans</h2><PlanCards onPick={setPlan} /><p className="form-help">Access appears only after admin verification and role activation.</p></div>
-      {plan && <PayQrModal plan={plan} onClose={() => setPlan(null)} />}
-    </section>
+      {uploading && <div className="chat-upload-status">{upProg}</div>}
+    </div>
   )
 }
 
 // ═══════════════════════════════════════════════════════
 //  MAIN: Stack navigator
 // ═══════════════════════════════════════════════════════
-export function PremiumScreen(): React.JSX.Element {
-  const { account } = useApp()
+export function CommunityScreen(): React.JSX.Element {
   const [active, setActive] = useState<CommunityChannel | null>(null)
-  if (!hasPremiumAccess(account?.role)) return <UpgradeScreen />
-  if (active) return <PremiumChatView channel={active} onBack={() => setActive(null)} />
-  return <PremiumChannelList onOpen={setActive} />
+
+  if (active) return <ChatView channel={active} onBack={() => setActive(null)} />
+  return <ChannelListView onOpen={setActive} />
 }

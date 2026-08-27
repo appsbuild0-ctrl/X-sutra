@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect } from 'react'
+import { CommunityProvider } from './context/CommunityContext'
 import { HashRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { BottomNav } from './components/BottomNav'
 import { ContentShield } from './components/ContentShield'
@@ -89,5 +90,5 @@ function XsApp(): React.JSX.Element {
 }
 
 export default function App(): React.JSX.Element {
-  return <AppProvider><HashRouter><XsApp /></HashRouter></AppProvider>
+  return    <AppProvider><CommunityProvider><HashRouter><XsApp /></HashRouter></CommunityProvider></AppProvider>
 }

@@ -20,7 +20,7 @@ export function MediaGrid({ items, loading = false, empty, canLoadMore = false, 
     if (!canLoadMore || loadingMore || !onLoadMore || !sentinelRef.current || !('IntersectionObserver' in window)) return
     const observer = new IntersectionObserver((entries) => {
       if (entries.some((entry) => entry.isIntersecting)) onLoadMore()
-    }, { rootMargin: '360px 0px' })
+    }, { rootMargin: '1200px 0px' })
     observer.observe(sentinelRef.current)
     return () => observer.disconnect()
   }, [canLoadMore, loadingMore, onLoadMore, items.length])

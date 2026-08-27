@@ -1,5 +1,5 @@
 import { Capacitor, CapacitorHttp } from '@capacitor/core'
-import { grgGif, grgTrending, grgUserFeed } from './getredgifs'
+import { grgGif, grgUserFeed } from './getredgifs'
 import type { Creator, CreatorProfile, FeedOrder, MediaItem, Niche, PageResult, TagSuggestion } from '../types'
 
 /**
@@ -335,27 +335,21 @@ function nicheFromRaw(value: unknown): Niche | null {
 
 export const publicMediaApi = {
   async trending(page = 1): Promise<PageResult<MediaItem>> {
-    // The public no-login source provides the first trending batch with
-    // permanent clean media URLs; deeper pages use the direct API flow.
-    if (page === 1) {
-      try {
-        const items = await grgTrending()
-        if (items.length) return { items, page: 1, pages: 2, total: items.length }
-      } catch { /* fall through to the API flow */ }
-    }
-    return mediaPage(await request('/v2/feeds/trending/popular', { page, count: 48 }))
+    // Use the paginated search endpoint with trending order for unlimited pages.
+    // The /v2/feeds/trending/popular endpoint only returns 1 page (no pagination).
+    return mediaPage(await request('/v2/gifs/search', { page, count: 80, order: 'trending' }))
   },
 
   async latest(page = 1, order: FeedOrder = 'latest'): Promise<PageResult<MediaItem>> {
-    return mediaPage(await request('/v2/gifs/search', { page, count: 48, order }))
+    return mediaPage(await request('/v2/gifs/search', { page, count: 80, order }))
   },
 
   async search(query: string, page = 1, order: FeedOrder = 'latest'): Promise<PageResult<MediaItem>> {
-    return mediaPage(await request('/v2/gifs/search', { page, count: 48, order, query: query.trim() }))
+    return mediaPage(await request('/v2/gifs/search', { page, count: 80, order, query: query.trim() }))
   },
 
   async tag(tag: string, page = 1, order: FeedOrder = 'latest'): Promise<PageResult<MediaItem>> {
-    return mediaPage(await request('/v2/gifs/search', { page, count: 48, order, query: tag.trim() }))
+    return mediaPage(await request('/v2/gifs/search', { page, count: 80, order, query: tag.trim() }))
   },
 
   async getById(id: string): Promise<MediaItem> {
@@ -368,13 +362,13 @@ export const publicMediaApi = {
   },
 
   async similar(id: string, page = 1): Promise<PageResult<MediaItem>> {
-    return mediaPage(await request('/v2/recommend/tags/' + encodeURIComponent(id), { page, count: 48 }))
+    return mediaPage(await request('/v2/recommend/tags/' + encodeURIComponent(id), { page, count: 80 }))
   },
 
   async creators(query = '', page = 1): Promise<Creator[]> {
     const data = record(await request('/v2/creators/search', {
       page,
-      count: 24,
+      count: 48,
       order: query ? undefined : 'best',
       query: query.trim() || undefined
     }))
@@ -393,7 +387,7 @@ export const publicMediaApi = {
       const feed = await grgUserFeed(username, page)
       if (feed) return { items: feed.items, page, pages: page + (feed.hasMore ? 1 : 0), total: feed.items.length }
     } catch { /* fall through to the API flow */ }
-    return mediaPage(await request(`/v2/users/${encodeURIComponent(username)}/search`, { page, count: 48, order }))
+    return mediaPage(await request(`/v2/users/${encodeURIComponent(username)}/search`, { page, count: 80, order }))
   },
 
   async creatorProfile(username: string): Promise<CreatorProfile> {
@@ -440,7 +434,7 @@ export const publicMediaApi = {
   },
 
   async niche(id: string, page = 1, order: FeedOrder = 'latest'): Promise<PageResult<MediaItem>> {
-    return mediaPage(await request('/v2/niches/' + encodeURIComponent(id) + '/gifs', { page, count: 48, order }))
+    return mediaPage(await request('/v2/niches/' + encodeURIComponent(id) + '/gifs', { page, count: 80, order }))
   },
 
   async relatedNiches(id: string): Promise<Niche[]> {
