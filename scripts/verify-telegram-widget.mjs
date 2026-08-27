@@ -439,6 +439,28 @@ console.log('Vercel entries — api/auth/telegram.mjs, api/uploads.mjs, api/uplo
 }
 
 // ---------------------------------------------------------------------------
+console.log('bootstrap — with zero admins, the first Telegram login becomes the owner')
+{
+  const savedSeed = process.env.TELEGRAM_ADMIN_IDS
+  delete process.env.TELEGRAM_ADMIN_IDS
+  fakeNeon.__reset() // re-seeds from env -> no admins anywhere
+
+  const first = await call(authHandler, { action: 'login', auth: widgetPayload({ id: '111222', first_name: 'Pioneer' }) })
+  check('the first real login is promoted to admin', first.body.user.role, 'admin')
+
+  const second = await call(authHandler, { action: 'login', auth: widgetPayload({ id: '333444', first_name: 'Late' }) })
+  check('the door shuts — the next login is a normal user', second.body.user.role, 'normal')
+
+  const third = await call(authHandler, { action: 'login', auth: widgetPayload({ id: '555666', first_name: 'Third' }) })
+  check('and stays closed for everyone after', third.body.user.role, 'normal')
+
+  const promotedCanManage = await call(authHandler, { action: 'listAdmins' }, auth(first.body.token))
+  check('the bootstrapped admin can now manage the admin list', promotedCanManage.status, 200)
+
+  process.env.TELEGRAM_ADMIN_IDS = savedSeed
+  fakeNeon.__reset()
+}
+
 console.log('client source — the bot token never reaches the browser')
 {
   const { readFile, readdir } = await import('node:fs/promises')

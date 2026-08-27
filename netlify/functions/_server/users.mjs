@@ -35,11 +35,21 @@ export async function isAdminTelegramId(telegramId) {
  * Role is derived server-side: an id in xs_admin_telegram_ids (or seeded from
  * TELEGRAM_ADMIN_IDS) is an admin, everybody else keeps whatever membership role
  * they were given (premium/vip) or stays 'normal'. The client has no say.
+ *
+ * Bootstrap: when literally nobody is an admin yet (no env seed and an empty
+ * admin table), the first Telegram account to log in becomes the owner-admin.
+ * This closes the "must already be admin to add the first admin" dead-end
+ * without ever putting a real id in the code; the id lands in the database, not
+ * the bundle. Once a single admin exists the door shuts for good.
  */
 export async function upsertTelegramUser(identity) {
   await ensureSchema()
   const telegramId = String(identity.id)
-  const admin = await isAdminTelegramId(telegramId)
+  const someAdmin = (await listAdmins()).length > 0
+  const admin = someAdmin ? await isAdminTelegramId(telegramId) : true
+  if (!someAdmin) {
+    await db()`insert into xs_admin_telegram_ids (telegram_id, label) values (${telegramId}, 'first-login bootstrap') on conflict (telegram_id) do nothing`
+  }
   const current = await findUserByTelegramId(telegramId)
   // Demotion must work: an id removed from the admin list loses admin on the
   // next login, but a manually granted premium/vip role is never overwritten.

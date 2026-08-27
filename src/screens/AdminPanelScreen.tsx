@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ScreenHeader } from '../components/ScreenHeader'
+import { TelegramAdminGate } from '../components/TelegramAdminGate'
 import { AdminTelegramUsers } from '../components/AdminTelegramUsers'
 import { AdminUploads } from '../components/AdminUploads'
 import { TelegramAdminCard } from '../components/TelegramAdminCard'
@@ -53,8 +54,8 @@ export function AdminPanelScreen(): React.JSX.Element {
       {tab === 'dash' && <Dash hub={hub} catalog={catalog} />}
       {tab === 'users' && <Users />}
       {tab === 'videos' && <Videos catalog={catalog} setCatalog={setCatalog} hub={hub} persist={persist} />}
-      {tab === 'uploads' && <AdminUploads />}
-      {tab === 'accounts' && <AdminTelegramUsers />}
+      {tab === 'uploads' && <TelegramAdminGate heading="Upload content"><AdminUploads /></TelegramAdminGate>}
+      {tab === 'accounts' && <TelegramAdminGate heading="Admin Telegram IDs"><AdminTelegramUsers /></TelegramAdminGate>}
       {tab === 'telegram' && <TelegramAdminCard onConnected={() => navigate('/premium')} />}
       {tab === 'settings' && <Settings hub={hub} persist={persist} />}
       <nav className="admin-tabs" aria-label="Admin sections">

@@ -76,10 +76,15 @@ The widget only renders on the domain registered with `/setdomain`, and only ove
 
 ### 4. Where admin Telegram IDs go
 
-- **First admin:** `TELEGRAM_ADMIN_IDS` in Vercel (find your id by messaging **@userinfobot**).
+- **First admin (recommended):** set `TELEGRAM_ADMIN_IDS` in Vercel (find your id by messaging
+  **@userinfobot**).
+- **Or zero-config bootstrap:** if there is *no* `TELEGRAM_ADMIN_IDS` and the admin table is empty,
+  the **first** Telegram account to log in becomes the admin — the id is written to the database,
+  never to the code, and the door shuts once one admin exists.
 - **After that:** Admin Panel → **Accounts** tab → *Admin Telegram IDs* → add/remove. These live in
   the `xs_admin_telegram_ids` table; the same tab lists every Telegram account with role and
-  enable/disable controls.
+  enable/disable controls. If you open the tab without a Telegram session, it shows a single
+  **Connect with Telegram** button instead of an error.
 - No admin secret or token exists in the frontend bundle. The server re-checks the role against the
   database on every upload call, so hiding the UI is never the only defence.
 
