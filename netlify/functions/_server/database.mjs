@@ -17,8 +17,31 @@ export function ensureSchema() {
     await sql`create table if not exists xs_rate (key text primary key, last_at timestamptz not null default now(), count integer not null default 1, window_start timestamptz not null default now())`
     await sql`create table if not exists xs_channels (id text primary key, title text not null, avatar text, category text not null default 'mixed', published boolean not null default true, access_role text not null default 'premium', updated_at timestamptz not null default now())`
     await sql`create table if not exists xs_media (id text primary key, channel_id text not null references xs_channels(id) on delete cascade, telegram_message_id bigint not null, kind text not null, title text, mime_type text, duration integer, grouped_id text, published boolean not null default true, created_at timestamptz not null, unique(channel_id, telegram_message_id))`
+
+    // Telegram Login Widget accounts. The Telegram user id is the identifier;
+    // no password, OTP or session string is ever stored.
+    await sql`create table if not exists xs_users (id text primary key, telegram_id text not null unique, first_name text not null default '', last_name text not null default '', username text not null default '', photo_url text not null default '', role text not null default 'normal', status text not null default 'on', session_revoked_at timestamptz, created_at timestamptz not null default now(), updated_at timestamptz not null default now())`
+    // Admin rights are data, never a frontend secret. TELEGRAM_ADMIN_IDS only
+    // seeds this table the first time so the very first admin can get in.
+    await sql`create table if not exists xs_admin_telegram_ids (telegram_id text primary key, label text not null default '', created_at timestamptz not null default now())`
+    // Admin uploads: metadata plus fixed-size byte chunks (Vercel caps a single
+    // function body at ~4.5MB, so files arrive in pieces and are reassembled).
+    await sql`create table if not exists xs_uploads (id text primary key, kind text not null, title text not null, category text not null default 'General', thumbnail text not null default '', mime_type text not null, filename text not null default '', bytes bigint not null default 0, chunk_size integer not null, chunks integer not null default 0, status text not null default 'pending', access_role text not null default 'public', published boolean not null default true, owner_telegram_id text not null default '', created_at timestamptz not null default now(), updated_at timestamptz not null default now())`
+    await sql`create table if not exists xs_upload_chunks (upload_id text not null references xs_uploads(id) on delete cascade, idx integer not null, bytes bytea not null, primary key (upload_id, idx))`
+
+    for (const telegramId of seededAdminIds()) {
+      await sql`insert into xs_admin_telegram_ids (telegram_id, label) values (${telegramId}, 'TELEGRAM_ADMIN_IDS') on conflict (telegram_id) do nothing`
+    }
   })()
   return ready
+}
+
+/** Bootstrap admins from TELEGRAM_ADMIN_IDS (comma/space separated numeric ids). */
+export function seededAdminIds() {
+  return String(process.env.TELEGRAM_ADMIN_IDS || '')
+    .split(/[\s,]+/)
+    .map((value) => value.trim())
+    .filter((value) => /^\d{1,20}$/.test(value))
 }
 
 // The simple OTP login needs no secret, so sending codes is throttled here:

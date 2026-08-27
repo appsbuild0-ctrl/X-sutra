@@ -130,3 +130,65 @@ export function safeError(error) {
   const known = status >= 400 && status < 500
   return json(status, { error: known ? error.message : 'Backend operation failed.' })
 }
+
+/**
+ * Report the real cause instead of a generic message: 4xx (including Telegram
+ * RPC errors) passes through verbatim, 5xx is prefixed so a server fault is
+ * unmistakable, and extra fields such as `telegramError` ride along.
+ */
+export function errorResponse(error) {
+  const status = Number(error?.statusCode)
+  const detail = error?.telegramError ? { telegramError: String(error.telegramError) } : {}
+  if (status === 429 || status === 503) return json(status, { error: error.message, ...detail })
+  if (status >= 500 || !status) return json(500, { error: `Backend: ${error?.message || 'operation failed.'}`, ...detail })
+  return json(status, { error: error?.message || 'Backend operation failed.', ...detail })
+}
+
+// ---------------------------------------------------------------------------
+// X-Sutra app sessions (Telegram Login Widget users)
+//
+// Separate audience + scope from the owner console token, so a Telegram login
+// token can never unlock the private-source console and vice versa. The role
+// claim is copied from the database row at issue time and re-checked against the
+// database for every privileged action (see users.requireAdminUser).
+// ---------------------------------------------------------------------------
+
+const APP_AUDIENCE = 'x-sutra-app'
+const APP_SCOPE = 'x-sutra-user'
+const APP_TTL_DAYS = Number(process.env.USER_SESSION_DAYS) > 0 ? Number(process.env.USER_SESSION_DAYS) : 30
+
+export async function signUserToken(user) {
+  validateSecurityEnv()
+  const secret = new TextEncoder().encode(process.env.AUTH_JWT_SECRET)
+  const issuedAt = Math.floor(Date.now() / 1000)
+  const expiresAt = issuedAt + APP_TTL_DAYS * 86400
+  const token = await new SignJWT({ role: String(user.role || 'normal'), scope: APP_SCOPE, tid: String(user.telegram_id || user.telegramId || '') })
+    .setProtectedHeader({ alg: 'HS256' })
+    .setSubject(String(user.id))
+    .setIssuer(OWNER_ISSUER)
+    .setAudience(APP_AUDIENCE)
+    .setIssuedAt(issuedAt)
+    .setExpirationTime(expiresAt)
+    .sign(secret)
+  return { token, expiresAt: new Date(expiresAt * 1000).toISOString(), expiresInDays: APP_TTL_DAYS }
+}
+
+export async function verifyUserToken(token) {
+  validateSecurityEnv()
+  if (!token) throw Object.assign(new Error('Sign in with Telegram first.'), { statusCode: 401 })
+  try {
+    const secret = new TextEncoder().encode(process.env.AUTH_JWT_SECRET)
+    const { payload } = await jwtVerify(token, secret, { algorithms: ['HS256'], issuer: OWNER_ISSUER, audience: APP_AUDIENCE })
+    if (payload.scope !== APP_SCOPE || !String(payload.sub || '').startsWith('tg:')) throw new Error('scope')
+    return payload
+  } catch (error) {
+    if (error?.statusCode) throw error
+    throw Object.assign(new Error('Your X-Sutra session expired — sign in with Telegram again.'), { statusCode: 401 })
+  }
+}
+
+/** Any signed-in X-Sutra user (JWT check only; the database check lives in users.mjs). */
+export async function requireUser(event) {
+  const payload = await verifyUserToken(bearer(event))
+  return { id: String(payload.sub), telegramId: String(payload.tid || ''), role: String(payload.role || 'normal') }
+}

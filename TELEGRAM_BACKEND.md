@@ -1,5 +1,14 @@
 # Private Telegram backend setup
 
+> **Two separate Telegram features live in this repo — don't mix them up.**
+>
+> 1. **User login** ("Login with Telegram", `README.md` → *Login with Telegram + admin uploads*):
+>    uses only `TELEGRAM_BOT_TOKEN` + `DATABASE_URL` + `AUTH_JWT_SECRET`, via the official Telegram
+>    Login Widget and `/api/auth/telegram`. No `API_ID`, `API_HASH`, phone number or MTProto session.
+> 2. **This document — the owner-only private source**: an MTProto session that imports the owner's
+>    own Telegram channels into Premium. It needs `TELEGRAM_API_ID`, `TELEGRAM_API_HASH`,
+>    `TELEGRAM_PHONE` and `ADMIN_TELEGRAM_USER_ID`, and is optional.
+
 Telegram is an internal Premium/VIP media source. Normal users never receive Telegram credentials, source IDs, session strings, or admin setup controls.
 
 ## Required server environment

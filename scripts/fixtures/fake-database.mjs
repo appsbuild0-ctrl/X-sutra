@@ -33,6 +33,14 @@ export function db() {
 
 export async function ensureSchema() { return true }
 
+/** Same bootstrap rule as the real module: TELEGRAM_ADMIN_IDS seeds admins. */
+export function seededAdminIds() {
+  return String(process.env.TELEGRAM_ADMIN_IDS || '')
+    .split(/[\s,]+/)
+    .map((value) => value.trim())
+    .filter((value) => /^\d{1,20}$/.test(value))
+}
+
 // Real rules: one code per minute, five per hour, per caller.
 export async function assertOtpRateLimit(caller) {
   const key = `otp:${String(caller || 'unknown').slice(0, 64)}`

@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "X-sutra — a real public-media browser with local controls.",
+  "description": "X-sutra \u2014 a real public-media browser with local controls.",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
@@ -13,8 +13,9 @@
     "check": "tsc --noEmit",
     "check:telegram-security": "node scripts/verify-telegram-security.mjs",
     "check:telegram-login": "node scripts/verify-telegram-login.mjs",
+    "check:telegram-widget": "node scripts/verify-telegram-widget.mjs",
     "check:channel-sync": "node scripts/verify-channel-sync.mjs",
-    "check:telegram": "npm run check:telegram-security && npm run check:telegram-login && npm run check:channel-sync",
+    "check:telegram": "npm run check:telegram-security && npm run check:telegram-login && npm run check:telegram-widget && npm run check:channel-sync",
     "cap:sync": "npm run build && cap sync android",
     "android:open": "cap open android"
   },

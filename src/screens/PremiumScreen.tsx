@@ -6,6 +6,12 @@ import { SearchIcon } from '../components/icons'
 import { useApp } from '../context/AppContext'
 import { fetchPremiumCatalog, type PremiumCatalog, type PremiumChannel, type PremiumMedia } from '../lib/premium'
 import { fetchTelegramChannels, fetchTelegramStatus, type TelegramChannelRow } from '../lib/telegramAdmin'
+import {
+  absoluteUploadUrl,
+  fetchUploads,
+  uploadToMediaItem,
+  type UploadRecord
+} from '../lib/telegramLogin'
 import { hasPremiumAccess, roleLabel } from '../lib/roles'
 
 function shortDate(value?: string): string {
@@ -52,12 +58,14 @@ function ChannelRow({ channel, media, onOpen }: { channel: PremiumChannel; media
 
 function PremiumInbox(): React.JSX.Element {
   const navigate = useNavigate()
-  const { account } = useApp()
+  const { account, openPlayer } = useApp()
   const [catalog, setCatalog] = useState<PremiumCatalog | null>(null)
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
   const [telegramConnected, setTelegramConnected] = useState<boolean | null>(null)
   const [telegramChannels, setTelegramChannels] = useState<TelegramChannelRow[]>([])
+  // Content uploaded from the admin panel, served from the X-Sutra database.
+  const [uploads, setUploads] = useState<UploadRecord[]>([])
 
   useEffect(() => {
     void fetchPremiumCatalog().then(setCatalog).catch((reason) => setError(reason instanceof Error ? reason.message : 'Channels could not load.'))
@@ -65,7 +73,21 @@ function PremiumInbox(): React.JSX.Element {
       setTelegramConnected(status.connection.connected)
       if (status.connection.connected) void fetchTelegramChannels().then(setTelegramChannels)
     }).catch(() => setTelegramConnected(false))
+    // A failed upload list must never hide the rest of the screen.
+    void fetchUploads().then((data) => setUploads(data.uploads)).catch(() => setUploads([]))
   }, [])
+
+  const playable = (upload: UploadRecord): boolean => upload.kind === 'video' || upload.kind === 'audio'
+
+  const openUpload = (upload: UploadRecord): void => {
+    if (!playable(upload)) {
+      window.open(absoluteUploadUrl(upload), '_blank', 'noopener,noreferrer')
+      return
+    }
+    // Same MediaItem shape the rest of the app plays, so the existing player
+    // and download flow handle uploads unchanged.
+    openPlayer(uploadToMediaItem(upload), uploads.filter(playable).map(uploadToMediaItem))
+  }
 
   const channels = useMemo(() => {
     const needle = query.trim().toLowerCase()
@@ -112,6 +134,27 @@ function PremiumInbox(): React.JSX.Element {
                   <span className="tg-channel-preview"><span>{channel.category}</span><em>{channel.media_count}</em></span>
                 </span>
               </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {uploads.length > 0 && (
+        <>
+          <div className="tg-list-title"><strong>📤 X-Sutra uploads</strong><span>{uploads.length}</span></div>
+          <div className="tg-channel-list">
+            {uploads.map((upload) => (
+              <button className="tg-channel-row" type="button" key={upload.id} onClick={() => openUpload(upload)}>
+                <span className="tg-channel-avatar">
+                  {upload.thumbnail
+                    ? <img src={upload.thumbnail} alt="" />
+                    : upload.kind === 'video' ? '🎬' : upload.kind === 'image' ? '📸' : upload.kind === 'audio' ? '🎵' : '📄'}
+                </span>
+                <span className="tg-channel-main">
+                  <span className="tg-channel-top"><strong>{upload.title}</strong></span>
+                  <span className="tg-channel-preview"><span>{upload.category}</span><em>{upload.kind}</em></span>
+                </span>
+              </button>
             ))}
           </div>
         </>

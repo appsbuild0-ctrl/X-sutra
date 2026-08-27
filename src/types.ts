@@ -95,7 +95,12 @@ export interface Preferences {
 
 export type UserRole = 'normal' | 'creator' | 'premium' | 'vip' | 'admin'
 
-/** Device-local account used by the optional login flow. Nothing is transmitted anywhere. */
+/**
+ * A signed-in account. Two login methods produce one:
+ *   * the original device-local login (password hashed on the device), and
+ *   * "Login with Telegram", where the account lives in PostgreSQL and the
+ *     server issues a signed JWT (see lib/telegramLogin.ts).
+ */
 export interface LocalAccount {
   name: string
   username: string
@@ -104,6 +109,12 @@ export interface LocalAccount {
   createdAt: string
   role: UserRole
   status?: 'on' | 'off'
+  /** Telegram user id, present only for Telegram logins. */
+  telegramId?: string
+  /** Which login produced this session. */
+  source?: 'local' | 'telegram'
+  /** Telegram profile photo, when the account came from Telegram. */
+  photoUrl?: string
 }
 
 export type AuthResult = { ok: true } | { ok: false; error: string }

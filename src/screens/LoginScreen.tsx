@@ -3,14 +3,16 @@ import { useNavigate } from 'react-router-dom'
 import { CrownMark } from '../components/CrownMark'
 import { EyeIcon, EyeOffIcon, ShieldIcon } from '../components/icons'
 import { PayQrModal, PlanCards, type PlanId } from '../components/PlanPay'
+import { TelegramLoginButton } from '../components/TelegramLoginButton'
 import { useApp, validUsername } from '../context/AppContext'
 import { roleLabel } from '../lib/roles'
+import { currentUser } from '../lib/telegramLogin'
 
 type LoginMode = 'signin' | 'signup'
 
 export function LoginScreen(): React.JSX.Element {
   const navigate = useNavigate()
-  const { signIn, signUp, signOut, account, notify } = useApp()
+  const { signIn, signUp, signInWithTelegram, signOut, account, notify } = useApp()
   const [mode, setMode] = useState<LoginMode>('signin')
   const [name, setName] = useState('')
   const [username, setUsername] = useState('')
@@ -66,9 +68,12 @@ export function LoginScreen(): React.JSX.Element {
       <section className="screen screen--login">
         <div className="login-card">
           <span className="login-card__mark"><CrownMark size={34} /></span>
-          <p className="eyebrow">{account.role === 'admin' ? 'Admin session' : 'Local account'}</p>
+          <p className="eyebrow">{account.role === 'admin' ? 'Admin session' : account.source === 'telegram' ? 'Telegram account' : 'Local account'}</p>
           <h2>Already signed in</h2>
-          <p className="login-card__lead">You are signed in as <strong>{account.name}</strong> (@{account.username}).</p>
+          <p className="login-card__lead">
+            You are signed in as <strong>{account.name}</strong>{' '}
+            {account.source === 'telegram' ? `(${roleLabel(account.role)}${account.telegramId ? ` · Telegram ${account.telegramId}` : ''})` : `(@${account.username})`}.
+          </p>
           <button className="primary-button primary-button--wide" type="button" onClick={() => navigate(account.role === 'admin' ? '/admin' : '/you')}>{account.role === 'admin' ? 'Open admin panel' : 'Go to your profile'}</button>
           <button className="secondary-button" type="button" onClick={signOut}>Sign out</button>
           <p className="eyebrow" style={{ marginTop: 18 }}>Plans</p>
@@ -155,6 +160,29 @@ export function LoginScreen(): React.JSX.Element {
           </button>
         </form>
 
+        <div className="login-divider"><span>or</span></div>
+
+        {/* Server-verified Telegram login. The bot token stays on the server;
+            only the signed widget payload is posted to /api/auth/telegram. */}
+        <TelegramLoginButton
+          onAuth={async (auth) => {
+            if (busy) return
+            setBusy(true)
+            setError('')
+            try {
+              const result = await signInWithTelegram(auth)
+              if (!result.ok) {
+                setError(result.error)
+                return
+              }
+              const session = currentUser()
+              navigate(session?.role === 'admin' ? '/admin' : '/you')
+            } finally {
+              setBusy(false)
+            }
+          }}
+        />
+
         <button
           className="text-button login-swap"
           type="button"
@@ -164,7 +192,9 @@ export function LoginScreen(): React.JSX.Element {
         </button>
 
         <p className="login-note">
-          <ShieldIcon size={13} /> Local-only login. Your password is hashed on this device and never sent to any server.
+          <ShieldIcon size={13} /> The username/password option stays local to this device. Telegram login is verified by
+          the server against the bot token and creates your account in the X-Sutra database — no password is ever asked
+          for or stored.
         </p>
         <p className="eyebrow" style={{ marginTop: 18 }}>Plans</p>
         <PlanCards onPick={setPlan} />

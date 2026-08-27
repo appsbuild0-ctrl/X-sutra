@@ -95,13 +95,21 @@ function premiumDevApi(): Plugin {
           }
           return
         }
-        if (path !== '/api/premium' && path !== '/api/premium-scan' && path !== '/api/premium-file' && path !== '/api/hotpic' && path !== '/api/internal/telegram-auth' && path !== '/api/telegram/channels') return next()
+        const uploadFileMatch = path.startsWith('/api/uploads/') ? decodeURIComponent(path.slice('/api/uploads/'.length)) : ''
+        const apiPaths = ['/api/premium', '/api/premium-scan', '/api/premium-file', '/api/hotpic', '/api/internal/telegram-auth', '/api/telegram/channels', '/api/auth/telegram', '/api/uploads']
+        if (!uploadFileMatch && !apiPaths.includes(path)) return next()
         process.env.PREMIUM_LOCAL_FILE ||= '.premium-data.json'
         process.env.PREMIUM_MEDIA_DIR ||= '.premium-media'
         try {
           const body = req.method === 'POST' ? await readBody(req) : ''
           const requestUrl = new URL(req.url ?? '/', 'http://localhost')
-          const event = { httpMethod: req.method, body, headers: req.headers, queryStringParameters: Object.fromEntries(requestUrl.searchParams), rawUrl: requestUrl.href }
+          const event = {
+            httpMethod: req.method,
+            body,
+            headers: req.headers,
+            queryStringParameters: { ...Object.fromEntries(requestUrl.searchParams), ...(uploadFileMatch ? { id: uploadFileMatch } : {}) },
+            rawUrl: requestUrl.href
+          }
           const handlerPath = path === '/api/hotpic'
             ? './netlify/functions/hotpic.mjs'
             : path === '/api/premium-scan'
@@ -112,7 +120,13 @@ function premiumDevApi(): Plugin {
                   ? './netlify/functions/telegram-admin.mjs'
                   : path === '/api/telegram/channels'
                     ? './netlify/functions/telegram-channels.mjs'
-                    : './netlify/functions/premium.mjs'
+                    : path === '/api/auth/telegram'
+                      ? './netlify/functions/auth-telegram.mjs'
+                      : path === '/api/uploads'
+                        ? './netlify/functions/uploads.mjs'
+                        : uploadFileMatch
+                          ? './netlify/functions/upload-file.mjs'
+                          : './netlify/functions/premium.mjs'
           const mod = await import(/* @vite-ignore */ handlerPath) as { handler: (event: unknown) => Promise<{ statusCode: number; body?: string; headers?: Record<string, string>; isBase64Encoded?: boolean }> }
           const result = await mod.handler(event)
           res.statusCode = result.statusCode

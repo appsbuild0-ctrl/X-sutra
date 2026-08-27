@@ -1149,3 +1149,66 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .tg-inbox-empty strong { margin-top:9px; font-size:14px; }
 .tg-inbox-empty p { max-width:300px; color:#758292; font-size:11px; line-height:1.5; }
 .tg-private-note { margin:18px; color:#586575; text-align:center; font-size:9px; }
+
+/* ---- Telegram login + admin uploads ------------------------------------ */
+.login-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 0 12px;
+  color: rgba(255, 255, 255, .55);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+.login-divider::before,
+.login-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(255, 255, 255, .12);
+}
+
+.telegram-login {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.telegram-login__label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: rgba(255, 255, 255, .6);
+}
+.telegram-login__widget {
+  min-height: 42px;
+  display: flex;
+  align-items: center;
+}
+.telegram-login__notice {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: rgba(255, 255, 255, .6);
+}
+
+.upload-progress {
+  position: relative;
+  height: 26px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, .08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.upload-progress__bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: rgba(46, 204, 113, .35);
+  transition: width .2s ease;
+}
+.upload-progress span {
+  position: relative;
+  font-size: 12px;
+  font-weight: 600;
+}
