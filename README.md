@@ -33,6 +33,11 @@ Everything runs on same-origin `/api/...` routes in this deployment — **there 
 | `GET /api/uploads` | published upload metadata (role-filtered) |
 | `POST /api/uploads` | admin-only `start` / `chunk` / `finish` / `update` / `delete` |
 | `GET /api/uploads/<id>` | the file itself, with real HTTP Range support so the existing player seeks |
+| `GET /api/channels` | Telegram source channel names (the owner's channel is seeded automatically) |
+| `POST /api/channels` | admin-only `list` / `create` / `update` / `delete` of source channels |
+
+Admin Panel → **Channels** lists every source channel by name (the built-in `-1004400682253` is
+seeded on first run) and lets the admin add, rename, hide and delete them.
 
 Uploaded files are stored as 3 MB chunk rows in PostgreSQL (a Vercel function body is capped at
 ~4.5 MB) and reassembled on read. Videos/images appear automatically in Premium under

@@ -13,6 +13,7 @@ import { readStored, removeStored, writeStored } from './storage'
 
 const AUTH_ENDPOINT = '/api/auth/telegram'
 const UPLOAD_ENDPOINT = '/api/uploads'
+const CHANNEL_ENDPOINT = '/api/channels'
 const SESSION_KEY = 'x-sutra.user.session.v1'
 
 export class TelegramLoginError extends Error {
@@ -82,6 +83,17 @@ export interface UploadRecord {
 export interface UploadCategory {
   category: string
   total: number
+}
+
+export interface ChannelRecord {
+  id: string
+  title: string
+  category: string
+  avatar: string | null
+  accessRole: 'public' | 'premium' | 'vip' | 'admin'
+  published: boolean
+  mediaCount: number
+  updatedAt: string
 }
 
 // ---------------------------------------------------------------------------
@@ -351,6 +363,34 @@ export function uploadToMediaItem(upload: UploadRecord): MediaItem {
     tags: upload.category ? [upload.category] : [],
     niches: []
   }
+}
+
+// ---------------------------------------------------------------------------
+// Telegram source channels (admin-managed, owner's channel pre-seeded)
+// ---------------------------------------------------------------------------
+
+export async function fetchChannels(): Promise<ChannelRecord[]> {
+  const data = await call<{ channels: ChannelRecord[] }>(CHANNEL_ENDPOINT)
+  return data.channels
+}
+
+export async function fetchAdminChannels(): Promise<ChannelRecord[]> {
+  const data = await call<{ channels: ChannelRecord[] }>(CHANNEL_ENDPOINT, { action: 'list' })
+  return data.channels
+}
+
+export async function createChannel(input: { id: string; title: string; category?: string; accessRole?: ChannelRecord['accessRole']; published?: boolean }): Promise<ChannelRecord[]> {
+  const data = await call<{ ok: true; channels: ChannelRecord[] }>(CHANNEL_ENDPOINT, { action: 'create', ...input })
+  return data.channels
+}
+
+export async function updateChannel(id: string, patch: Partial<Pick<ChannelRecord, 'title' | 'category' | 'accessRole' | 'published'>>): Promise<ChannelRecord> {
+  const data = await call<{ ok: true; channel: ChannelRecord }>(CHANNEL_ENDPOINT, { action: 'update', id, ...patch })
+  return data.channel
+}
+
+export async function deleteChannel(id: string): Promise<void> {
+  await call<{ ok: true; id: string }>(CHANNEL_ENDPOINT, { action: 'delete', id })
 }
 
 // ---------------------------------------------------------------------------

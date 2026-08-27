@@ -43,6 +43,7 @@ const { CHUNK_BYTES, SERVE_BYTES } = await import('../netlify/functions/_server/
 const { handler: authHandler } = await import('../netlify/functions/auth-telegram.mjs')
 const { handler: uploadsHandler } = await import('../netlify/functions/uploads.mjs')
 const { handler: fileHandler } = await import('../netlify/functions/upload-file.mjs')
+const { handler: channelsHandler } = await import('../netlify/functions/channels.mjs')
 const fakeNeon = await import('./fixtures/fake-neon.mjs')
 
 let failures = 0
@@ -436,9 +437,33 @@ console.log('Vercel entries — api/auth/telegram.mjs, api/uploads.mjs, api/uplo
   check('the catch-all also serves the login config', JSON.parse(routedAuth.raw.toString()).botUsername, 'x_sutra_bot')
   const unknown = await invoke(vercelCatchAll, 'GET', '/api/nope')
   check('unknown API paths still 404', unknown.status, 404)
+  const channelsRoute = await invoke(vercelCatchAll, 'GET', '/api/channels')
+  check('the catch-all serves /api/channels with the built-in source', JSON.parse(channelsRoute.raw.toString()).channels.map((row) => row.id), ['-1004400682253'])
 }
 
 // ---------------------------------------------------------------------------
+console.log('channels — built-in source is seeded; admin creates/deletes')
+{
+  const publicList = await call(channelsHandler)
+  check('the built-in channel is seeded automatically', publicList.body.channels.map((row) => row.id), ['-1004400682253'])
+  check('and shows a default name', publicList.body.channels[0].title, 'Telegram Source')
+
+  const anonCreate = await call(channelsHandler, { action: 'create', id: '-1001', title: 'X' })
+  check('anonymous create is refused', anonCreate.status, 401)
+  const memberCreate = await call(channelsHandler, { action: 'create', id: '-1001', title: 'X' }, auth(userToken))
+  check('a normal user cannot create channels', memberCreate.status, 403)
+
+  const created = await call(channelsHandler, { action: 'create', id: '-100222333444', title: 'My Second Channel', category: 'vip' }, auth(adminToken))
+  check('an admin adds a channel', created.body.channels.length, 2)
+  const renamed = await call(channelsHandler, { action: 'update', id: '-100222333444', title: 'Renamed Channel' }, auth(adminToken))
+  check('and renames it', renamed.body.channel.title, 'Renamed Channel')
+  const badId = await call(channelsHandler, { action: 'create', id: 'notanid' }, auth(adminToken))
+  check('a non-numeric id is refused', badId.status, 400)
+  const removed = await call(channelsHandler, { action: 'delete', id: '-100222333444' }, auth(adminToken))
+  check('and deletes it', removed.body, { ok: true, id: '-100222333444' })
+  check('leaving only the built-in channel', (await call(channelsHandler, { action: 'list' }, auth(adminToken))).body.channels.length, 1)
+}
+
 console.log('bootstrap — with zero admins, the first Telegram login becomes the owner')
 {
   const savedSeed = process.env.TELEGRAM_ADMIN_IDS

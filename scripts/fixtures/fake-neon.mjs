@@ -12,7 +12,7 @@
 const now = () => new Date().toISOString()
 
 export function __reset() {
-  globalThis.__fakeNeon = { users: [], admins: [], uploads: [], chunks: [], sql: [] }
+  globalThis.__fakeNeon = { users: [], admins: [], uploads: [], chunks: [], channels: [], sql: [] }
   // database.ensureSchema() is memoised per process, so re-seed what the real
   // bootstrap would have seeded from TELEGRAM_ADMIN_IDS.
   for (const telegramId of seededAdminIds()) {
@@ -21,7 +21,7 @@ export function __reset() {
 }
 
 export function __store() {
-  return (globalThis.__fakeNeon ??= { users: [], admins: [], uploads: [], chunks: [], sql: [] })
+  return (globalThis.__fakeNeon ??= { users: [], admins: [], uploads: [], chunks: [], channels: [], sql: [] })
 }
 
 export function seededAdminIds() {
@@ -177,6 +177,47 @@ function driver() {
       return Promise.resolve(
         [...store.uploads].reverse().filter((row) => !readyOnly || (row.status === 'ready' && row.published)).slice(0, 500)
       )
+    }
+
+    // ---- xs_channels ------------------------------------------------------
+    if (/^insert into xs_channels/i.test(query)) {
+      const conflictUpdate = /on conflict \(id\) do update/i.test(query)
+      const id = String(params[0])
+      const existing = store.channels.find((row) => row.id === id)
+      if (existing && !conflictUpdate) return Promise.resolve([]) // do nothing
+      const full = {
+        id,
+        title: String(params[1]),
+        avatar: params[2] ?? null,
+        category: String(params[3]),
+        access_role: params.length > 4 ? String(params[4]) : (existing?.access_role || 'premium'),
+        published: params.length > 5 ? Boolean(params[5]) : (existing?.published ?? true),
+        media_count: 0,
+        updated_at: now()
+      }
+      if (existing && conflictUpdate) Object.assign(existing, { title: full.title, category: full.category, updated_at: now() })
+      else if (!existing) store.channels.push(full)
+      return Promise.resolve([])
+    }
+    if (/^delete from xs_channels/i.test(query)) {
+      store.channels = store.channels.filter((row) => row.id !== String(params[0]))
+      return Promise.resolve([])
+    }
+    if (/^select id from xs_channels where id=\?/i.test(query)) {
+      return Promise.resolve(store.channels.filter((row) => row.id === String(params[0])))
+    }
+    if (/^update xs_channels set/i.test(query)) {
+      const id = String(params[params.length - 1])
+      const row = store.channels.find((upload) => upload.id === id)
+      if (!row) return Promise.resolve([])
+      const keys = ['title', 'category', 'access_role', 'published'].filter((key) => query.includes(`,${key}=?`))
+      keys.forEach((key, index) => { row[key] = params[index] })
+      row.updated_at = now()
+      return Promise.resolve([row])
+    }
+    if (/^select \* from xs_channels (where .* )?order by updated_at desc limit 500/i.test(query)) {
+      const publishedOnly = /where published=true/i.test(query)
+      return Promise.resolve([...store.channels].reverse().filter((row) => !publishedOnly || row.published).slice(0, 500))
     }
 
     // ---- xs_upload_chunks ---------------------------------------------------

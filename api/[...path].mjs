@@ -10,6 +10,7 @@ import { handler as telegramChannels } from '../netlify/functions/telegram-chann
 import { handler as telegramAdmin } from '../netlify/functions/telegram-admin.mjs'
 import { handler as authTelegram } from '../netlify/functions/auth-telegram.mjs'
 import { handler as uploads } from '../netlify/functions/uploads.mjs'
+import { handler as channels } from '../netlify/functions/channels.mjs'
 import { handler as uploadFile } from '../netlify/functions/upload-file.mjs'
 import { runHandler } from '../netlify/functions/_server/vercel.mjs'
 
@@ -23,7 +24,8 @@ const ROUTES = new Map([
   ['/api/telegram/channels', telegramChannels],
   ['/api/internal/telegram-auth', telegramAdmin],
   ['/api/auth/telegram', authTelegram],
-  ['/api/uploads', uploads]
+  ['/api/uploads', uploads],
+  ['/api/channels', channels]
 ])
 
 const HOTPIC_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'

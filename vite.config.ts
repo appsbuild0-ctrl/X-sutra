@@ -96,7 +96,7 @@ function premiumDevApi(): Plugin {
           return
         }
         const uploadFileMatch = path.startsWith('/api/uploads/') ? decodeURIComponent(path.slice('/api/uploads/'.length)) : ''
-        const apiPaths = ['/api/premium', '/api/premium-scan', '/api/premium-file', '/api/hotpic', '/api/internal/telegram-auth', '/api/telegram/channels', '/api/auth/telegram', '/api/uploads']
+        const apiPaths = ['/api/premium', '/api/premium-scan', '/api/premium-file', '/api/hotpic', '/api/internal/telegram-auth', '/api/telegram/channels', '/api/auth/telegram', '/api/uploads', '/api/channels']
         if (!uploadFileMatch && !apiPaths.includes(path)) return next()
         process.env.PREMIUM_LOCAL_FILE ||= '.premium-data.json'
         process.env.PREMIUM_MEDIA_DIR ||= '.premium-media'
@@ -124,6 +124,8 @@ function premiumDevApi(): Plugin {
                       ? './netlify/functions/auth-telegram.mjs'
                       : path === '/api/uploads'
                         ? './netlify/functions/uploads.mjs'
+                        : path === '/api/channels'
+                          ? './netlify/functions/channels.mjs'
                         : uploadFileMatch
                           ? './netlify/functions/upload-file.mjs'
                           : './netlify/functions/premium.mjs'

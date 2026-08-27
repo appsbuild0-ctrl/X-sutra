@@ -4,6 +4,7 @@ import { ScreenHeader } from '../components/ScreenHeader'
 import { TelegramAdminGate } from '../components/TelegramAdminGate'
 import { AdminTelegramUsers } from '../components/AdminTelegramUsers'
 import { AdminUploads } from '../components/AdminUploads'
+import { AdminChannels } from '../components/AdminChannels'
 import { TelegramAdminCard } from '../components/TelegramAdminCard'
 import { DownloadIcon, HeartIcon, LibraryIcon, SettingsIcon, ShieldIcon, TrashIcon, UserIcon } from '../components/icons'
 import { useApp } from '../context/AppContext'
@@ -15,7 +16,7 @@ import type { UserRole } from '../types'
 import { fetchPremiumCatalog, premiumAdmin, type PremiumCatalog } from '../lib/premium'
 import { fileToDataUrl, writePayQr, clearPayQr } from '../lib/payQr'
 
-type Tab = 'dash' | 'users' | 'videos' | 'uploads' | 'accounts' | 'telegram' | 'settings'
+type Tab = 'dash' | 'users' | 'videos' | 'uploads' | 'channels' | 'accounts' | 'telegram' | 'settings'
 
 export function AdminPanelScreen(): React.JSX.Element {
   const navigate = useNavigate()
@@ -55,6 +56,7 @@ export function AdminPanelScreen(): React.JSX.Element {
       {tab === 'users' && <Users />}
       {tab === 'videos' && <Videos catalog={catalog} setCatalog={setCatalog} hub={hub} persist={persist} />}
       {tab === 'uploads' && <TelegramAdminGate heading="Upload content"><AdminUploads /></TelegramAdminGate>}
+      {tab === 'channels' && <TelegramAdminGate heading="Telegram channels"><AdminChannels /></TelegramAdminGate>}
       {tab === 'accounts' && <TelegramAdminGate heading="Admin Telegram IDs"><AdminTelegramUsers /></TelegramAdminGate>}
       {tab === 'telegram' && <TelegramAdminCard onConnected={() => navigate('/premium')} />}
       {tab === 'settings' && <Settings hub={hub} persist={persist} />}

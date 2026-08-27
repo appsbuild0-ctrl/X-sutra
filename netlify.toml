@@ -61,6 +61,13 @@
   status = 200
   force = true
 
+# Telegram source channels (admin-managed).
+[[redirects]]
+  from = "/api/channels"
+  to = "/.netlify/functions/channels"
+  status = 200
+  force = true
+
 # Admin uploads (exact path first, then the file endpoint below it).
 [[redirects]]
   from = "/api/uploads"
