@@ -8,6 +8,7 @@ import { fetchPremiumCatalog, type PremiumCatalog, type PremiumChannel, type Pre
 import { fetchTelegramChannels, fetchTelegramStatus, type TelegramChannelRow } from '../lib/telegramAdmin'
 import {
   absoluteUploadUrl,
+  fetchChannels,
   fetchUploads,
   uploadToMediaItem,
   type UploadRecord
@@ -64,6 +65,9 @@ function PremiumInbox(): React.JSX.Element {
   const [query, setQuery] = useState('')
   const [telegramConnected, setTelegramConnected] = useState<boolean | null>(null)
   const [telegramChannels, setTelegramChannels] = useState<TelegramChannelRow[]>([])
+  // Sources managed in the admin Channels tab (bot/db) — merged below so the
+  // owner's main channel shows even when the MTProto owner-import is off.
+  const [dbChannels, setDbChannels] = useState<TelegramChannelRow[]>([])
   // Content uploaded from the admin panel, served from the X-Sutra database.
   const [uploads, setUploads] = useState<UploadRecord[]>([])
 
@@ -75,7 +79,20 @@ function PremiumInbox(): React.JSX.Element {
     }).catch(() => setTelegramConnected(false))
     // A failed upload list must never hide the rest of the screen.
     void fetchUploads().then((data) => setUploads(data.uploads)).catch(() => setUploads([]))
+    // Database-backed sources (built-in main channel + admin-added ones).
+    void fetchChannels()
+      .then((rows) => setDbChannels(rows.map((row) => ({ id: row.id, title: row.title, avatar: row.avatar, category: row.category, access_role: row.accessRole, media_count: row.mediaCount, latest_at: null }))))
+      .catch(() => setDbChannels([]))
   }, [])
+
+  // Merge the owner-import (MTProto) sources with the db sources, deduped by id,
+  // so the main channel is always present without hiding the imported ones.
+  const telegramSources = useMemo(() => {
+    const byId = new Map<string, TelegramChannelRow>()
+    for (const row of dbChannels) byId.set(row.id, row)
+    for (const row of telegramChannels) if (!byId.has(row.id)) byId.set(row.id, row)
+    return [...byId.values()]
+  }, [dbChannels, telegramChannels])
 
   const playable = (upload: UploadRecord): boolean => upload.kind === 'video' || upload.kind === 'audio'
 
@@ -122,11 +139,11 @@ function PremiumInbox(): React.JSX.Element {
         </div>
       )}
 
-      {telegramConnected === true && telegramChannels.length > 0 && (
+      {telegramSources.length > 0 && (
         <>
-          <div className="tg-list-title"><strong>🔐 Telegram sources</strong><span>{telegramChannels.length}</span></div>
+          <div className="tg-list-title"><strong>🔐 Telegram sources</strong><span>{telegramSources.length}</span></div>
           <div className="tg-channel-list">
-            {telegramChannels.map((channel) => (
+            {telegramSources.map((channel) => (
               <div className="tg-channel-row" key={channel.id} role="listitem">
                 <span className="tg-channel-avatar">🔐</span>
                 <span className="tg-channel-main">
