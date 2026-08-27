@@ -16,6 +16,54 @@
 - Local accounts store only a SHA-256 password hash on the device; the raw password is never persisted or transmitted
 - No demo/fake feed data and no external account password/token capture
 
+- **Discord-backed Premium content**: admins upload files from the panel; the backend posts them to a configured Discord channel and maps the real message id in PostgreSQL
+
+## Discord integration (no Telegram)
+
+X-Sutra no longer depends on Telegram in any way. Content storage/delivery for Premium uses the
+**Discord Bot REST API**, called server-side from the existing backend — there is **no** long-running
+WebSocket bot, no separate hosting, no Telegram login/OTP/session, and no Discord OAuth.
+
+Flow: **Admin → X-Sutra backend → Discord REST API → your Discord bot → configured channel.**
+
+| Route | Purpose |
+| --- | --- |
+| `GET /api/discord/media` | published content (display fields only — no token, no guild/channel/message ids) |
+| `POST /api/discord/media` | admin-only (X-Sutra admin password): `status` / `start` / `chunk` / `finish` / `list` / `delete` |
+| `POST /api/discord/status` | admin health check: API / guild / channel / permissions, never the token |
+
+### Environment variables (Vercel)
+
+`DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, `DISCORD_CHANNEL_ID`, `DISCORD_ADMIN_USER_ID`
+(+ `DATABASE_URL`, `AUTH_JWT_SECRET`, optional `DISCORD_MAX_UPLOAD_MB`, `PREMIUM_ADMIN_PASSWORD`).
+All are server-side only; none are bundled, rendered, or returned to the browser.
+
+### Bot permissions (minimum)
+
+View Channel, Send Messages, Attach Files, Read Message History, Embed Links, and Manage Messages
+(for deletion). Nothing more.
+
+### Upload / delete behaviour
+
+- A Discord message is created **first**; the DB row (`xs_discord_media`) is written only after Discord
+  returns a real message id. A Discord failure never marks a success and never leaves a fake row.
+- Files larger than the Discord limit (8 MB default) are rejected with a clear message.
+- Deletion removes the real Discord message (an already-deleted message is handled gracefully) and then
+  updates the DB.
+- Rate limits (HTTP 429 + `retry_after`) are retried a bounded number of times — never an infinite loop.
+
+### Verification
+
+```bash
+npm run check:discord   # real handler + REST logic, in-memory pg + scripted Discord API
+npm run check           # tsc --noEmit
+npm run build
+```
+
+Live Discord calls require your real bot token in the deployed environment; the sandbox used for
+development cannot reach discord.com, so the production round-trip must be confirmed once after deploy.
+
+
 ## How live API data works
 
 Browser requests go through the included Netlify Function at `netlify/functions/redgifs.mjs`:
@@ -53,7 +101,7 @@ Production runs on Vercel and is what the repository homepage points at:
 https://x-sutra.vercel.app
 ```
 
-Vercel builds `main` for production and every pull request for preview (preview URLs are behind Vercel Authentication, so open them while logged in to the Vercel account). The backend is shared with Netlify: `api/[...path].mjs` routes `/api/*` to the handlers in `netlify/functions/`, with dedicated filesystem functions for the nested `/api/telegram/channels` and `/api/internal/telegram-auth` paths. Frontend requests use same-origin relative `/api/...` paths, so there is no `BACKEND_URL` setting and no separate backend deployment to configure. Configure the variables from `.env.example` in the Vercel project — without `DATABASE_URL` the one-time Telegram login has nowhere to live and the owner console reports the missing name.
+Vercel builds `main` for production and every pull request for preview (preview URLs are behind Vercel Authentication, so open them while logged in to the Vercel account). The backend is shared with Netlify: `api/[...path].mjs` routes `/api/*` to the handlers in `netlify/functions/`, with dedicated filesystem functions for the nested `/api/discord/media` and `/api/discord/status` paths. Frontend requests use same-origin relative `/api/...` paths, so there is no `BACKEND_URL` setting and no separate backend deployment to configure. Configure the variables from `.env.example` in the Vercel project — without `DATABASE_URL` the Discord message mapping has nowhere to live, and without `DISCORD_BOT_TOKEN` the status endpoint reports the missing names.
 
 A second Vercel project (`x-sutra-main-2`) builds the same branch but has no server variables configured, so its `/api/*` calls fail; use the main domain above.
 

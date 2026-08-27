@@ -1,11 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { PayQrModal, PlanCards, type PlanId } from '../components/PlanPay'
-import { TelegramAdminCard } from '../components/TelegramAdminCard'
 import { SearchIcon } from '../components/icons'
 import { useApp } from '../context/AppContext'
 import { fetchPremiumCatalog, type PremiumCatalog, type PremiumChannel, type PremiumMedia } from '../lib/premium'
-import { fetchTelegramChannels, fetchTelegramStatus, type TelegramChannelRow } from '../lib/telegramAdmin'
+import { discordToMediaItem, fetchDiscordMedia, type DiscordMedia } from '../lib/discord'
 import { hasPremiumAccess, roleLabel } from '../lib/roles'
 
 function shortDate(value?: string): string {
@@ -52,20 +51,25 @@ function ChannelRow({ channel, media, onOpen }: { channel: PremiumChannel; media
 
 function PremiumInbox(): React.JSX.Element {
   const navigate = useNavigate()
-  const { account } = useApp()
+  const { account, openPlayer } = useApp()
   const [catalog, setCatalog] = useState<PremiumCatalog | null>(null)
   const [error, setError] = useState('')
   const [query, setQuery] = useState('')
-  const [telegramConnected, setTelegramConnected] = useState<boolean | null>(null)
-  const [telegramChannels, setTelegramChannels] = useState<TelegramChannelRow[]>([])
+  // Discord-backed content: real Discord messages mapped in the X-Sutra database.
+  const [discordMedia, setDiscordMedia] = useState<DiscordMedia[]>([])
 
   useEffect(() => {
     void fetchPremiumCatalog().then(setCatalog).catch((reason) => setError(reason instanceof Error ? reason.message : 'Channels could not load.'))
-    void fetchTelegramStatus().then((status) => {
-      setTelegramConnected(status.connection.connected)
-      if (status.connection.connected) void fetchTelegramChannels().then(setTelegramChannels)
-    }).catch(() => setTelegramConnected(false))
+    // A failed Discord list must never hide the rest of the screen.
+    void fetchDiscordMedia().then((data) => setDiscordMedia(data.media)).catch(() => setDiscordMedia([]))
   }, [])
+
+  const openDiscord = (media: DiscordMedia): void => {
+    const item = discordToMediaItem(media)
+    const playableQueue = discordMedia.filter((row) => row.kind === 'video' || row.kind === 'audio').map(discordToMediaItem)
+    if (media.kind === 'video' || media.kind === 'audio') openPlayer(item, playableQueue)
+    else window.open(media.url, '_blank', 'noopener,noreferrer')
+  }
 
   const channels = useMemo(() => {
     const needle = query.trim().toLowerCase()
@@ -77,14 +81,6 @@ function PremiumInbox(): React.JSX.Element {
 
   const categories = useMemo(() => Array.from(new Set((catalog?.channels ?? []).filter((channel) => channel.status === 'on').map((channel) => channel.type))), [catalog])
 
-  const reloadTelegram = (): void => {
-    void fetchTelegramStatus().then((status) => {
-      setTelegramConnected(status.connection.connected)
-      if (status.connection.connected) void fetchTelegramChannels().then(setTelegramChannels)
-      else setTelegramChannels([])
-    }).catch(() => setTelegramConnected(false))
-  }
-
   return (
     <section className="screen tg-premium-screen">
       <header className="tg-premium-header">
@@ -94,24 +90,20 @@ function PremiumInbox(): React.JSX.Element {
 
       <label className="tg-search"><SearchIcon size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search channels and categories" /></label>
 
-      {telegramConnected === false && (
-        <div className="tg-telegram-connect">
-          <TelegramAdminCard onChanged={reloadTelegram} />
-        </div>
-      )}
-
-      {telegramConnected === true && telegramChannels.length > 0 && (
+      {discordMedia.length > 0 && (
         <>
-          <div className="tg-list-title"><strong>🔐 Telegram sources</strong><span>{telegramChannels.length}</span></div>
+          <div className="tg-list-title"><strong>🎬 Discord library</strong><span>{discordMedia.length}</span></div>
           <div className="tg-channel-list">
-            {telegramChannels.map((channel) => (
-              <div className="tg-channel-row" key={channel.id} role="listitem">
-                <span className="tg-channel-avatar">🔐</span>
-                <span className="tg-channel-main">
-                  <span className="tg-channel-top"><strong>{channel.title}</strong></span>
-                  <span className="tg-channel-preview"><span>{channel.category}</span><em>{channel.media_count}</em></span>
+            {discordMedia.map((media) => (
+              <button className="tg-channel-row" type="button" key={media.id} onClick={() => openDiscord(media)}>
+                <span className="tg-channel-avatar">
+                  {media.kind === 'video' ? '🎬' : media.kind === 'image' ? '📸' : media.kind === 'audio' ? '🎵' : '📄'}
                 </span>
-              </div>
+                <span className="tg-channel-main">
+                  <span className="tg-channel-top"><strong>{media.title}</strong></span>
+                  <span className="tg-channel-preview"><span>{media.kind}</span><em>{Math.round(media.bytes / 1024)} KB</em></span>
+                </span>
+              </button>
             ))}
           </div>
         </>

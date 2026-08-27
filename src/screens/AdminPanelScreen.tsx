@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ScreenHeader } from '../components/ScreenHeader'
-import { TelegramAdminCard } from '../components/TelegramAdminCard'
+import { AdminUploads } from '../components/AdminUploads'
 import { DownloadIcon, HeartIcon, LibraryIcon, SettingsIcon, ShieldIcon, TrashIcon, UserIcon } from '../components/icons'
 import { useApp } from '../context/AppContext'
 import { useOnlineMembers } from '../hooks/useOnlineMembers'
@@ -12,7 +12,7 @@ import type { UserRole } from '../types'
 import { fetchPremiumCatalog, premiumAdmin, type PremiumCatalog } from '../lib/premium'
 import { fileToDataUrl, writePayQr, clearPayQr } from '../lib/payQr'
 
-type Tab = 'dash' | 'users' | 'videos' | 'telegram' | 'settings'
+type Tab = 'dash' | 'users' | 'videos' | 'uploads' | 'settings'
 
 export function AdminPanelScreen(): React.JSX.Element {
   const navigate = useNavigate()
@@ -51,10 +51,10 @@ export function AdminPanelScreen(): React.JSX.Element {
       {tab === 'dash' && <Dash hub={hub} catalog={catalog} />}
       {tab === 'users' && <Users />}
       {tab === 'videos' && <Videos catalog={catalog} setCatalog={setCatalog} hub={hub} persist={persist} />}
-      {tab === 'telegram' && <TelegramAdminCard />}
+      {tab === 'uploads' && <AdminUploads />}
       {tab === 'settings' && <Settings hub={hub} persist={persist} />}
       <nav className="admin-tabs" aria-label="Admin sections">
-        {([['dash', 'Dashboard'], ['users', 'Users'], ['videos', 'Videos'], ['telegram', 'Telegram'], ['settings', 'Settings']] as const).map(([id, label]) => (
+        {([['dash', 'Dashboard'], ['users', 'Users'], ['videos', 'Videos'], ['uploads', 'Discord'], ['settings', 'Settings']] as const).map(([id, label]) => (
           <button key={id} className={tab === id ? 'is-active' : ''} type="button" onClick={() => setTab(id)}>{label}</button>
         ))}
       </nav>

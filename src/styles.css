@@ -1111,7 +1111,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .premium-benefit-grid p { margin: 5px 0 0; color: var(--muted); font-size: 10px; line-height: 1.45; }
 @media (max-width:520px) { .premium-benefit-grid { grid-template-columns: 1fr; } .home-header-actions { gap: 5px; } .home-cta { padding-inline: 9px; } }
 
-/* Telegram-inspired X-Sutra premium channel inbox (original branding). */
+/* X-Sutra premium channel inbox (original branding). */
 .tg-premium-screen { padding: 0; background: #080a0e; min-height: calc(100vh - 70px); }
 .tg-premium-header { display:flex; align-items:center; justify-content:space-between; padding:14px 15px 10px; background:#101319; border-bottom:1px solid #20242c; }
 .tg-premium-header > div { display:flex; align-items:center; gap:11px; }
@@ -1149,3 +1149,26 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .tg-inbox-empty strong { margin-top:9px; font-size:14px; }
 .tg-inbox-empty p { max-width:300px; color:#758292; font-size:11px; line-height:1.5; }
 .tg-private-note { margin:18px; color:#586575; text-align:center; font-size:9px; }
+
+/* ---- Admin uploads (Discord) ---- */
+.upload-progress {
+  position: relative;
+  height: 26px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, .08);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.upload-progress__bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: rgba(46, 204, 113, .35);
+  transition: width .2s ease;
+}
+.upload-progress span {
+  position: relative;
+  font-size: 12px;
+  font-weight: 600;
+}
