@@ -1,8 +1,6 @@
 {
   "rewrites": [
-    { "source": "/api/redgifs/(.*)", "destination": "/api/redgifs" },
-    { "source": "/api/discord/:path*", "destination": "/api/discord/:path*" },
-    { "source": "/((?!assets/|.*\\..*).*)", "destination": "/index.html" }
+    { "source": "/((?!assets/|api/|.*\\..*).*)", "destination": "/index.html" }
   ],
   "headers": [
     {
