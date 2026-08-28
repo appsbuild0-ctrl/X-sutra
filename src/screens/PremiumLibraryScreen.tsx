@@ -73,9 +73,12 @@ export function PremiumLibraryScreen(): React.JSX.Element {
 
       {!feed.configured && (
         <div className="premium-notice premium-notice--soft">
-          <span>Discord connect hone wala hai</span>
-          <strong>Server pe DISCORD_BOT_TOKEN set karo</strong>
-          <small>Bot x-sutra server me join karne ke baad, yahan media apne aap aa jayega — bina kisi mapping ke.</small>
+          <span>Discord connect hone wala hai — 3 steps, 2 minute</span>
+          <strong>1. discord.com/developers → apna app → Bot → Reset Token → copy</strong>
+          <small>
+            2. Bot tab → Invite Your Bot → "View Channel" + "Read Message History" tick karo → x-sutra server choose karo → Authorize<br />
+            3. Hosting me env var daalo: DISCORD_BOT_TOKEN=&lt;token&gt; → redeploy
+          </small>
         </div>
       )}
 
