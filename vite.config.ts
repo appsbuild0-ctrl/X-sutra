@@ -23,7 +23,9 @@ const LOCAL_API_HANDLERS: Record<string, string> = {
   '/api/discord/health': './netlify/functions/discord-health.mjs',
   '/api/discord/upload': './netlify/functions/discord-upload.mjs',
   '/api/discord/delete': './netlify/functions/discord-delete.mjs',
-  '/api/discord/sync': './netlify/functions/discord-sync.mjs'
+  '/api/discord/sync': './netlify/functions/discord-sync.mjs',
+  '/api/discord/feed': './netlify/functions/discord-feed.mjs',
+  '/api/discord/media': './netlify/functions/discord-media.mjs'
 }
 
 function allowedTarget(rawPath: string): URL | null {

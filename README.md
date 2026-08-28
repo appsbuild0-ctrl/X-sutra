@@ -13,7 +13,7 @@
 - Local-only likes, saved clips, follows, collections, download history, autoplay/mute preferences, and blocked-tag filtering
 - Optional device-local login page (`#/login`) with username/password fields, sign-in / create-account modes, a show/hide password eye toggle, and a built-in admin account (`admin` / `admin123`) that opens the admin panel
 - Premium section with fixed tabs (Home, Reels, Discover, Categories, Announcements), admin-managed channels/albums, and bulk URL import
-- Real Discord import: pick guild channels in the admin console and pull their messages, images and videos into the channel, stored server-side; uploads go to the channel you select
+- Discord as the Premium media source: map Discord channels onto Premium sections and anything posted or forwarded there appears in the app automatically (auto-sync + polling), streamed from the Discord CDN — no second upload, no second storage
 - Uploaded and imported images render at their own aspect ratio and resolution — no CSS cropping
 - Local accounts store only a SHA-256 password hash on the device; the raw password is never persisted or transmitted
 - No demo/fake feed data and no external account password/token capture
@@ -78,32 +78,50 @@ main
 
 Netlify builds the app and deploys the public API function together. A plain static `index.html` opened via `file://` cannot call the same-origin function, so use the Netlify deployment for live data/playback.
 
-## Real Discord import (Premium)
+## Discord as the Premium media source
 
-The Admin Panel → **Discord** tab works against the real Discord REST API — no
-mock data. Configure `DISCORD_BOT_TOKEN` and `DISCORD_GUILD_ID` on the hosting
-provider (see `.env.example`); the token stays server-side and is never sent to
-the browser.
+Post or forward an image/video into a mapped Discord channel and it shows up in
+X-Sutra Premium by itself — there is no second upload. Configure
+`DISCORD_BOT_TOKEN` and `DISCORD_GUILD_ID` on the hosting provider (see
+`.env.example`); the token never leaves the server.
 
-1. **Channel list** — `POST /api/discord/sync` with `action: list_channels`
-   returns every text/announcement channel of the guild.
-2. **Import** — `action: sync` with the selected `channelIds` reads each
-   channel's message history, and for every image/video attachment downloads the
-   bytes server-side (Discord CDN links are signed and expire) and stores them in
-   the premium file store, served back through `/api/premium-file?id=…`.
-3. **Saved with its channel** — each Discord channel becomes one Premium channel
-   (`discord-<id>`) and every imported media row points at it, so the channel
-   screen shows the imported posts, images and videos together. With a
-   `DATABASE_URL` the same rows are indexed in `xs_discord_channels` /
-   `xs_discord_media`; without one the import still works from the catalog.
-4. **Re-runs are safe** — an attachment is identified by
-   `(channel, message, attachment)`, so a second import skips what is stored.
-5. **Uploads** pick their channel in the console instead of always posting to
-   `DISCORD_CHANNEL_ID`.
+```
+Discord channel → Discord API → /api/discord/feed → X-Sutra Premium
+```
 
-A serverless request has a time budget (`DISCORD_SYNC_BUDGET_MS`, default 8 s).
-When it runs out the response is `partial` with the channel ids it did not
-reach, and the console requests those automatically.
+1. **Mapping (Admin → Discord)** — pick which Discord channel feeds which
+   Premium section, e.g. `#videos → Premium Videos`, `#images → Premium Images`,
+   and choose images/videos per channel. New sections can be created inline.
+2. **Auto-sync** — the feed endpoint (`GET /api/discord/feed`) re-reads a mapped
+   channel when its interval has passed, using the stored message cursor so only
+   *new* messages are fetched. The Premium screens also poll it (15–60 s) and a
+   Netlify scheduled function (`netlify/functions/discord-cron.mjs`, `@every 10m`)
+   covers the case where nobody has the app open. **Sync now** in the admin
+   console forces one immediately; **Re-scan history** ignores the cursor.
+3. **No second storage** — the catalog stores attachment metadata plus the
+   Discord CDN link. `/api/discord/media?id=…` 302s the browser straight to
+   Discord, so images and videos stream from the CDN. Discord signs those links
+   and they expire, so the resolver re-reads the message and returns a fresh
+   signature the moment the cached one is stale — no broken previews. Set
+   `DISCORD_STORE_ATTACHMENTS=true` only if you want the bytes mirrored into the
+   premium file store instead.
+4. **Rules** — one row per attachment (a message with five images imports five),
+   text-only messages are ignored, unsupported files (pdf, zip, audio) are
+   skipped, duplicates are detected by `(channel, message, attachment)`, and
+   Discord's own timestamps decide the order.
+5. **Access** — Discord media only appears inside `/premium/library` and
+   `/premium/channel/:id`, both behind the existing `PremiumOnly` role gate. The
+   resolver only serves attachments that are already in the catalog, so it cannot
+   be used to reach other channels, and the public feed response carries no bot
+   details, cursors or error log.
+
+Supported media: JPG/JPEG/PNG/WEBP/GIF images and MP4/WEBM/MOV videos (plus
+anything Discord reports as `image/*` or `video/*`; the filename is the fallback
+when `content_type` is missing). Images open in the viewer at their original
+aspect ratio, videos open in the existing X-Sutra player.
+
+The admin console also shows last successful sync, per-channel counts and an
+error log.
 
 ## Tests
 
@@ -111,12 +129,15 @@ reach, and the console requests those automatically.
 npm test
 ```
 
-Node's built-in test runner over `scripts/tests/*.test.mjs`: the Discord import
-engine (channel discovery, attachment classification, catalog merge, byte
-storage, dedupe, time budget), the `/api/discord/sync` and `/api/discord/upload`
-handlers end-to-end against a stubbed Discord API with a real local file store,
-the upload-form assignment of many selected files to one channel, the premium
-catalog's channel/media persistence, and the uncropped image display rules.
+Node's built-in test runner over `scripts/tests/*.test.mjs`. It covers the
+Discord import engine (channel discovery, attachment classification, catalog
+merge, link vs store mode, cursor-based incremental reads, dedupe, time budget),
+the whole auto-sync loop end-to-end against a stubbed Discord API — mapping,
+incremental sync, read-time auto-sync throttling, CDN URL expiry refresh,
+paging, the scheduled background sync and the error log — the `/api/discord/sync`
+and `/api/discord/upload` handlers with a real local file store, the upload
+form's assignment of many selected files to one channel, the premium catalog's
+channel/media persistence, and the uncropped image display rules.
 
 ## Production build
 

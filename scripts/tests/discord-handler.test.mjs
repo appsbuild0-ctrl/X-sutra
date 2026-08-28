@@ -14,8 +14,10 @@ process.env.DISCORD_GUILD_ID = '111'
 process.env.DISCORD_CHANNEL_ID = '900'
 
 const { handler } = await import('../../netlify/functions/discord-sync.mjs')
+const { handler: premium } = await import('../../netlify/functions/premium.mjs')
 const { handler: premiumFile } = await import('../../netlify/functions/premium-file.mjs')
 const { handler: discordUpload } = await import('../../netlify/functions/discord-upload.mjs')
+const { normalizeMappings } = await import('../../netlify/functions/discord-sync.mjs')
 
 const ADMIN = 'admin123'
 const JPEG = Buffer.from('ffd8ffe000104a464946', 'hex')
@@ -52,22 +54,25 @@ const jsonResponse = (status, body) => ({
   ok: status >= 200 && status < 300,
   status,
   json: async () => body,
-  arrayBuffer: async () => new Uint8Array(body)
+  arrayBuffer: async () => new Uint8Array(String(JSON.stringify(body)))
 })
 
 globalThis.fetch = async (url, options = {}) => {
   const target = String(url)
   requests.push({ url: target, method: options.method || 'GET' })
   if (target.startsWith('https://discord.com/api/v10/guilds/111/channels')) return jsonResponse(200, channelsFixture)
-  if (target.includes('/attachments/')) {
+  if (target.includes('media.discordapp.net') || target.includes('cdn.discordapp.com')) {
     const bytes = target.endsWith('.mp4') ? MP4 : JPEG
     return { ok: true, status: 200, json: async () => ({}), arrayBuffer: async () => new Uint8Array(bytes) }
   }
-  // POST .../messages creates a message; GET .../messages reads history.
   if ((options.method || 'GET') === 'POST' && target.includes('/messages')) {
     return jsonResponse(200, { id: 'sent', attachments: [{ url: 'https://cdn.discordapp.com/attachments/sent' }] })
   }
-  if (/^https:\/\/discord\.com\/api\/v10\/channels\/\d+\/messages/.test(target)) return jsonResponse(200, messageFixture)
+  const history = target.match(/^https:\/\/discord\.com\/api\/v10\/channels\/(\d+)\/messages/)
+  if (history) {
+    if (!channelsFixture.some((channel) => channel.id === history[1])) return jsonResponse(404, { message: 'Unknown Channel' })
+    return jsonResponse(200, messageFixture)
+  }
   return jsonResponse(404, { message: 'not found' })
 }
 
@@ -83,7 +88,10 @@ describe('/api/discord/sync', () => {
     assert.equal(result.statusCode, 200)
     assert.equal(body.configured.botToken, true)
     assert.equal(body.configured.guildId, true)
-    assert.deepEqual(body.totals, { media: 0, images: 0, videos: 0, channels: 0 })
+    assert.equal(body.configured.storeAttachments, false)
+    assert.deepEqual(body.mappings, [])
+    assert.deepEqual(body.totals, { media: 0, images: 0, videos: 0 })
+    assert.equal(JSON.stringify(body).includes(process.env.DISCORD_BOT_TOKEN), false)
   })
 
   it('refuses every action without admin credentials', async () => {
@@ -98,32 +106,50 @@ describe('/api/discord/sync', () => {
     assert.deepEqual(body.channels[0].name, 'desi-media')
   })
 
-  it('imports the real messages and stores images + videos with their channel', async () => {
-    const body = parse(await post({ action: 'sync', password: ADMIN, channelIds: ['901'], perChannel: 25, kinds: ['image', 'video'] }))
-    assert.equal(body.ok, true)
+  it('refuses to sync before a channel is mapped', async () => {
+    const result = await post({ action: 'sync', password: ADMIN })
+    assert.equal(result.statusCode, 400)
+    assert.match(parse(result).error, /Map at least one Discord channel/)
+  })
+
+  it('saves a mapping onto a real Premium section and rejects unknown targets', async () => {
+    const created = await premium({
+      httpMethod: 'POST', headers: {},
+      body: JSON.stringify({ password: ADMIN, action: 'createChannel', name: 'Premium Videos', type: 'videos', status: 'on', order: 1 })
+    })
+    const channelId = JSON.parse(created.body).channels[0].id
+
+    const saved = parse(await post({
+      password: ADMIN, action: 'config',
+      config: { autoSync: false, intervalMs: 45000, perChannel: 30, mode: 'store', mappings: [{ discordChannelId: '901', channelId, name: 'desi-media' }, { discordChannelId: '901', channelId: 'nope' }] }
+    }))
+    assert.equal(saved.config.mappings.length, 1, 'duplicate Discord channels collapse')
+    assert.equal(saved.config.mappings[0].channelId, channelId)
+    assert.equal(saved.config.autoSync, false)
+    assert.equal(saved.config.mode, 'store')
+    assert.equal(normalizeMappings([{ discordChannelId: '1', channelId: 'ghost' }], []).length, 1)
+    assert.equal(normalizeMappings([{ discordChannelId: '1', channelId: 'ghost' }], [])[0].channelId, '')
+    globalThis.__channelId = channelId
+  })
+
+  it('imports the real messages into the mapped section and stores the bytes (store mode)', async () => {
+    const channelId = globalThis.__channelId
+    const body = parse(await post({ action: 'sync', password: ADMIN }))
     assert.equal(body.scanned, 3)
     assert.equal(body.imported, 3)
     assert.equal(body.failed, 0)
-    assert.deepEqual(body.channels, [{ id: '901', name: 'desi-media', messages: 3, imported: 3, skipped: 0, failed: 0, error: '' }])
+    assert.equal(body.mode, 'store')
+    assert.deepEqual(body.channels, [{ id: '901', name: 'desi-media', targetChannelId: channelId, messages: 3, imported: 3, skipped: 0, failed: 0, error: '' }])
 
-    // bytes are on disk in the premium media store
     const files = (await readdir(join(workDir, 'media'))).sort()
     assert.deepEqual(files, ['dc-m1-a1', 'dc-m1-a1.json', 'dc-m1-a2', 'dc-m1-a2.json', 'dc-m2-a3', 'dc-m2-a3.json'])
     assert.deepEqual(await readFile(join(workDir, 'media', 'dc-m1-a1')), JPEG)
     assert.deepEqual(await readFile(join(workDir, 'media', 'dc-m1-a2')), MP4)
-    assert.equal(JSON.parse(await readFile(join(workDir, 'media', 'dc-m1-a1.json'), 'utf8')).filename, 'photo.jpg')
 
-    // and the catalog ties every media row to the imported channel
     const catalog = JSON.parse(await readFile(process.env.PREMIUM_LOCAL_FILE, 'utf8'))
-    assert.equal(catalog.channels.length, 1)
-    assert.equal(catalog.channels[0].id, 'discord-901')
-    assert.equal(catalog.channels[0].name, 'desi-media')
-    assert.equal(catalog.channels[0].source, 'discord')
     assert.equal(catalog.media.length, 3)
     for (const entry of catalog.media) {
-      assert.equal(entry.channelId, 'discord-901')
-      assert.equal(entry.source, 'discord')
-      assert.equal(entry.sourceChannelId, '901')
+      assert.equal(entry.channelId, channelId)
       assert.match(entry.url, /^\/api\/premium-file\?id=dc-/)
     }
     const photo = catalog.media.find((entry) => entry.sourceAttachmentId === 'a1')
@@ -131,10 +157,13 @@ describe('/api/discord/sync', () => {
     assert.equal(photo.width, 1440)
     assert.equal(photo.height, 2560)
     assert.equal(photo.title, 'Weekend set 🔥')
-    assert.equal(catalog.media.find((entry) => entry.sourceAttachmentId === 'a2').type, 'video')
+    // sync bookkeeping is visible to the admin
+    assert.equal(body.status.lastResult.imported, 3)
+    assert.equal(body.status.mappings[0].lastSyncAt.length > 0, true)
+    assert.equal(body.status.mappings[0].media, 3)
   })
 
-  it('serves the imported bytes back through the media endpoint', async () => {
+  it('serves the stored bytes back through the media endpoint', async () => {
     const result = await premiumFile({ httpMethod: 'GET', headers: {}, queryStringParameters: { id: 'dc-m1-a1' } })
     assert.equal(result.statusCode, 200)
     assert.equal(result.headers['Content-Type'], 'image/jpeg')
@@ -142,17 +171,24 @@ describe('/api/discord/sync', () => {
   })
 
   it('does not re-import what is already stored', async () => {
-    const body = parse(await post({ action: 'sync', password: ADMIN, channelIds: ['901'], perChannel: 25 }))
+    const body = parse(await post({ action: 'sync', password: ADMIN, full: true }))
     assert.equal(body.imported, 0)
     assert.equal(body.skipped, 3)
   })
 
-  it('reports what is stored, grouped by channel', async () => {
+  it('reports what is stored, grouped by section', async () => {
     const body = parse(await post({ action: 'imported', password: ADMIN }))
     assert.equal(body.media.length, 3)
-    const summary = parse(await handler({ httpMethod: 'GET', headers: {} }))
-    assert.deepEqual(summary.totals, { media: 3, images: 2, videos: 1, channels: 1 })
-    assert.equal(body.media.every((item) => item.channelName === 'desi-media'), true)
+    assert.equal(body.media.every((item) => item.targetChannelName === 'Premium Videos'), true)
+    assert.equal(body.status.totals.media, 3)
+    assert.equal(body.status.totals.images, 2)
+    assert.equal(body.status.totals.videos, 1)
+  })
+
+  it('logs an error when a mapped channel cannot be read', async () => {
+    const body = parse(await post({ action: 'sync', password: ADMIN, channelIds: ['999'], full: true }))
+    assert.equal(body.status.errors.length > 0, true)
+    assert.match(body.status.errors[0].message, /not found|failed/i)
   })
 
   it('rejects an unknown action', async () => {
@@ -165,8 +201,7 @@ describe('/api/discord/upload channel selection', () => {
   it('posts to the channel chosen in the admin console', async () => {
     requests.length = 0
     const result = await discordUpload({
-      httpMethod: 'POST',
-      headers: {},
+      httpMethod: 'POST', headers: {},
       body: JSON.stringify({ password: ADMIN, filename: 'shot.jpg', contentType: 'image/jpeg', data: JPEG.toString('base64'), channelId: '901' })
     })
     assert.equal(result.statusCode, 200)
@@ -176,8 +211,7 @@ describe('/api/discord/upload channel selection', () => {
   it('falls back to the configured default channel', async () => {
     requests.length = 0
     await discordUpload({
-      httpMethod: 'POST',
-      headers: {},
+      httpMethod: 'POST', headers: {},
       body: JSON.stringify({ password: ADMIN, filename: 'shot.jpg', contentType: 'image/jpeg', data: JPEG.toString('base64') })
     })
     assert.ok(requests.some((request) => request.url === 'https://discord.com/api/v10/channels/900/messages'))

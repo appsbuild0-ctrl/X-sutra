@@ -71,12 +71,21 @@ describe('premium image display is not cropped in CSS', () => {
     assert.match(ruleFor(css, '.discord-imported__item img'), /object-fit: contain/)
   })
 
-  it('renders <img> elements instead of a cropped background image', async () => {
-    for (const screen of ['src/screens/PremiumChannelScreen.tsx', 'src/screens/PremiumAlbumScreen.tsx', 'src/screens/PremiumHotpicAlbumScreen.tsx']) {
+  it('renders real <img> elements instead of a cropped background image', async () => {
+    // The shared tile is what every Premium image grid uses.
+    const tile = await read('src/components/PremiumImageTile.tsx')
+    assert.match(tile, /<img/)
+    assert.match(tile, /UNCROPPED_IMAGE_STYLE/)
+    assert.doesNotMatch(tile, /object-fit: cover|objectFit: 'cover'/)
+    assert.match(tile, /onError/, 'a failed CDN link is retried once, then falls back')
+
+    for (const screen of ['src/screens/PremiumChannelScreen.tsx', 'src/screens/PremiumAlbumScreen.tsx', 'src/screens/PremiumHotpicAlbumScreen.tsx', 'src/screens/PremiumLibraryScreen.tsx']) {
       const source = await read(screen)
-      const premiumImageBlock = source.slice(source.indexOf('className="premium-image"'))
-      assert.match(premiumImageBlock.slice(0, 400), /<img /, `${screen} should render an <img>`)
-      assert.doesNotMatch(premiumImageBlock.slice(0, 400), /backgroundImage/, `${screen} should not crop via background-image`)
+      const usesTile = source.includes('<PremiumImageTile')
+      const usesRawImage = /className="premium-image"[\s\S]{0,300}<img /.test(source)
+      assert.ok(usesTile || usesRawImage, `${screen} should render an <img> for premium images`)
+      // The only remaining background-image tile is the album cover badge.
+      assert.doesNotMatch(source, /className="premium-image"[\s\S]{0,200}backgroundImage/, `${screen} must not crop via background-image`)
     }
   })
 })

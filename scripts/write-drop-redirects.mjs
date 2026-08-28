@@ -24,6 +24,9 @@ const redirects = `# Tier 1: bundled function proxy with the app User-Agent.
 /api/discord/delete  /.netlify/functions/discord-delete  200
 # Real channel import: messages, images and videos stored with their channel.
 /api/discord/sync  /.netlify/functions/discord-sync  200
+# Premium media feed + attachment URL resolver (302 to the Discord CDN).
+/api/discord/feed  /.netlify/functions/discord-feed  200
+/api/discord/media  /.netlify/functions/discord-media  200
 # Drop sites often have no functions — proxy public Hotpic HTML same-origin.
 /api/hotpic-html/*  https://hotpic.vip/:splat  200!
 # Tier 2: static rewrite fallback for deployments without functions.

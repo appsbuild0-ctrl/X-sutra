@@ -2,17 +2,20 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useApp } from '../context/AppContext'
 import {
   fetchDiscordHealth,
-  listDiscordChannels,
-  syncDiscordChannels,
   fetchDiscordImported,
+  fetchDiscordStatus,
+  listDiscordChannels,
+  saveDiscordConfig,
+  syncDiscordNow,
   uploadToDiscord,
   DiscordAdminError,
   type DiscordChannelInfo,
   type DiscordHealthStatus,
   type DiscordImportedMedia,
-  type DiscordSyncResult
+  type DiscordSyncResult,
+  type DiscordSyncStatus
 } from '../lib/discordAdmin'
-import { ADMIN_KEY } from '../lib/premium'
+import { ADMIN_KEY, fetchPremiumCatalog, premiumAdmin, type PremiumCatalog } from '../lib/premium'
 import { UNCROPPED_IMAGE_STYLE } from '../lib/imageFit'
 
 type Stage = 'loading' | 'ready' | 'connected'
@@ -25,6 +28,8 @@ interface UploadRow {
   url?: string
   error?: string
 }
+
+const INTERVAL_OPTIONS = [30000, 60000, 300000, 600000, 1800000]
 
 function StatusBadge({ ok, children }: { ok: boolean; children: React.ReactNode }): React.JSX.Element {
   return (
@@ -52,10 +57,18 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1048576).toFixed(1)} MB`
 }
 
+function intervalLabel(ms: number): string {
+  if (ms < 60000) return `${Math.round(ms / 1000)} seconds`
+  return `${Math.round(ms / 60000)} minute${ms === 60000 ? '' : 's'}`
+}
+
 /**
- * Discord admin card: bot health, real channel import (messages + images +
- * videos stored with their channel) and uploads to a channel the admin picks.
- * The bot token is NEVER displayed.
+ * Discord admin console.
+ *
+ * Discord is the media source: the admin maps guild channels onto Premium
+ * sections, turns auto-sync on, and from then on anything posted or forwarded
+ * into those channels appears in Premium by itself. The bot token stays on the
+ * server — it is never sent to the browser.
  */
 export function DiscordAdminCard({ onChanged }: { onChanged?: () => void }): React.JSX.Element {
   const { notify } = useApp()
@@ -146,14 +159,7 @@ export function DiscordAdminCard({ onChanged }: { onChanged?: () => void }): Rea
           <strong>{channels.length}</strong>
         </div>
 
-        <div className="setting-row">
-          <span><strong>Default channel</strong></span>
-          {status?.channel?.found ? <small>#{status.channel.name}</small> : <small>Not configured</small>}
-        </div>
-
-        {status?.error && (
-          <p className="login-error" role="alert">{status.error}</p>
-        )}
+        {status?.error && <p className="login-error" role="alert">{status.error}</p>}
 
         <div className="home-header-actions">
           <button className="secondary-button" type="button" disabled={busy} onClick={refresh}>
@@ -164,7 +170,7 @@ export function DiscordAdminCard({ onChanged }: { onChanged?: () => void }): Rea
 
       {status?.overall === 'ok' && (
         <>
-          <DiscordImportCard channels={channels} reloadChannels={() => void loadChannels().catch(() => undefined)} onChanged={changed} />
+          <DiscordAutoSyncCard channels={channels} reloadChannels={() => void loadChannels().catch(() => undefined)} onChanged={changed} />
           <DiscordUploadCard channels={channels} onChanged={changed} />
         </>
       )}
@@ -178,12 +184,11 @@ export function DiscordAdminCard({ onChanged }: { onChanged?: () => void }): Rea
           <ul className="form-help" style={{ margin: '8px 0', paddingLeft: 20 }}>
             <li><code>DISCORD_BOT_TOKEN</code> — Your bot token from Discord Developer Portal</li>
             <li><code>DISCORD_GUILD_ID</code> — Your Discord server ID</li>
-            <li><code>DISCORD_CHANNEL_ID</code> — Target channel ID for uploads</li>
-            <li><code>DISCORD_ADMIN_USER_ID</code> — Your Discord user ID for admin operations</li>
+            <li><code>DISCORD_CHANNEL_ID</code> — Fallback channel for uploads</li>
           </ul>
           <p className="form-help">
-            Required bot permissions: View Channel, Send Messages, Read Message History,
-            Attach Files, Embed Links, Manage Messages (for deletion).
+            Required bot permissions: View Channel, Read Message History (plus Attach Files
+            and Send Messages for uploads). The token stays server-side only.
           </p>
         </div>
       )}
@@ -191,120 +196,264 @@ export function DiscordAdminCard({ onChanged }: { onChanged?: () => void }): Rea
   )
 }
 
-/** Real import: pick channels → pull their messages, store every image/video. */
-function DiscordImportCard({ channels, reloadChannels, onChanged }: { channels: DiscordChannelInfo[]; reloadChannels: () => void; onChanged: () => void }): React.JSX.Element {
+/** Auto-sync: mapping, interval, Sync Now, status and the error log. */
+function DiscordAutoSyncCard({ channels, reloadChannels, onChanged }: { channels: DiscordChannelInfo[]; reloadChannels: () => void; onChanged: () => void }): React.JSX.Element {
   const { notify } = useApp()
-  const [selected, setSelected] = useState<string[]>([])
-  const [perChannel, setPerChannel] = useState(25)
-  const [images, setImages] = useState(true)
-  const [videos, setVideos] = useState(true)
-  const [filter, setFilter] = useState('')
-  const [running, setRunning] = useState(false)
-  const [result, setResult] = useState<DiscordSyncResult | null>(null)
+  const [status, setStatus] = useState<DiscordSyncStatus | null>(null)
+  const [catalog, setCatalog] = useState<PremiumCatalog | null>(null)
   const [imported, setImported] = useState<DiscordImportedMedia[]>([])
+  /** discordChannelId → premium channel id ('' = not synced) */
+  const [targets, setTargets] = useState<Record<string, string>>({})
+  const [kinds, setKinds] = useState<Record<string, string[]>>({})
+  const [autoSync, setAutoSync] = useState(true)
+  const [intervalMs, setIntervalMs] = useState(60000)
+  const [perChannel, setPerChannel] = useState(25)
+  const [mirror, setMirror] = useState(false)
+  const [filter, setFilter] = useState('')
+  const [newSection, setNewSection] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [result, setResult] = useState<DiscordSyncResult | null>(null)
   const [error, setError] = useState('')
 
+  const load = async () => {
+    const [syncStatus, premiumCatalog, stored] = await Promise.all([
+      fetchDiscordStatus(ADMIN_KEY),
+      fetchPremiumCatalog(),
+      fetchDiscordImported(ADMIN_KEY).catch(() => ({ media: [], status: null }))
+    ])
+    setStatus(syncStatus)
+    setCatalog(premiumCatalog)
+    setImported(stored.media || [])
+    setAutoSync(syncStatus.autoSync)
+    setIntervalMs(syncStatus.intervalMs)
+    setPerChannel(syncStatus.perChannel)
+    setMirror(syncStatus.mode === 'store')
+    setTargets(Object.fromEntries(syncStatus.mappings.map((mapping) => [mapping.discordChannelId, mapping.channelId])))
+    setKinds(Object.fromEntries(syncStatus.mappings.map((mapping) => [mapping.discordChannelId, mapping.kinds?.length ? mapping.kinds : ['image', 'video']])))
+  }
+
   useEffect(() => {
-    void fetchDiscordImported(ADMIN_KEY).then((data) => setImported(data.media || [])).catch(() => setImported([]))
+    void load().catch((caught) => setError(caught instanceof DiscordAdminError ? caught.message : 'Could not load the Discord sync settings.'))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const mappedCount = Object.values(targets).filter(Boolean).length
+  const sections = catalog?.channels ?? []
 
   const visible = useMemo(() => {
     const needle = filter.trim().toLowerCase()
     return needle ? channels.filter((channel) => channel.name.toLowerCase().includes(needle)) : channels
   }, [channels, filter])
 
-  const toggle = (id: string) => setSelected((current) => current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id])
-
-  const start = async () => {
-    if (!selected.length) { notify('Select kam se kam ek channel', 'error'); return }
-    const kinds = [...(images ? ['image'] : []), ...(videos ? ['video'] : [])]
-    if (!kinds.length) { notify('Images ya videos me se ek toh chuno', 'error'); return }
+  const save = async (patch: Record<string, unknown> = {}) => {
+    setBusy(true)
     setError('')
-    setRunning(true)
     try {
-      const summary = await syncDiscordChannels(ADMIN_KEY, { channelIds: selected, perChannel, kinds }, (partial) => setResult(partial))
-      setResult(summary)
-      const fresh = await fetchDiscordImported(ADMIN_KEY).catch(() => ({ media: [] }))
-      setImported(fresh.media || [])
+      const mappings = Object.entries(targets)
+        .filter(([, channelId]) => channelId)
+        .map(([discordChannelId, channelId]) => ({
+          discordChannelId,
+          channelId,
+          name: channels.find((channel) => channel.id === discordChannelId)?.name ?? '',
+          kinds: kinds[discordChannelId]?.length ? kinds[discordChannelId] : ['image', 'video']
+        }))
+      const saved = await saveDiscordConfig(ADMIN_KEY, { mappings, autoSync, intervalMs, perChannel, mode: mirror ? 'store' : 'link', ...patch })
+      setStatus(saved.status)
       onChanged()
-      notify(`Discord import · ${summary.imported} media · ${summary.scanned} messages`, 'success')
+      notify('Discord sync settings saved', 'success')
     } catch (caught) {
-      setError(caught instanceof DiscordAdminError ? caught.message : 'Discord import failed.')
+      setError(caught instanceof DiscordAdminError ? caught.message : 'Could not save the Discord sync settings.')
     } finally {
-      setRunning(false)
+      setBusy(false)
     }
   }
 
+  const syncNow = async (full = false) => {
+    if (!mappedCount) { notify('Pehle ek channel map karo', 'error'); return }
+    setSyncing(true)
+    setError('')
+    try {
+      await save()
+      const summary = await syncDiscordNow(ADMIN_KEY, { full }, (partial) => setResult(partial))
+      setResult(summary)
+      const stored = await fetchDiscordImported(ADMIN_KEY).catch(() => ({ media: [], status: null }))
+      setImported(stored.media || [])
+      if (stored.status) setStatus(stored.status)
+      onChanged()
+      notify(`Sync done · ${summary.imported} new media · ${summary.scanned} messages`, 'success')
+    } catch (caught) {
+      setError(caught instanceof DiscordAdminError ? caught.message : 'Discord sync failed.')
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  const createSection = async () => {
+    const name = newSection.trim()
+    if (!name) return
+    const created = await premiumAdmin('createChannel', { name, type: 'mixed', status: 'on', order: (catalog?.channels.length ?? 0) + 1 })
+    if (created.ok && created.catalog) { setCatalog(created.catalog); setNewSection(''); notify(`Section "${name}" created`, 'success') }
+    else notify(created.error ?? 'Section create fail', 'error')
+  }
+
   return (
-    <div className="settings-card">
-      <div className="setting-row">
-        <span><strong>Import from Discord</strong><small>Real messages, images aur videos selected channels se</small></span>
-        <StatusBadge ok={channels.length > 0}>{channels.length ? `${channels.length} channels` : 'No channels'}</StatusBadge>
+    <>
+      <div className="settings-card">
+        <div className="setting-row">
+          <span><strong>Discord auto-sync</strong><small>Discord channel → Premium section</small></span>
+          <StatusBadge ok={mappedCount > 0}>{mappedCount ? `${mappedCount} mapped` : 'Not mapped'}</StatusBadge>
+        </div>
+
+        <label className="setting-row">
+          <span><strong>Auto-sync</strong><small>Har {intervalLabel(intervalMs)} me naya media apne aap</small></span>
+          <input className="switch" type="checkbox" checked={autoSync} onChange={(event) => setAutoSync(event.target.checked)} />
+        </label>
+
+        <div className="setting-row">
+          <span><strong>Check every</strong><small>Server bhi read-time pe sync karta hai</small></span>
+          <select value={intervalMs} onChange={(event) => setIntervalMs(Number(event.target.value))}>
+            {INTERVAL_OPTIONS.map((value) => <option key={value} value={value}>{intervalLabel(value)}</option>)}
+          </select>
+        </div>
+
+        <div className="setting-row">
+          <span><strong>History depth</strong><small>Pehli baar kitne purane messages padhein</small></span>
+          <select value={perChannel} onChange={(event) => setPerChannel(Number(event.target.value))}>
+            {[10, 25, 50, 100].map((value) => <option key={value} value={value}>{value} messages</option>)}
+          </select>
+        </div>
+
+        <label className="setting-row">
+          <span><strong>Keep a local copy</strong><small>OFF = media Discord CDN se hi stream hota hai (recommended)</small></span>
+          <input className="switch" type="checkbox" checked={mirror} onChange={(event) => setMirror(event.target.checked)} />
+        </label>
+
+        {!channels.length && (
+          <>
+            <p className="form-help">No text channels found in the configured guild. Check that the bot is a member and can read channels.</p>
+            <button className="secondary-button" type="button" onClick={reloadChannels}>Reload channels</button>
+          </>
+        )}
+
+        {channels.length > 0 && (
+          <>
+            <div className="premium-post-form"><input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Search Discord channels" /></div>
+            {visible.map((channel) => (
+              <div className="setting-row discord-mapping" key={channel.id}>
+                <span>
+                  <strong>#{channel.name}</strong>
+                  <small>{channel.type === 'announcement' ? 'Announcement' : 'Text'}{channel.topic ? ` · ${channel.topic}` : ''}</small>
+                </span>
+                <select
+                  value={targets[channel.id] ?? ''}
+                  onChange={(event) => setTargets((current) => ({ ...current, [channel.id]: event.target.value }))}
+                >
+                  <option value="">— not synced —</option>
+                  {sections.map((section) => (
+                    <option key={section.id} value={section.id}>{section.name} ({section.type})</option>
+                  ))}
+                </select>
+                <div className="discord-mapping__kinds">
+                  {(['image', 'video'] as const).map((kind) => {
+                    const active = (kinds[channel.id] ?? ['image', 'video']).includes(kind)
+                    return (
+                      <button
+                        key={kind}
+                        type="button"
+                        className={active ? 'is-active' : ''}
+                        disabled={!targets[channel.id]}
+                        onClick={() => setKinds((current) => {
+                          const list = current[channel.id] ?? ['image', 'video']
+                          const next = active ? list.filter((entry) => entry !== kind) : [...list, kind]
+                          return { ...current, [channel.id]: next.length ? next : [kind] }
+                        })}
+                      >
+                        {kind === 'image' ? 'Images' : 'Videos'}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+
+            <div className="collection-form">
+              <input value={newSection} onChange={(event) => setNewSection(event.target.value)} placeholder="New Premium section name" />
+              <button className="secondary-button" type="button" onClick={() => void createSection()}>+ Section</button>
+            </div>
+
+            <button className="primary-button primary-button--wide" type="button" disabled={busy || !mappedCount} onClick={() => void save()}>
+              {busy ? 'Saving…' : `Save mapping (${mappedCount})`}
+            </button>
+          </>
+        )}
+
+        {error && <p className="login-error" role="alert">{error}</p>}
       </div>
 
-      {!channels.length && (
-        <>
-          <p className="form-help">No text channels were found in the configured guild. Check that the bot is a member of the server and can read channels.</p>
-          <button className="secondary-button" type="button" onClick={reloadChannels}>Reload channels</button>
-        </>
-      )}
-
-      {channels.length > 0 && (
-        <>
-          <div className="premium-post-form">
-            <input value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Search channels" />
-          </div>
-          <div className="home-header-actions">
-            <button className="text-button" type="button" onClick={() => setSelected(visible.map((channel) => channel.id))}>Select all</button>
-            <button className="text-button" type="button" onClick={() => setSelected([])}>Clear</button>
-          </div>
-          {visible.map((channel) => (
-            <label className="setting-row" key={channel.id}>
-              <span>
-                <strong>#{channel.name}</strong>
-                <small>{channel.type === 'announcement' ? 'Announcement' : 'Text'}{channel.topic ? ` · ${channel.topic}` : ''}</small>
-              </span>
-              <input className="switch" type="checkbox" checked={selected.includes(channel.id)} onChange={() => toggle(channel.id)} />
-            </label>
-          ))}
-
-          <div className="setting-row">
-            <span><strong>Messages per channel</strong><small>History depth read on each import</small></span>
-            <select value={perChannel} onChange={(event) => setPerChannel(Number(event.target.value))}>
-              {[10, 25, 50, 100].map((value) => <option key={value} value={value}>{value}</option>)}
-            </select>
-          </div>
-          <label className="setting-row"><span><strong>Images</strong></span><input className="switch" type="checkbox" checked={images} onChange={(event) => setImages(event.target.checked)} /></label>
-          <label className="setting-row"><span><strong>Videos</strong></span><input className="switch" type="checkbox" checked={videos} onChange={(event) => setVideos(event.target.checked)} /></label>
-
-          <button className="primary-button primary-button--wide" type="button" disabled={running || !selected.length} onClick={() => void start()}>
-            {running ? 'Importing…' : `Import selected (${selected.length})`}
-          </button>
-        </>
-      )}
-
-      {error && <p className="login-error" role="alert">{error}</p>}
-
-      {result && (
-        <div className="premium-progress">
-          <p>Scanned {result.scanned} messages · {result.imported} imported · {result.skipped} already stored · {result.failed} failed</p>
-          <i style={{ width: `${Math.min(100, Math.round((result.imported / Math.max(result.attachments, 1)) * 100))}%` }} />
-          <small>
-            Database index: {result.database === 'saved' ? 'saved' : 'skipped (no DATABASE_URL)'}
-            {result.partial ? ` · ${result.nextChannelIds.length} channels still queued` : ''}
-          </small>
-          {result.channels.map((channel) => (
-            <small key={channel.id}>
-              #{channel.name} · {channel.messages} messages · {channel.imported} imported · {channel.skipped} skipped
-              {channel.failed ? ` · ${channel.failed} failed` : ''}{channel.error ? ` · ${channel.error}` : ''}
-            </small>
-          ))}
+      <div className="settings-card">
+        <div className="setting-row">
+          <span><strong>Sync status</strong><small>{status?.lastSyncAt ? `Last successful sync ${new Date(status.lastSyncAt).toLocaleString('en-IN')}` : 'No sync yet'}</small></span>
+          <StatusBadge ok={autoSync && mappedCount > 0}>{autoSync && mappedCount ? 'Auto' : 'Manual'}</StatusBadge>
         </div>
-      )}
+        {status && (
+          <div className="setting-row">
+            <span><strong>Imported so far</strong><small>{status.totals.images} images · {status.totals.videos} videos</small></span>
+            <strong>{status.totals.media}</strong>
+          </div>
+        )}
+        {status?.mappings.map((mapping) => (
+          <div className="setting-row" key={mapping.discordChannelId}>
+            <span>
+              <strong>#{mapping.name || mapping.discordChannelId}</strong>
+              <small>
+                → {mapping.channelName || 'its own section'} · {mapping.media} media
+                {mapping.lastSyncAt ? ` · synced ${new Date(mapping.lastSyncAt).toLocaleTimeString('en-IN')}` : ' · not synced yet'}
+              </small>
+            </span>
+          </div>
+        ))}
+        <div className="home-header-actions">
+          <button className="primary-button" type="button" disabled={syncing || !mappedCount} onClick={() => void syncNow(false)}>
+            {syncing ? 'Syncing…' : 'Sync now'}
+          </button>
+          <button className="secondary-button" type="button" disabled={syncing || !mappedCount} onClick={() => void syncNow(true)}>
+            Re-scan history
+          </button>
+        </div>
+
+        {result && (
+          <div className="premium-progress">
+            <p>Scanned {result.scanned} messages · {result.imported} imported · {result.skipped} already stored · {result.failed} failed</p>
+            <i style={{ width: `${Math.min(100, Math.round((result.imported / Math.max(result.attachments, 1)) * 100))}%` }} />
+            <small>
+              Media source: {status?.mode === 'store' ? 'local copy' : 'Discord CDN (no second storage)'}
+              {result.partial ? ` · ${result.nextChannelIds.length} channels still queued` : ''}
+            </small>
+            {result.channels.map((channel) => (
+              <small key={channel.id}>
+                #{channel.name} · {channel.messages} messages · {channel.imported} imported · {channel.skipped} skipped
+                {channel.failed ? ` · ${channel.failed} failed` : ''}{channel.error ? ` · ${channel.error}` : ''}
+              </small>
+            ))}
+          </div>
+        )}
+
+        {status?.errors.length ? (
+          <>
+            <div className="setting-row"><span><strong>Errors</strong><small>Latest first</small></span><strong>{status.errors.length}</strong></div>
+            {status.errors.slice(0, 8).map((entry, index) => (
+              <p className="form-help discord-error" key={`${entry.at}-${index}`}>
+                {new Date(entry.at).toLocaleString('en-IN')}{entry.channel ? ` · #${entry.channel}` : ''} — {entry.message}
+              </p>
+            ))}
+          </>
+        ) : null}
+      </div>
 
       {imported.length > 0 && (
-        <>
-          <div className="setting-row"><span><strong>Stored media</strong><small>Saved with its channel</small></span><strong>{imported.length}</strong></div>
+        <div className="settings-card">
+          <div className="setting-row"><span><strong>Stored media</strong><small>Sabse naya pehle</small></span><strong>{imported.length}</strong></div>
           <div className="discord-imported">
             {imported.slice(0, 24).map((item) => (
               <figure className="discord-imported__item" key={item.id}>
@@ -312,15 +461,15 @@ function DiscordImportCard({ channels, reloadChannels, onChanged }: { channels: 
                   ? <img src={item.url} alt={item.title} loading="lazy" style={UNCROPPED_IMAGE_STYLE} />
                   : <video src={item.url} controls preload="metadata" playsInline style={UNCROPPED_IMAGE_STYLE} />}
                 <figcaption>
-                  <strong>{item.title || item.id}</strong>
-                  <small>#{item.channelName || item.channelId} · {item.width && item.height ? `${item.width}×${item.height} · ` : ''}{formatBytes(item.bytes)}</small>
+                  <strong>{item.title || item.filename || item.id}</strong>
+                  <small>{item.targetChannelName || item.channelName || item.channelId} · {item.width && item.height ? `${item.width}×${item.height} · ` : ''}{formatBytes(item.bytes)}</small>
                 </figcaption>
               </figure>
             ))}
           </div>
-        </>
+        </div>
       )}
-    </div>
+    </>
   )
 }
 

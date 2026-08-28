@@ -349,10 +349,16 @@ const GUILD_TEXT_TYPES = new Set([0, 5])
 const IMAGE_EXT = /\.(png|jpe?g|gif|webp|bmp|avif|heic|heif|tiff?)$/i
 const VIDEO_EXT = /\.(mp4|webm|mov|m4v|mkv|avi|mpg|mpeg|3gp)$/i
 
+/** What X-Sutra can actually display. Everything else (pdf, zip, audio…) is ignored. */
+export const SUPPORTED_KINDS = ['image', 'video']
 export const DEFAULT_IMPORT_LIMIT = 25
 export const MAX_IMPORT_LIMIT = 100
 /** One serverless request imports at most this many channels; the rest come back as `nextChannelIds`. */
 export const MAX_SYNC_CHANNELS = 12
+/** Catch-up pages per channel when the cursor is far behind. */
+const MAX_CATCHUP_PAGES = 5
+/** Treat a signed CDN link as expired this long before it really is. */
+const EXPIRY_SAFETY_MS = 120_000
 const DEFAULT_BUDGET_MS = Number(process.env.DISCORD_SYNC_BUDGET_MS) > 0 ? Number(process.env.DISCORD_SYNC_BUDGET_MS) : 8000
 
 /**
@@ -400,7 +406,7 @@ export async function listChannels({ guild = guildId() } = {}) {
 /**
  * Pure: Discord messages → one row per attachment, each carrying the channel it
  * came from. Message text becomes the media title so imported posts keep their
- * caption in the app.
+ * caption in the app. Text-only messages produce no rows at all.
  */
 export function pickMessageRows(messages, channelId) {
   const rows = []
@@ -435,16 +441,87 @@ export function pickMessageRows(messages, channelId) {
   return rows
 }
 
-export async function fetchChannelMessages(channelId, { limit = DEFAULT_IMPORT_LIMIT, before = '' } = {}) {
+/**
+ * Read channel history.
+ * `after` (a message snowflake) makes Discord return only newer messages, which
+ * is what keeps a repeated sync cheap — that is the auto-sync path.
+ */
+export async function fetchChannelMessages(channelId, { limit = DEFAULT_IMPORT_LIMIT, before = '', after = '' } = {}) {
   const size = Math.max(1, Math.min(MAX_IMPORT_LIMIT, Number(limit) || DEFAULT_IMPORT_LIMIT))
-  const cursor = before ? `&before=${encodeURIComponent(String(before))}` : ''
+  const cursor = after
+    ? `&after=${encodeURIComponent(String(after))}`
+    : before ? `&before=${encodeURIComponent(String(before))}` : ''
   return (await discordFetch(`/channels/${channelId}/messages?limit=${size}${cursor}`)) || []
 }
 
+/** Discord snowflakes are 64-bit decimals: compare by length, then lexicographically. */
+export function newerSnowflake(a, b) {
+  const left = String(a || '')
+  const right = String(b || '')
+  if (!left) return right
+  if (!right) return left
+  if (left.length !== right.length) return left.length > right.length ? left : right
+  return left > right ? left : right
+}
+
+// ─── Attachment URLs (no second copy of the media) ───
+
 /**
- * Discord CDN links are signed and expire, so the bytes are pulled server-side
- * and re-stored by us. Ephemeral attachments additionally require the bot
- * credentials, which is why a 401/403 is retried once with the token.
+ * Media is referenced, not copied: X-Sutra stores the attachment metadata and
+ * hands the browser this same-origin URL, which 302s to the Discord CDN.
+ * The `f=` suffix keeps the real filename (and extension) in the URL so the
+ * player can tell a video from an image without another request.
+ */
+export function mediaUrl(entry) {
+  const id = encodeURIComponent(String(entry?.id || ''))
+  const filename = String(entry?.filename || '').slice(0, 80)
+  return `/api/discord/media?id=${id}${filename ? `&f=${encodeURIComponent(filename)}` : ''}`
+}
+
+/**
+ * Discord signs attachment links (`?ex=<hex seconds>&is=…&hm=…`) and they expire.
+ * Returns the expiry as epoch ms, or 0 for an unsigned (permanent) link.
+ */
+export function attachmentExpiry(url) {
+  const match = String(url || '').match(/[?&]ex=([0-9a-fA-F]+)/)
+  if (!match) return 0
+  const seconds = Number.parseInt(match[1], 16)
+  return Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 0
+}
+
+export function isAttachmentFresh(entry, now = Date.now()) {
+  const expiresAt = Number(entry?.cdnExpiresAt) || 0
+  if (!expiresAt) return true
+  return expiresAt - now > EXPIRY_SAFETY_MS
+}
+
+/** Re-read one message to get a freshly signed attachment URL. */
+export async function fetchMessageAttachments(channelId, messageId) {
+  const message = await discordFetch(`/channels/${channelId}/messages/${messageId}`)
+  return Array.isArray(message?.attachments) ? message.attachments : []
+}
+
+/**
+ * Resolve the URL to hand the browser: the cached CDN link while it is valid,
+ * otherwise a fresh one fetched from Discord (and written back by the caller).
+ */
+export async function resolveAttachment(entry, { fetchAttachments = fetchMessageAttachments, now = Date.now() } = {}) {
+  const cached = String(entry?.cdnUrl || '')
+  if (cached && isAttachmentFresh(entry, now)) return { url: cached, expiresAt: Number(entry.cdnExpiresAt) || 0, refreshed: false }
+  if (!entry?.sourceChannelId || !entry?.sourceMessageId || !entry?.sourceAttachmentId) {
+    if (cached) return { url: cached, expiresAt: 0, refreshed: false }
+    throw new DiscordError('This media item has no Discord attachment to resolve.', 'NO_ATTACHMENT', 404)
+  }
+  const attachments = await fetchAttachments(entry.sourceChannelId, entry.sourceMessageId)
+  const fresh = attachments.find((item) => String(item.id) === String(entry.sourceAttachmentId))
+  const url = String(fresh?.url || fresh?.proxy_url || '')
+  if (!url) throw new DiscordError('The attachment is no longer available on Discord.', 'ATTACHMENT_GONE', 410)
+  return { url, expiresAt: attachmentExpiry(url), refreshed: true }
+}
+
+/**
+ * Discord CDN links are signed and expire, so in `store` mode the bytes are
+ * pulled server-side and mirrored. `link` mode (the default) never does this.
  */
 export async function loadAttachmentBytes(row) {
   const target = row?.proxyUrl || row?.url
@@ -461,22 +538,42 @@ export function storageKey(row) {
   return `dc-${String(row?.messageId || '').replace(/[^a-zA-Z0-9]/g, '')}-${String(row?.attachmentId || '').replace(/[^a-zA-Z0-9]/g, '')}`
 }
 
+function guessMimeType(row) {
+  if (row.mimeType) return row.mimeType
+  const name = String(row.filename || '')
+  if (/\.jpe?g$/i.test(name)) return 'image/jpeg'
+  if (/\.png$/i.test(name)) return 'image/png'
+  if (/\.gif$/i.test(name)) return 'image/gif'
+  if (/\.webp$/i.test(name)) return 'image/webp'
+  if (/\.webm$/i.test(name)) return 'video/webm'
+  if (/\.mov$/i.test(name)) return 'video/quicktime'
+  return row.kind === 'video' ? 'video/mp4' : 'image/jpeg'
+}
+
+function guildSafe() {
+  try { return guildId() } catch { return '@me' }
+}
+
 /**
  * Pure: fold freshly imported rows into the premium catalog.
  *
- * Each Discord channel becomes one catalog channel (`discord-<id>`) and every
- * media row points back at it through `channelId`, so the Premium channel screen
- * shows the imported messages/images/videos under their source channel.
+ * `targetChannelId` is the admin's mapping (Discord #videos → the "Premium
+ * Videos" section). Without a mapping the channel gets its own Premium channel
+ * (`discord-<id>`). Either way every media row points back at that channel.
  */
-export function mergeImportedIntoCatalog(catalog, { channel, rows }) {
+export function mergeImportedIntoCatalog(catalog, { channel, rows, targetChannelId = '', mode = 'link' }) {
   const channels = [...(catalog.channels || [])]
   const media = [...(catalog.media || [])]
   const sourceId = String(channel?.id || '')
-  const wantedId = `discord-${sourceId}`
-  let target = channels.find((entry) => entry.id === wantedId || String(entry.sourceId || '') === sourceId)
+
+  let target = targetChannelId ? channels.find((entry) => entry.id === targetChannelId) : null
+  if (!target) {
+    const wantedId = `discord-${sourceId}`
+    target = channels.find((entry) => entry.id === wantedId || String(entry.sourceId || '') === sourceId)
+  }
   if (!target) {
     target = {
-      id: wantedId,
+      id: `discord-${sourceId}`,
       name: String(channel?.name || `channel-${sourceId}`).slice(0, 48),
       description: String(channel?.topic || 'Imported from Discord').slice(0, 240),
       cover: '',
@@ -489,7 +586,7 @@ export function mergeImportedIntoCatalog(catalog, { channel, rows }) {
     }
     channels.push(target)
   } else {
-    target = { ...target, name: String(channel?.name || target.name).slice(0, 48), source: 'discord', sourceId }
+    target = { ...target, source: target.source || 'discord', sourceId: target.sourceId || sourceId }
     for (let index = 0; index < channels.length; index += 1) if (channels[index].id === target.id) channels[index] = target
   }
 
@@ -498,10 +595,12 @@ export function mergeImportedIntoCatalog(catalog, { channel, rows }) {
   for (const row of Array.isArray(rows) ? rows : []) {
     if (!row?.attachmentId || seen.has(String(row.attachmentId))) continue
     seen.add(String(row.attachmentId))
-    const url = `/api/premium-file?id=${storageKey(row)}`
     const isVideo = row.kind === 'video'
+    const stored = mode === 'store' && row.storedBytes
+    const id = `dc-${row.messageId}-${row.attachmentId}`
+    const url = stored ? `/api/premium-file?id=${storageKey(row)}` : mediaUrl({ id, filename: row.filename })
     const entry = {
-      id: `dc-${row.messageId}-${row.attachmentId}`,
+      id,
       type: isVideo ? 'video' : 'image',
       url,
       thumbnail: isVideo ? '' : url,
@@ -516,6 +615,7 @@ export function mergeImportedIntoCatalog(catalog, { channel, rows }) {
       hash: `discord:${row.messageId}:${row.attachmentId}`,
       width: row.width || 0,
       height: row.height || 0,
+      mimeType: guessMimeType(row),
       role: 'content',
       source: 'discord',
       sourceChannelId: row.channelId,
@@ -523,16 +623,15 @@ export function mergeImportedIntoCatalog(catalog, { channel, rows }) {
       sourceMessageId: row.messageId,
       sourceAttachmentId: row.attachmentId,
       author: row.author || '',
-      authorName: row.authorName || ''
+      authorName: row.authorName || '',
+      // Kept so an expired signature can be refreshed without re-reading history.
+      cdnUrl: stored ? '' : row.url || '',
+      cdnExpiresAt: stored ? 0 : attachmentExpiry(row.url)
     }
     media.unshift(entry)
     added.push(entry)
   }
   return { catalog: { ...catalog, channels, media }, channelId: target.id, channelName: target.name, added, skipped: (Array.isArray(rows) ? rows.length : 0) - added.length }
-}
-
-function guildSafe() {
-  try { return guildId() } catch { return '@me' }
 }
 
 // Storage/database adapters. They are lazily imported so this module stays
@@ -553,8 +652,8 @@ async function defaultWriteCatalog(catalog) {
 }
 
 /**
- * Best effort: a missing DATABASE_URL must not lose an import — the bytes and
- * the catalog entry are already stored, the database is the durable index.
+ * Best effort: a missing DATABASE_URL must not lose an import — the catalog
+ * entry is already stored, the database is the durable index.
  */
 async function defaultSaveRows(channel, entries, importedCount) {
   try {
@@ -568,16 +667,23 @@ async function defaultSaveRows(channel, entries, importedCount) {
 }
 
 /**
- * Import real messages from the selected Discord channels.
+ * Import new media from the selected Discord channels.
  *
- * Every dependency is injectable, so the whole flow — channel lookup, history
- * read, attachment download, byte storage, catalog merge, database write — is
- * covered by scripts/tests/discord-sync.test.mjs without touching Discord.
+ * Default mode is `link`: nothing is copied, the catalog stores the attachment
+ * metadata plus the (refreshable) CDN link. `incremental` reads only messages
+ * newer than the stored cursor, which is what makes auto-sync cheap.
+ *
+ * Every dependency is injectable, so the whole flow is covered by
+ * scripts/tests/discord-sync.test.mjs without touching Discord.
  */
 export async function importChannels({
   channelIds = [],
   perChannel = DEFAULT_IMPORT_LIMIT,
-  kinds = ['image', 'video'],
+  kinds = SUPPORTED_KINDS,
+  mode = 'link',
+  mappings = [],
+  cursors = {},
+  incremental = true,
   discover = listChannels,
   fetchMessages = fetchChannelMessages,
   loadBytes = loadAttachmentBytes,
@@ -588,14 +694,17 @@ export async function importChannels({
   budgetMs = DEFAULT_BUDGET_MS,
   startedAt = Date.now()
 } = {}) {
-  const ids = [...new Set((Array.isArray(channelIds) ? channelIds : []).map((id) => String(id || '').trim()).filter(Boolean))].slice(0, MAX_SYNC_CHANNELS)
-  if (!ids.length) throw new DiscordError('Select at least one Discord channel to import.', 'NO_CHANNELS', 400)
+  const requested = (Array.isArray(channelIds) ? channelIds : []).map((id) => String(id || '').trim()).filter(Boolean)
+  const mapped = (Array.isArray(mappings) ? mappings : []).map((mapping) => String(mapping?.discordChannelId || '').trim()).filter(Boolean)
+  const ids = [...new Set(requested.length ? requested : mapped)].slice(0, MAX_SYNC_CHANNELS)
+  if (!ids.length) throw new DiscordError('Map at least one Discord channel to a Premium section first.', 'NO_CHANNELS', 400)
 
   const wanted = new Set((Array.isArray(kinds) ? kinds : []).map((kind) => String(kind)).filter(Boolean))
-  const accepted = wanted.size ? wanted : new Set(['image', 'video'])
+  const accepted = wanted.size ? wanted : new Set(SUPPORTED_KINDS)
   const limit = Math.max(1, Math.min(MAX_IMPORT_LIMIT, Number(perChannel) || DEFAULT_IMPORT_LIMIT))
+  const mappingByChannel = new Map((Array.isArray(mappings) ? mappings : []).map((mapping) => [String(mapping.discordChannelId), mapping]))
 
-  const known = new Map((await discover()) .map((channel) => [channel.id, channel]))
+  const known = new Map((await discover()).map((channel) => [channel.id, channel]))
   let catalog = await readStore()
 
   const summary = {
@@ -608,6 +717,8 @@ export async function importChannels({
     partial: false,
     nextChannelIds: [],
     database: 'skipped',
+    mode: mode === 'store' ? 'store' : 'link',
+    cursors: { ...(cursors && typeof cursors === 'object' ? cursors : {}) },
     channels: []
   }
 
@@ -618,39 +729,86 @@ export async function importChannels({
     if (expired()) { summary.partial = true; summary.nextChannelIds = pending.slice(0, MAX_SYNC_CHANNELS); break }
     const id = pending.shift()
     const channel = known.get(id) || { id, name: `channel-${id}`, topic: '', type: 'text' }
-    const row = { id, name: channel.name, messages: 0, imported: 0, skipped: 0, failed: 0, error: '' }
+    const mapping = mappingByChannel.get(id)
+    const row = { id, name: mapping?.name || channel.name, targetChannelId: mapping?.channelId || '', messages: 0, imported: 0, skipped: 0, failed: 0, error: '' }
     try {
-      const messages = await fetchMessages(id, { limit })
-      row.messages = Array.isArray(messages) ? messages.length : 0
-      summary.scanned += row.messages
-      const attachments = pickMessageRows(messages, id).filter((entry) => accepted.has(entry.kind))
+      // Incremental: only messages newer than the cursor we stored last time.
+      let after = incremental ? String(summary.cursors[id]?.cursor || '') : ''
+      let cursor = after
+      let page = 0
+      let messages = []
+      do {
+        const batch = await fetchMessages(id, { limit, after })
+        const list = Array.isArray(batch) ? batch : []
+        messages = messages.concat(list)
+        for (const message of list) cursor = newerSnowflake(cursor, message?.id)
+        page += 1
+        // `after` pages come back oldest→newest; keep catching up while the
+        // channel produced a full page and there is budget left.
+        after = cursor
+      } while (page < MAX_CATCHUP_PAGES && messages.length >= limit && messages.length % limit === 0 && !expired())
+
+      row.messages = messages.length
+      summary.scanned += messages.length
+
+      const mappingKinds = mapping?.kinds?.length ? new Set(mapping.kinds.map(String)) : accepted
+      const attachments = pickMessageRows(messages, id).filter((entry) => mappingKinds.has(entry.kind) && accepted.has(entry.kind))
       summary.attachments += attachments.length
 
       const fresh = []
       for (const item of attachments) {
         if (catalog.media.some((entry) => String(entry.sourceAttachmentId || '') === item.attachmentId)) { row.skipped += 1; continue }
         if (expired()) { summary.partial = true; pending.unshift(id); break }
-        try {
-          const bytes = await loadBytes(item)
-          await store(storageKey(item), bytes, item.mimeType || (item.kind === 'image' ? 'image/jpeg' : 'video/mp4'), item.filename)
-          item.storedBytes = bytes.length
-          fresh.push(item)
-        } catch (error) {
-          row.failed += 1
-          summary.failed += 1
-          if (error instanceof DiscordError && (error.code === 'RATE_LIMITED' || error.code === 'DOWNLOAD_FAILED')) row.error = error.message
+        if (mode === 'store') {
+          try {
+            const bytes = await loadBytes(item)
+            await store(storageKey(item), bytes, guessMimeType(item), item.filename)
+            item.storedBytes = bytes.length
+          } catch (error) {
+            row.failed += 1
+            summary.failed += 1
+            if (error instanceof DiscordError) row.error = error.message
+            continue
+          }
         }
+        fresh.push(item)
       }
 
-      const merged = mergeImportedIntoCatalog(catalog, { channel, rows: fresh })
+      const merged = mergeImportedIntoCatalog(catalog, {
+        channel,
+        rows: fresh,
+        targetChannelId: mapping?.channelId || '',
+        mode: mode === 'store' ? 'store' : 'link'
+      })
       catalog = merged.catalog
       row.imported = merged.added.length
       summary.imported += merged.added.length
       summary.skipped += row.skipped
+      // Always record the attempt — even for a channel with nothing new, which
+      // is the common case. Without this an empty channel would be re-read on
+      // every single feed request.
+      {
+        const previous = summary.cursors[id] || {}
+        summary.cursors[id] = {
+          ...previous,
+          ...(cursor ? { cursor } : {}),
+          at: new Date().toISOString(),
+          lastAttemptAt: new Date().toISOString(),
+          imported: (previous.imported || 0) + merged.added.length,
+          name: row.name,
+          error: ''
+        }
+      }
       summary.database = (await saveRows(channel, merged.added, summary.imported)) === 'saved' ? 'saved' : summary.database
       summary.channels.push(row)
     } catch (error) {
-      row.error = error instanceof DiscordError ? error.message : 'Channel import failed.'
+      row.error = error instanceof DiscordError ? error.message : 'Channel sync failed.'
+      summary.cursors[id] = {
+        ...(summary.cursors[id] || {}),
+        lastAttemptAt: new Date().toISOString(),
+        name: row.name,
+        error: row.error
+      }
       summary.channels.push(row)
       summary.failed += 1
     }
@@ -658,6 +816,7 @@ export async function importChannels({
 
   await writeStore(catalog)
   summary.remaining = pending.length
+  summary.syncedAt = new Date().toISOString()
   return summary
 }
 
