@@ -39,7 +39,7 @@ export function PremiumLibraryScreen(): React.JSX.Element {
     return [...seen.values()]
   }, [catalog, feed.items])
 
-  const videos = useMemo(() => media.filter((item) => item.videoUrl || item.type === 'video'), [media])
+  const videos = useMemo(() => media.filter((item) => Boolean(item.videoUrl)), [media])
   const feedImages = useMemo(() => feed.items.filter((item) => item.type === 'image'), [feed.items])
   const storedImages = useMemo(
     () => (catalog?.media ?? []).filter((item) => item.type === 'image'),

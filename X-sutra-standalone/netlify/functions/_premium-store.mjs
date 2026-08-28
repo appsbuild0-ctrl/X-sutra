@@ -28,6 +28,58 @@ export const defaultSettings = {
   newVideoNotifications: true
 }
 
+/**
+ * Discord as a media source (auto mode).
+ *
+ * `mode: 'link'` is the default on purpose: media is referenced by its Discord
+ * attachment URL instead of being copied into a second store. `mappings` is
+ * usually empty — the feed then imports every channel in the guild into its
+ * own Premium section by itself.
+ */
+export function defaultDiscordConfig() {
+  return {
+    autoSync: true,
+    intervalMs: 60000,
+    perChannel: DEFAULT_DISCORD_DEPTH,
+    kinds: ['image', 'video'],
+    mode: process.env.DISCORD_STORE_ATTACHMENTS === 'true' ? 'store' : 'link',
+    mappings: [],
+    cursors: {},
+    lastSyncAt: '',
+    lastResult: null,
+    errors: []
+  }
+}
+
+export const DEFAULT_DISCORD_DEPTH = 25
+export const MAX_DISCORD_ERRORS = 20
+
+function normalizeDiscordConfig(raw) {
+  const config = defaultDiscordConfig()
+  if (!raw || typeof raw !== 'object') return config
+  return {
+    ...config,
+    ...raw,
+    autoSync: raw.autoSync !== false,
+    intervalMs: Math.max(15000, Number(raw.intervalMs) || config.intervalMs),
+    perChannel: Math.max(1, Math.min(100, Number(raw.perChannel) || config.perChannel)),
+    kinds: Array.isArray(raw.kinds) && raw.kinds.length ? raw.kinds.map(String) : config.kinds,
+    mode: raw.mode === 'store' ? 'store' : 'link',
+    mappings: (Array.isArray(raw.mappings) ? raw.mappings : [])
+      .filter((mapping) => mapping && mapping.discordChannelId)
+      .map((mapping) => ({
+        discordChannelId: String(mapping.discordChannelId),
+        channelId: String(mapping.channelId || ''),
+        name: String(mapping.name || ''),
+        kinds: Array.isArray(mapping.kinds) && mapping.kinds.length ? mapping.kinds.map(String) : ['image', 'video']
+      })),
+    cursors: raw.cursors && typeof raw.cursors === 'object' ? raw.cursors : {},
+    lastSyncAt: String(raw.lastSyncAt || ''),
+    lastResult: raw.lastResult && typeof raw.lastResult === 'object' ? raw.lastResult : null,
+    errors: (Array.isArray(raw.errors) ? raw.errors : []).slice(0, MAX_DISCORD_ERRORS)
+  }
+}
+
 function emptyCatalog() {
   return {
     settings: { ...defaultSettings },
@@ -36,7 +88,8 @@ function emptyCatalog() {
     media: [],
     heroes: [],
     announcements: [],
-    adminHub: defaultAdminHub()
+    adminHub: defaultAdminHub(),
+    discord: defaultDiscordConfig()
   }
 }
 
@@ -116,6 +169,7 @@ function normalizeCatalog(raw) {
   catalog.heroes = Array.isArray(raw.heroes) ? raw.heroes : []
   catalog.announcements = Array.isArray(raw.announcements) ? raw.announcements : []
   catalog.adminHub = { ...defaultAdminHub(), ...(raw.adminHub || {}) }
+  catalog.discord = normalizeDiscordConfig(raw.discord)
   return catalog
 }
 
@@ -127,7 +181,8 @@ export async function writeCatalog(catalog) {
     media: (catalog.media || []).slice(0, 4000),
     heroes: (catalog.heroes || []).slice(0, 40),
     announcements: (catalog.announcements || []).slice(0, 200),
-    adminHub: { ...defaultAdminHub(), ...catalog.adminHub }
+    adminHub: { ...defaultAdminHub(), ...catalog.adminHub },
+    discord: normalizeDiscordConfig(catalog.discord)
   }
   const payload = JSON.stringify(next)
   if (LOCAL_FILE) {

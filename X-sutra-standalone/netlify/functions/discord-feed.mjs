@@ -12,7 +12,7 @@
  */
 
 import { defaultDiscordConfig, readCatalog, writeCatalog } from './_premium-store.mjs'
-import { DiscordError, importChannels } from './_server/discord.mjs'
+import { DiscordError, importChannels, listChannels } from './_server/discord.mjs'
 
 const MAX_LIMIT = 60
 const MAX_SYNC_ERRORS = 20
@@ -25,7 +25,28 @@ function json(statusCode, body) {
   }
 }
 
-const isConfigured = () => Boolean(process.env.DISCORD_BOT_TOKEN && process.env.DISCORD_GUILD_ID)
+// The guild id defaults to the X-Sutra server, so only the bot token is
+// required to make "post to Discord → shows in X-Sutra" work.
+const isConfigured = () => Boolean(process.env.DISCORD_BOT_TOKEN)
+
+/**
+ * Auto mode: nobody has to map channels. Every text/announcement channel in
+ * the guild is imported into its own Premium section, so posting an image or
+ * video anywhere in the server shows up by itself.
+ */
+async function resolveMappings(config) {
+  if (config.mappings.length) return config.mappings
+  const channels = await listChannels()
+  return channels.map((channel) => ({
+    discordChannelId: channel.id,
+    channelId: '',
+    name: channel.name,
+    kinds: ['image', 'video']
+  }))
+}
+
+/** The Premium channel id a mapping's media lands in ('' = its own section). */
+const targetChannelId = (mapping) => mapping.channelId || `discord-${mapping.discordChannelId}`
 
 /**
  * Mapped channels whose last *attempt* is older than the auto-sync interval.
@@ -90,11 +111,27 @@ export const handler = async (event) => {
     let synced = null
     let syncError = ''
 
-    if (config.autoSync && config.mappings.length) {
+    // Explicit admin mapping wins; otherwise every guild channel is imported.
+    let mappings = config.mappings
+    if (!mappings.length) {
+      if (!isConfigured()) {
+        syncError = 'Discord bot token is not set on the server (DISCORD_BOT_TOKEN).'
+      } else {
+        try {
+          mappings = await resolveMappings(config)
+        } catch (error) {
+          mappings = []
+          syncError = error instanceof DiscordError ? error.message : 'Could not read the Discord channels.'
+        }
+      }
+    }
+    const effective = { ...config, mappings }
+
+    if (config.autoSync && mappings.length) {
       if (!isConfigured()) {
         syncError = 'Discord bot is not configured on the server.'
       } else {
-        const due = dueChannels(config)
+        const due = dueChannels(effective)
         if (due.length) {
           try {
             const summary = await importChannels({
@@ -102,7 +139,7 @@ export const handler = async (event) => {
               perChannel: config.perChannel,
               kinds: config.kinds,
               mode: config.mode,
-              mappings: config.mappings,
+              mappings,
               cursors: config.cursors,
               incremental: true
             })
@@ -134,17 +171,18 @@ export const handler = async (event) => {
     }
 
     const items = feedItems(catalog.media, { channelId, limit, before })
-    const sections = (config.mappings || [])
+    const sections = (mappings || [])
       .map((mapping) => {
-        const channel = (catalog.channels || []).find((entry) => entry.id === mapping.channelId)
+        const target = targetChannelId(mapping)
+        const channel = (catalog.channels || []).find((entry) => entry.id === target)
         return {
-          channelId: mapping.channelId,
+          channelId: target,
           name: channel?.name || mapping.name || '',
           type: channel?.type || 'mixed',
           discordChannelId: mapping.discordChannelId,
           kinds: mapping.kinds?.length ? mapping.kinds : ['image', 'video'],
           lastSyncAt: config.cursors?.[mapping.discordChannelId]?.at || '',
-          count: (catalog.media || []).filter((item) => item.source === 'discord' && item.channelId === mapping.channelId).length
+          count: (catalog.media || []).filter((item) => item.source === 'discord' && item.channelId === target).length
         }
       })
       .filter((section) => !channelId || section.channelId === channelId)
