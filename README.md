@@ -13,6 +13,8 @@
 - Local-only likes, saved clips, follows, collections, download history, autoplay/mute preferences, and blocked-tag filtering
 - Optional device-local login page (`#/login`) with username/password fields, sign-in / create-account modes, a show/hide password eye toggle, and a built-in admin account (`admin` / `admin123`) that opens the admin panel
 - Premium section with fixed tabs (Home, Reels, Discover, Categories, Announcements), admin-managed channels/albums, and bulk URL import
+- Real Discord import: pick guild channels in the admin console and pull their messages, images and videos into the channel, stored server-side; uploads go to the channel you select
+- Uploaded and imported images render at their own aspect ratio and resolution — no CSS cropping
 - Local accounts store only a SHA-256 password hash on the device; the raw password is never persisted or transmitted
 - No demo/fake feed data and no external account password/token capture
 
@@ -76,6 +78,46 @@ main
 
 Netlify builds the app and deploys the public API function together. A plain static `index.html` opened via `file://` cannot call the same-origin function, so use the Netlify deployment for live data/playback.
 
+## Real Discord import (Premium)
+
+The Admin Panel → **Discord** tab works against the real Discord REST API — no
+mock data. Configure `DISCORD_BOT_TOKEN` and `DISCORD_GUILD_ID` on the hosting
+provider (see `.env.example`); the token stays server-side and is never sent to
+the browser.
+
+1. **Channel list** — `POST /api/discord/sync` with `action: list_channels`
+   returns every text/announcement channel of the guild.
+2. **Import** — `action: sync` with the selected `channelIds` reads each
+   channel's message history, and for every image/video attachment downloads the
+   bytes server-side (Discord CDN links are signed and expire) and stores them in
+   the premium file store, served back through `/api/premium-file?id=…`.
+3. **Saved with its channel** — each Discord channel becomes one Premium channel
+   (`discord-<id>`) and every imported media row points at it, so the channel
+   screen shows the imported posts, images and videos together. With a
+   `DATABASE_URL` the same rows are indexed in `xs_discord_channels` /
+   `xs_discord_media`; without one the import still works from the catalog.
+4. **Re-runs are safe** — an attachment is identified by
+   `(channel, message, attachment)`, so a second import skips what is stored.
+5. **Uploads** pick their channel in the console instead of always posting to
+   `DISCORD_CHANNEL_ID`.
+
+A serverless request has a time budget (`DISCORD_SYNC_BUDGET_MS`, default 8 s).
+When it runs out the response is `partial` with the channel ids it did not
+reach, and the console requests those automatically.
+
+## Tests
+
+```bash
+npm test
+```
+
+Node's built-in test runner over `scripts/tests/*.test.mjs`: the Discord import
+engine (channel discovery, attachment classification, catalog merge, byte
+storage, dedupe, time budget), the `/api/discord/sync` and `/api/discord/upload`
+handlers end-to-end against a stubbed Discord API with a real local file store,
+the upload-form assignment of many selected files to one channel, the premium
+catalog's channel/media persistence, and the uncropped image display rules.
+
 ## Production build
 
 ```bash
@@ -99,5 +141,6 @@ Open `android/` in Android Studio to run on a device/emulator or create a signed
 | `npm run build` | Type-check and create the production bundle |
 | `npm run build:artifacts` | Rebuild the standalone HTML and complete Netlify Drop ZIP from current `src/` |
 | `npm run check` | Type-check without creating `dist/` |
+| `npm test` | Run the Node test suite in `scripts/tests/` |
 | `npm run cap:sync` | Build web assets and copy them into Android |
 | `npm run android:open` | Open the Android Studio project |

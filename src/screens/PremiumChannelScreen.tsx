@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { MediaGrid } from '../components/MediaGrid'
 import { ScreenHeader } from '../components/ScreenHeader'
 import { fetchPremiumCatalog, premiumMediaToItem, type PremiumCatalog } from '../lib/premium'
+import { UNCROPPED_IMAGE_STYLE } from '../lib/imageFit'
 
 export function PremiumChannelScreen(): React.JSX.Element {
   const { id = '' } = useParams()
@@ -58,7 +59,11 @@ export function PremiumChannelScreen(): React.JSX.Element {
             <>
               <div className="section-heading section-heading--spaced"><div><p className="eyebrow">Images</p><h3>Channel photos</h3></div></div>
               <div className="premium-image-grid">
-                {images.map((item) => <a key={item.id} className="premium-image" href={item.url} target="_blank" rel="noreferrer" style={{ backgroundImage: `url(${item.thumbnail || item.url})` }} />)}
+                {images.map((item) => (
+                  <a key={item.id} className="premium-image" href={item.url} target="_blank" rel="noreferrer">
+                    <img src={item.thumbnail || item.url} alt={item.title} loading="lazy" style={UNCROPPED_IMAGE_STYLE} />
+                  </a>
+                ))}
               </div>
             </>
           )}

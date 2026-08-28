@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { compactNumber, durationLabel } from '../lib/format'
+import { isUncroppedImage, naturalFrameStyle } from '../lib/imageFit'
 import { hotpicApi } from '../lib/hotpic'
 import { publicMediaApi } from '../lib/redgifs'
 import type { MediaItem } from '../types'
@@ -97,6 +98,10 @@ export function MediaCard({ item, queue, priority = false }: MediaCardProps): Re
     ? (display.previewUrl ?? display.videoUrlSd ?? display.videoUrl)
     : undefined
   const embedUrl = isPremium ? '' : `https://www.redgifs.com/ifr/${encodeURIComponent(display.id)}?autoplay=1`
+  // Imported/uploaded images keep their own aspect ratio: the frame is sized from
+  // the media's real pixel size and the image is fitted inside it, never cropped.
+  const uncropped = isPremium && isUncroppedImage(display)
+  const frameStyle = uncropped ? naturalFrameStyle(display.width, display.height) : {}
 
   useEffect(() => {
     if (!imageExhausted || resolved || !inView || isPremium) return
@@ -128,7 +133,8 @@ export function MediaCard({ item, queue, priority = false }: MediaCardProps): Re
   return (
     <article className="media-card" ref={cardRef}>
       <button
-        className={`media-card__visual${activeThumbnail || (previewSource && !previewFailed) ? '' : ' media-card__visual--empty'}`}
+        className={`media-card__visual${activeThumbnail || (previewSource && !previewFailed) ? '' : ' media-card__visual--empty'}${uncropped ? ' media-card__visual--natural' : ''}`}
+        style={frameStyle}
         type="button"
         onClick={() => void open()}
         aria-label={`Open ${display.title}`}

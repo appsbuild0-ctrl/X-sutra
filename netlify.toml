@@ -54,6 +54,32 @@
   status = 200
   force = true
 
+# Discord admin + real channel import. Without these the catch-all below would
+# answer /api/discord/* with index.html instead of the function.
+[[redirects]]
+  from = "/api/discord/health"
+  to = "/.netlify/functions/discord-health"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/discord/upload"
+  to = "/.netlify/functions/discord-upload"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/discord/delete"
+  to = "/.netlify/functions/discord-delete"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/discord/sync"
+  to = "/.netlify/functions/discord-sync"
+  status = 200
+  force = true
+
 [[redirects]]
   from = "/api/hotpic"
   to = "/.netlify/functions/hotpic"

@@ -112,6 +112,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .media-card__visual { position: relative; display: block; width: 100%; aspect-ratio: .735; overflow: hidden; padding: 0; isolation: isolate; border-radius: 14px; background: #211718; box-shadow: inset 0 0 0 1px rgba(255,255,255,.08); }
 .media-card__visual--empty { background: linear-gradient(145deg, #251a1b, #141112); }
 .media-card__visual img, .media-card__visual video { width: 100%; height: 100%; object-fit: cover; transition: transform .35s ease, filter .35s ease; }
+/* Uploaded/imported images keep their real pixels: frame sized from the media,
+   image fitted inside it instead of clipped. */
+.media-card__visual--natural { aspect-ratio: auto; }
+.media-card__visual--natural img, .media-card__visual--natural video { object-fit: contain; }
 .media-card__visual video { background: #171011; }
 .media-card__embed { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #171011; pointer-events: none; }
 .media-card__visual:hover img, .media-card__visual:hover video { transform: scale(1.045); filter: saturate(1.05); }
@@ -751,7 +755,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .premium-posts { display: grid; grid-template-columns: repeat(2, 1fr); gap: 9px; }
 .premium-post { display: flex; flex-direction: column; gap: 5px; padding: 9px; border: 1px solid rgba(255,196,107,.3); border-radius: 14px; background: var(--surface); text-align: left; transition: transform .18s ease, border-color .18s ease; }
 .premium-post:hover { transform: translateY(-1px); border-color: rgba(255,196,107,.6); }
-.premium-post__thumb { display: grid; aspect-ratio: 9/13; place-items: center; border-radius: 9px; color: var(--text); background: linear-gradient(150deg, #241a15, #171113) center / cover no-repeat; }
+.premium-post__thumb { display: grid; place-items: center; border-radius: 9px; color: var(--text); background: linear-gradient(150deg, #241a15, #171113) center / contain no-repeat; }
 .premium-post__thumb svg { color: rgba(255,236,221,.85); filter: drop-shadow(0 2px 8px rgba(0,0,0,.5)); }
 .premium-post strong { color: var(--text); font-size: 12px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .premium-post small { color: var(--muted); font-family: 'DM Mono', monospace; font-size: 9px; }
@@ -813,6 +817,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 9px;
+  /* every tile keeps its own height so nothing is stretched or clipped */
+  align-items: start;
 }
 .premium-album, .premium-scan-item {
   display: grid;
@@ -824,13 +830,35 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   text-align: left;
   color: var(--text);
 }
-.premium-album__cover, .premium-image, .premium-scan-item__thumb, .premium-channel__cover {
+.premium-album__cover, .premium-channel__cover {
   display: block;
   aspect-ratio: 16/10;
   border-radius: 8px;
-  background: linear-gradient(150deg, #241a15, #171113) center / cover no-repeat;
+  background: linear-gradient(150deg, #241a15, #171113) center / contain no-repeat;
 }
-.premium-image { min-height: 90px; }
+/* Premium images are shown at their own aspect ratio and resolution: the frame
+   follows the media, the media is fitted inside it — never cropped. */
+.premium-image {
+  display: block;
+  overflow: hidden;
+  border-radius: 8px;
+  background: linear-gradient(150deg, #241a15, #171113);
+}
+.premium-image img {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+}
+.premium-scan-item__thumb {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 190px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: linear-gradient(150deg, #241a15, #171113);
+}
 .premium-channel {
   grid-template-columns: 64px 1fr auto;
   align-items: center;
@@ -1307,6 +1335,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .msg-reaction--active { border-color: rgba(240,100,67,.5); background: rgba(240,100,67,.1); color: var(--ember-strong); }
 .msg-reaction--add { border-style: dashed; font-size: 14px; padding: 2px 6px; }
 
+/* Imported Discord media (stored with its channel) */
+.discord-imported { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; align-items: start; margin-top: 8px; }
+.discord-imported__item { display: grid; gap: 5px; margin: 0; padding: 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.discord-imported__item img, .discord-imported__item video { display: block; width: 100%; height: auto; max-height: 220px; object-fit: contain; border-radius: 8px; background: #160f10; }
+.discord-imported__item figcaption { display: grid; gap: 2px; }
+.discord-imported__item strong { color: var(--text); font-size: 11px; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.discord-imported__item small { color: var(--muted); font-family: 'DM Mono', monospace; font-size: 9px; }
+
 /* Emoji picker */
 .emoji-picker { position: absolute; top: 100%; right: 0; z-index: 20; padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); box-shadow: 0 8px 24px rgba(0,0,0,.4); }
 .emoji-picker__grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; }
@@ -1315,14 +1351,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 /* Attachments */
 .msg-attachments { margin-top: 6px; }
-.msg-image-grid { display: grid; gap: 4px; border-radius: 8px; overflow: hidden; }
+.msg-image-grid { display: grid; gap: 4px; border-radius: 8px; overflow: hidden; align-items: start; }
 .msg-image-grid--1 { grid-template-columns: 1fr; max-width: 400px; }
 .msg-image-grid--2 { grid-template-columns: 1fr 1fr; }
-.msg-image-grid--3 { grid-template-columns: 1fr 1fr; grid-template-rows: auto auto; }
-.msg-image-grid--3 .msg-image-btn:first-child { grid-row: span 2; }
+.msg-image-grid--3 { grid-template-columns: 1fr 1fr; }
 .msg-image-grid--4 { grid-template-columns: 1fr 1fr; }
 .msg-image-btn { position: relative; display: block; overflow: hidden; border-radius: 6px; background: #1a1415; border: 0; padding: 0; cursor: pointer; }
-.msg-image-btn img { width: 100%; height: 100%; object-fit: cover; min-height: 80px; max-height: 280px; }
+/* full picture, original ratio — no cover crop */
+.msg-image-btn img { display: block; width: 100%; height: auto; object-fit: contain; max-height: 340px; }
 .msg-image-overflow {
   position: absolute; inset: 0; display: grid; place-items: center; background: rgba(0,0,0,.6);
   color: #fff; font-size: 20px; font-weight: 700;

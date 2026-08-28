@@ -4,6 +4,7 @@ import { MediaGrid } from '../components/MediaGrid'
 import { ScreenHeader } from '../components/ScreenHeader'
 import { useApp } from '../context/AppContext'
 import { hotpicApi, type HotpicAlbum } from '../lib/hotpic'
+import { UNCROPPED_IMAGE_STYLE } from '../lib/imageFit'
 
 export function PremiumHotpicAlbumScreen(): React.JSX.Element {
   const { id = '' } = useParams()
@@ -37,10 +38,11 @@ export function PremiumHotpicAlbumScreen(): React.JSX.Element {
               key={item.id}
               className="premium-image"
               type="button"
-              style={{ backgroundImage: `url(${item.thumbnail || item.previewUrl})` }}
               onClick={() => openPlayer({ ...item, videoUrl: item.previewUrl || item.sourceUrl, previewUrl: item.previewUrl || item.sourceUrl }, images)}
               aria-label={item.title}
-            />
+            >
+              <img src={item.thumbnail || item.previewUrl} alt={item.title} loading="lazy" style={UNCROPPED_IMAGE_STYLE} />
+            </button>
           ))}
         </div>
       ) : <p className="form-help">No pics in this album.</p>}

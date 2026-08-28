@@ -13,6 +13,19 @@ const BASE_HEADERS: Record<string, string> = {
   Origin: 'https://www.redgifs.com'
 }
 
+// Local development runs the same serverless handlers Netlify/Vercel deploy,
+// so /api/... behaves identically on `npm run dev`.
+const LOCAL_API_HANDLERS: Record<string, string> = {
+  '/api/premium': './netlify/functions/premium.mjs',
+  '/api/premium-scan': './netlify/functions/premium-scan.mjs',
+  '/api/premium-file': './netlify/functions/premium-file.mjs',
+  '/api/hotpic': './netlify/functions/hotpic.mjs',
+  '/api/discord/health': './netlify/functions/discord-health.mjs',
+  '/api/discord/upload': './netlify/functions/discord-upload.mjs',
+  '/api/discord/delete': './netlify/functions/discord-delete.mjs',
+  '/api/discord/sync': './netlify/functions/discord-sync.mjs'
+}
+
 function allowedTarget(rawPath: string): URL | null {
   try {
     const url = new URL(rawPath, ORIGIN)
@@ -95,26 +108,14 @@ function premiumDevApi(): Plugin {
           }
           return
         }
-        if (path !== '/api/premium' && path !== '/api/premium-scan' && path !== '/api/premium-file' && path !== '/api/hotpic' && path !== '/api/discord/health' && path !== '/api/discord/upload' && path !== '/api/discord/delete') return next()
+        if (!(path in LOCAL_API_HANDLERS)) return next()
         process.env.PREMIUM_LOCAL_FILE ||= '.premium-data.json'
         process.env.PREMIUM_MEDIA_DIR ||= '.premium-media'
         try {
           const body = req.method === 'POST' ? await readBody(req) : ''
           const requestUrl = new URL(req.url ?? '/', 'http://localhost')
           const event = { httpMethod: req.method, body, headers: req.headers, queryStringParameters: Object.fromEntries(requestUrl.searchParams), rawUrl: requestUrl.href }
-          const handlerPath = path === '/api/hotpic'
-            ? './netlify/functions/hotpic.mjs'
-            : path === '/api/premium-scan'
-              ? './netlify/functions/premium-scan.mjs'
-              : path === '/api/premium-file'
-                ? './netlify/functions/premium-file.mjs'
-                : path === '/api/discord/health'
-                  ? './netlify/functions/discord-health.mjs'
-                  : path === '/api/discord/upload'
-                    ? './netlify/functions/discord-upload.mjs'
-                    : path === '/api/discord/delete'
-                      ? './netlify/functions/discord-delete.mjs'
-                      : './netlify/functions/premium.mjs'
+          const handlerPath = LOCAL_API_HANDLERS[path]
           const mod = await import(/* @vite-ignore */ handlerPath) as { handler: (event: unknown) => Promise<{ statusCode: number; body?: string; headers?: Record<string, string>; isBase64Encoded?: boolean }> }
           const result = await mod.handler(event)
           res.statusCode = result.statusCode

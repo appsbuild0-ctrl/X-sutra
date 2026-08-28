@@ -51,7 +51,7 @@ export function AdminPanelScreen(): React.JSX.Element {
       {tab === 'dash' && <Dash hub={hub} catalog={catalog} />}
       {tab === 'users' && <Users />}
       {tab === 'videos' && <Videos catalog={catalog} setCatalog={setCatalog} hub={hub} persist={persist} />}
-      {tab === 'discord' && <DiscordAdminCard />}
+      {tab === 'discord' && <DiscordAdminCard onChanged={() => void fetchPremiumCatalog().then(setCatalog)} />}
       {tab === 'settings' && <Settings hub={hub} persist={persist} />}
       <nav className="admin-tabs" aria-label="Admin sections">
         {([['dash', 'Dashboard'], ['users', 'Users'], ['videos', 'Videos'], ['discord', 'Discord'], ['settings', 'Settings']] as const).map(([id, label]) => (

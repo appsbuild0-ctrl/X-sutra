@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { MediaGrid } from '../components/MediaGrid'
 import { ScreenHeader } from '../components/ScreenHeader'
 import { fetchPremiumCatalog, premiumMediaToItem, type PremiumCatalog } from '../lib/premium'
+import { UNCROPPED_IMAGE_STYLE } from '../lib/imageFit'
 
 export function PremiumAlbumScreen(): React.JSX.Element {
   const { id = '' } = useParams()
@@ -30,7 +31,9 @@ export function PremiumAlbumScreen(): React.JSX.Element {
           <MediaGrid items={media.filter((item) => item.type === 'video').map(premiumMediaToItem)} empty={media.some((item) => item.type === 'video') ? undefined : <p className="form-help">No videos in this album.</p>} />
           <div className="premium-image-grid">
             {media.filter((item) => item.type === 'image').map((item) => (
-              <a key={item.id} className="premium-image" href={item.url} target="_blank" rel="noreferrer" style={{ backgroundImage: `url(${item.thumbnail || item.url})` }} />
+              <a key={item.id} className="premium-image" href={item.url} target="_blank" rel="noreferrer">
+                <img src={item.thumbnail || item.url} alt={item.title} loading="lazy" style={UNCROPPED_IMAGE_STYLE} />
+              </a>
             ))}
           </div>
         </>

@@ -6,6 +6,7 @@
 const HEALTH_ENDPOINT = '/api/discord/health'
 const UPLOAD_ENDPOINT = '/api/discord/upload'
 const DELETE_ENDPOINT = '/api/discord/delete'
+const SYNC_ENDPOINT = '/api/discord/sync'
 
 export interface DiscordHealthStatus {
   botToken: boolean
@@ -35,6 +36,56 @@ export interface DiscordDeleteResult {
   messageId?: string
   channelId?: string
   alreadyDeleted?: boolean
+  error?: string
+}
+
+export interface DiscordChannelInfo {
+  id: string
+  name: string
+  topic: string
+  type: 'text' | 'announcement'
+  parentId: string
+}
+
+export interface DiscordImportedMedia {
+  id: string
+  channelId: string
+  channelName: string
+  sourceChannelId: string
+  messageId: string
+  attachmentId: string
+  kind: 'image' | 'video'
+  title: string
+  url: string
+  width: number
+  height: number
+  bytes: number
+  authorName: string
+  createdAt: string
+}
+
+export interface DiscordSyncChannelResult {
+  id: string
+  name: string
+  messages: number
+  imported: number
+  skipped: number
+  failed: number
+  error: string
+}
+
+export interface DiscordSyncResult {
+  ok: boolean
+  scanned: number
+  attachments: number
+  imported: number
+  skipped: number
+  failed: number
+  partial: boolean
+  nextChannelIds: string[]
+  remaining?: number
+  database: 'saved' | 'skipped'
+  channels: DiscordSyncChannelResult[]
   error?: string
 }
 
@@ -73,9 +124,10 @@ export function fetchDiscordHealth(password?: string): Promise<DiscordHealthStat
 
 /**
  * Upload a file to Discord via the backend.
- * File is converted to base64 and sent as JSON.
+ * File is converted to base64 and sent as JSON. `channelId` is the channel picked
+ * in the admin console; without it the server's DISCORD_CHANNEL_ID is used.
  */
-export async function uploadToDiscord(file: File, password: string, content?: string): Promise<DiscordUploadResult> {
+export async function uploadToDiscord(file: File, password: string, content?: string, channelId?: string): Promise<DiscordUploadResult> {
   const buffer = await file.arrayBuffer()
   const bytes = new Uint8Array(buffer)
   let binary = ''
@@ -92,7 +144,8 @@ export async function uploadToDiscord(file: File, password: string, content?: st
       filename: file.name,
       contentType: file.type || 'application/octet-stream',
       data: base64,
-      content: content || ''
+      content: content || '',
+      channelId: channelId || ''
     })
   })
 }
@@ -100,9 +153,67 @@ export async function uploadToDiscord(file: File, password: string, content?: st
 /**
  * Delete a Discord message by ID.
  */
-export function deleteDiscordMessage(messageId: string, password: string): Promise<DiscordDeleteResult> {
+export function deleteDiscordMessage(messageId: string, password: string, channelId?: string): Promise<DiscordDeleteResult> {
   return request<DiscordDeleteResult>(DELETE_ENDPOINT, {
     method: 'POST',
-    body: JSON.stringify({ password, messageId })
+    body: JSON.stringify({ password, messageId, channelId: channelId || '' })
   })
+}
+
+// ─── Real channel import ───
+
+/** Every text channel of the configured guild, for the admin's picker. */
+export function listDiscordChannels(password: string): Promise<{ channels: DiscordChannelInfo[] }> {
+  return request<{ channels: DiscordChannelInfo[] }>(SYNC_ENDPOINT, {
+    method: 'POST',
+    body: JSON.stringify({ password, action: 'list_channels' })
+  })
+}
+
+/** What has already been imported (media stored with its channel). */
+export function fetchDiscordImported(password: string, channelId?: string): Promise<{ media: DiscordImportedMedia[] }> {
+  return request<{ media: DiscordImportedMedia[] }>(SYNC_ENDPOINT, {
+    method: 'POST',
+    body: JSON.stringify({ password, action: 'imported', channelId: channelId || '' })
+  })
+}
+
+/**
+ * Import messages/images/videos from the selected channels.
+ *
+ * A serverless request has a time budget, so the backend can answer `partial`
+ * with the channels it did not reach; those are requested again automatically
+ * until the selection is exhausted.
+ */
+export async function syncDiscordChannels(
+  password: string,
+  options: { channelIds: string[]; perChannel: number; kinds: string[] },
+  onProgress?: (result: DiscordSyncResult, round: number) => void
+): Promise<DiscordSyncResult> {
+  const totals: DiscordSyncResult = {
+    ok: true, scanned: 0, attachments: 0, imported: 0, skipped: 0, failed: 0,
+    partial: false, nextChannelIds: [], database: 'skipped', channels: []
+  }
+  let pending = [...new Set(options.channelIds.map(String).filter(Boolean))]
+  for (let round = 1; round <= 20 && pending.length; round += 1) {
+    const result = await request<DiscordSyncResult>(SYNC_ENDPOINT, {
+      method: 'POST',
+      body: JSON.stringify({ password, action: 'sync', channelIds: pending, perChannel: options.perChannel, kinds: options.kinds })
+    })
+    totals.scanned += result.scanned || 0
+    totals.attachments += result.attachments || 0
+    totals.imported += result.imported || 0
+    totals.skipped += result.skipped || 0
+    totals.failed += result.failed || 0
+    totals.channels.push(...(result.channels || []))
+    totals.database = result.database === 'saved' ? 'saved' : totals.database
+    totals.partial = Boolean(result.partial)
+    totals.nextChannelIds = result.nextChannelIds || []
+    onProgress?.({ ...totals }, round)
+    const next = (result.nextChannelIds || []).filter((id) => pending.includes(id))
+    // Same set again means no progress — stop instead of looping forever.
+    if (!result.partial || next.length === pending.length) break
+    pending = next
+  }
+  return totals
 }
