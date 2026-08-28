@@ -54,43 +54,24 @@
   status = 200
   force = true
 
-# Discord admin + real channel import. Without these the catch-all below would
-# answer /api/discord/* with index.html instead of the function.
+# Discord web login (real OAuth2 account login for Premium). The client
+# secret stays in these functions — the browser only ever sees the login
+# redirect, the code exchange and the silent token refresh.
 [[redirects]]
-  from = "/api/discord/health"
-  to = "/.netlify/functions/discord-health"
+  from = "/api/discord/login"
+  to = "/.netlify/functions/discord-login"
   status = 200
   force = true
 
 [[redirects]]
-  from = "/api/discord/upload"
-  to = "/.netlify/functions/discord-upload"
+  from = "/api/discord/callback"
+  to = "/.netlify/functions/discord-callback"
   status = 200
   force = true
 
 [[redirects]]
-  from = "/api/discord/delete"
-  to = "/.netlify/functions/discord-delete"
-  status = 200
-  force = true
-
-[[redirects]]
-  from = "/api/discord/sync"
-  to = "/.netlify/functions/discord-sync"
-  status = 200
-  force = true
-
-# Premium media feed (read-time auto-sync) and the attachment URL resolver that
-# 302s to a fresh Discord CDN link.
-[[redirects]]
-  from = "/api/discord/feed"
-  to = "/.netlify/functions/discord-feed"
-  status = 200
-  force = true
-
-[[redirects]]
-  from = "/api/discord/media"
-  to = "/.netlify/functions/discord-media"
+  from = "/api/discord/refresh"
+  to = "/.netlify/functions/discord-refresh"
   status = 200
   force = true
 
@@ -110,9 +91,3 @@
   from = "/*"
   to = "/index.html"
   status = 200
-
-# Background fallback for the Discord auto-sync: re-reads the mapped channels on
-# a schedule even when nobody has the app open. It is a no-op when auto-sync is
-# disabled or no channel is mapped.
-[functions."discord-cron"]
-  schedule = "@every 10m"

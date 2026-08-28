@@ -8,6 +8,10 @@
 # Private Telegram source; telegram-auth is owner-only (x-admin-setup-secret required).
 /api/telegram/channels  /.netlify/functions/telegram-channels  200
 /api/internal/telegram-auth  /.netlify/functions/telegram-admin  200
+# Discord web login (real OAuth2 account login for Premium).
+/api/discord/login  /.netlify/functions/discord-login  200
+/api/discord/callback  /.netlify/functions/discord-callback  200
+/api/discord/refresh  /.netlify/functions/discord-refresh  200
 /api/hotpic-html/*  https://hotpic.vip/:splat  200!
 # Tier 2: static rewrite fallback for deployments without functions.
 /api/redgifs/*  https://api.redgifs.com/:splat  200!

@@ -8,9 +8,10 @@ import { useNavigate } from 'react-router-dom'
 import { PayQrModal, PlanCards, type PlanId } from '../components/PlanPay'
 import { useApp } from '../context/AppContext'
 import { useCommunity } from '../context/CommunityContext'
+import { useDiscordLogin } from '../context/DiscordLoginContext'
 import { uploadToCloudinary, isCloudinaryConfigured } from '../lib/cloudinary'
 import { UNCROPPED_IMAGE_STYLE } from '../lib/imageFit'
-import { DiscordLiveStrip } from '../components/DiscordLiveStrip'
+import { DiscordLoginCard, DiscordLogo } from '../components/DiscordLoginCard'
 import { hasPremiumAccess, roleLabel } from '../lib/roles'
 import type { CommunityChannel, CommunityCategory, CommunityMessage, MessageAttachment } from '../lib/community'
 import { ChevronRightIcon, PlusIcon, SendIcon, PinIcon, TrashIcon, EditIcon, SmileIcon, ReplyIcon, XIcon } from '../components/icons'
@@ -262,8 +263,8 @@ function PremiumChannelList({ onOpen }: { onOpen: (ch: CommunityChannel) => void
       </header>
 
       <div className="comm-list__body">
-        {/* Media forwarded into a mapped Discord channel lands here by itself. */}
-        <DiscordLiveStrip />
+        {/* Real Discord web login: connected chip, or the one-tap login card. */}
+        <DiscordLoginCard />
         {cats.map((cat) => {
           const chs = state.channels.filter((c) => c.categoryId === cat.id).sort((a, b) => a.order - b.order).filter((c) => canView(c))
           if (chs.length === 0 && cat.collapsed) return null
@@ -489,21 +490,38 @@ function PremiumChatView({ channel, onBack }: { channel: CommunityChannel; onBac
 }
 
 // ═══════════════════════════════════════════════════════
-//  GATE: Premium check + Plan picker
+//  GATE: simple Discord login (or the old plan option)
 // ═══════════════════════════════════════════════════════
 function UpgradeScreen(): React.JSX.Element {
   const navigate = useNavigate()
   const { account } = useApp()
+  const { busy, error, login, clearError } = useDiscordLogin()
   const [plan, setPlan] = useState<PlanId | null>(null)
   return (
     <section className="screen premium-gate-screen">
-      <div className="premium-gate-hero">
-        <button className="ott-exit" type="button" onClick={() => navigate('/')}>← Home</button><span className="premium-gate-crown">⭐</span>
-        <p className="eyebrow">X-Sutra membership</p><h1>Unlock Premium</h1>
-        <p>Private channels and protected media stay hidden until your account is activated.</p>
-        {account ? <span className="premium-status-chip">Current status · {roleLabel(account.role)}</span> : <button className="primary-button" type="button" onClick={() => navigate('/login')}>Login or create account</button>}
+      <div className="premium-gate-hero premium-gate-hero--discord">
+        <button className="ott-exit" type="button" onClick={() => navigate('/')}>← Home</button>
+        <span className="premium-gate-crown premium-gate-crown--discord"><DiscordLogo size={34} /></span>
+        <p className="eyebrow">X-Sutra Premium</p>
+        <h1>Discord se login karo</h1>
+        <p>Apni Discord id se login karo — seedha Premium. Ek baar login karne ke baad baar baar login nahi aayega.</p>
+        <div className="premium-gate-hero__login">
+          <button type="button" className="discord-login-button" onClick={login} disabled={busy}>
+            <DiscordLogo size={20} />
+            <span>{busy ? 'Opening Discord…' : 'Login with Discord'}</span>
+          </button>
+          {error && <p className="login-error login-error--center" role="alert" onClick={clearError}>{error}</p>}
+        </div>
+        {account && <p className="form-help">App account: {roleLabel(account.role)} · Premium ke liye Discord login karo.</p>}
       </div>
-      <div className="premium-plan-section"><p className="eyebrow">Choose your access</p><h2>Premium & VIP plans</h2><PlanCards onPick={setPlan} /><p className="form-help">Access appears only after admin verification and role activation.</p></div>
+      <details className="premium-plan-details">
+        <summary>Ya plan leke Premium unlock karo ⭐</summary>
+        <div className="premium-plan-section">
+          <h2>Premium & VIP plans</h2>
+          <PlanCards onPick={setPlan} />
+          <p className="form-help">Access appears only after admin verification and role activation.</p>
+        </div>
+      </details>
       {plan && <PayQrModal plan={plan} onClose={() => setPlan(null)} />}
     </section>
   )
@@ -514,8 +532,10 @@ function UpgradeScreen(): React.JSX.Element {
 // ═══════════════════════════════════════════════════════
 export function PremiumScreen(): React.JSX.Element {
   const { account } = useApp()
+  const { user } = useDiscordLogin()
   const [active, setActive] = useState<CommunityChannel | null>(null)
-  if (!hasPremiumAccess(account?.role)) return <UpgradeScreen />
+  // Premium opens with a local premium role OR a real Discord login session.
+  if (!hasPremiumAccess(account?.role) && !user) return <UpgradeScreen />
   if (active) return <PremiumChatView channel={active} onBack={() => setActive(null)} />
   return <PremiumChannelList onOpen={setActive} />
 }

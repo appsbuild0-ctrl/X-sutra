@@ -6,12 +6,9 @@ import { handler as premium } from '../netlify/functions/premium.mjs'
 import { handler as premiumScan } from '../netlify/functions/premium-scan.mjs'
 import { handler as premiumFile } from '../netlify/functions/premium-file.mjs'
 import { handler as hotpic } from '../netlify/functions/hotpic.mjs'
-import { handler as discordHealth } from '../netlify/functions/discord-health.mjs'
-import { handler as discordUpload } from '../netlify/functions/discord-upload.mjs'
-import { handler as discordDelete } from '../netlify/functions/discord-delete.mjs'
-import { handler as discordSync } from '../netlify/functions/discord-sync.mjs'
-import { handler as discordFeed } from '../netlify/functions/discord-feed.mjs'
-import { handler as discordMedia } from '../netlify/functions/discord-media.mjs'
+import { handler as discordLogin } from '../netlify/functions/discord-login.mjs'
+import { handler as discordCallback } from '../netlify/functions/discord-callback.mjs'
+import { handler as discordRefresh } from '../netlify/functions/discord-refresh.mjs'
 
 const ROUTES = new Map([
   ['/api/redgifs', redgifs],
@@ -20,12 +17,9 @@ const ROUTES = new Map([
   ['/api/premium-scan', premiumScan],
   ['/api/premium-file', premiumFile],
   ['/api/hotpic', hotpic],
-  ['/api/discord/health', discordHealth],
-  ['/api/discord/upload', discordUpload],
-  ['/api/discord/delete', discordDelete],
-  ['/api/discord/sync', discordSync],
-  ['/api/discord/feed', discordFeed],
-  ['/api/discord/media', discordMedia],
+  ['/api/discord/login', discordLogin],
+  ['/api/discord/callback', discordCallback],
+  ['/api/discord/refresh', discordRefresh],
 ])
 
 const HOTPIC_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'

@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ScreenHeader } from '../components/ScreenHeader'
-import { DiscordAdminCard } from '../components/DiscordAdminCard'
 import { DownloadIcon, HeartIcon, LibraryIcon, SettingsIcon, ShieldIcon, TrashIcon, UserIcon } from '../components/icons'
 import { useApp } from '../context/AppContext'
 import { useOnlineMembers } from '../hooks/useOnlineMembers'
@@ -12,7 +11,7 @@ import type { UserRole } from '../types'
 import { fetchPremiumCatalog, premiumAdmin, type PremiumCatalog } from '../lib/premium'
 import { fileToDataUrl, writePayQr, clearPayQr } from '../lib/payQr'
 
-type Tab = 'dash' | 'users' | 'videos' | 'discord' | 'settings'
+type Tab = 'dash' | 'users' | 'videos' | 'settings'
 
 export function AdminPanelScreen(): React.JSX.Element {
   const navigate = useNavigate()
@@ -51,10 +50,9 @@ export function AdminPanelScreen(): React.JSX.Element {
       {tab === 'dash' && <Dash hub={hub} catalog={catalog} />}
       {tab === 'users' && <Users />}
       {tab === 'videos' && <Videos catalog={catalog} setCatalog={setCatalog} hub={hub} persist={persist} />}
-      {tab === 'discord' && <DiscordAdminCard onChanged={() => void fetchPremiumCatalog().then(setCatalog)} />}
       {tab === 'settings' && <Settings hub={hub} persist={persist} />}
       <nav className="admin-tabs" aria-label="Admin sections">
-        {([['dash', 'Dashboard'], ['users', 'Users'], ['videos', 'Videos'], ['discord', 'Discord'], ['settings', 'Settings']] as const).map(([id, label]) => (
+        {([['dash', 'Dashboard'], ['users', 'Users'], ['videos', 'Videos'], ['settings', 'Settings']] as const).map(([id, label]) => (
           <button key={id} className={tab === id ? 'is-active' : ''} type="button" onClick={() => setTab(id)}>{label}</button>
         ))}
       </nav>
