@@ -179,8 +179,15 @@ export const handler = async (event) => {
     if (body.action === 'sync') {
       const mappings = Array.isArray(body.mappings) ? normalizeMappings(body.mappings, catalog.channels) : config.mappings
       if (!mappings.length) return reply(400, { error: 'Map at least one Discord channel to a Premium section first.' })
-      const requested = Array.isArray(body.channelIds) ? body.channelIds.map(String).filter(Boolean) : []
-      const channelIds = requested.length ? requested : mappings.map((mapping) => mapping.discordChannelId)
+      // Only channels the admin explicitly mapped can ever be synced — an
+      // arbitrary channel id in the request body is rejected, not read.
+      const mapped = new Set(mappings.map((mapping) => mapping.discordChannelId))
+      const requested = (Array.isArray(body.channelIds) ? body.channelIds : []).map(String).filter(Boolean)
+      const allowed = requested.filter((id) => mapped.has(id))
+      if (requested.length && !allowed.length) {
+        return reply(403, { error: 'That Discord channel is not configured for sync.' })
+      }
+      const channelIds = allowed.length ? allowed : [...mapped]
       const kinds = Array.isArray(body.kinds) && body.kinds.length ? body.kinds.map(String) : config.kinds
 
       let summary

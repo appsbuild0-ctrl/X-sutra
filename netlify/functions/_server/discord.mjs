@@ -357,6 +357,10 @@ export const MAX_IMPORT_LIMIT = 100
 export const MAX_SYNC_CHANNELS = 12
 /** Catch-up pages per channel when the cursor is far behind. */
 const MAX_CATCHUP_PAGES = 5
+/** A download that failed for a temporary reason is retried this many syncs. */
+const MAX_ATTACHMENT_RETRIES = 5
+/** Retries attempted per channel per request, so a sync stays inside its budget. */
+const MAX_RETRIES_PER_RUN = 10
 /** Treat a signed CDN link as expired this long before it really is. */
 const EXPIRY_SAFETY_MS = 120_000
 const DEFAULT_BUDGET_MS = Number(process.env.DISCORD_SYNC_BUDGET_MS) > 0 ? Number(process.env.DISCORD_SYNC_BUDGET_MS) : 8000
@@ -686,6 +690,7 @@ export async function importChannels({
   incremental = true,
   discover = listChannels,
   fetchMessages = fetchChannelMessages,
+  fetchAttachments = fetchMessageAttachments,
   loadBytes = loadAttachmentBytes,
   store = defaultStoreBytes,
   readStore = defaultReadCatalog,
@@ -717,6 +722,8 @@ export async function importChannels({
     partial: false,
     nextChannelIds: [],
     database: 'skipped',
+    recovered: 0,
+    retries: 0,
     mode: mode === 'store' ? 'store' : 'link',
     cursors: { ...(cursors && typeof cursors === 'object' ? cursors : {}) },
     channels: []
@@ -730,8 +737,45 @@ export async function importChannels({
     const id = pending.shift()
     const channel = known.get(id) || { id, name: `channel-${id}`, topic: '', type: 'text' }
     const mapping = mappingByChannel.get(id)
-    const row = { id, name: mapping?.name || channel.name, targetChannelId: mapping?.channelId || '', messages: 0, imported: 0, skipped: 0, failed: 0, error: '' }
+    const row = { id, name: mapping?.name || channel.name, targetChannelId: mapping?.channelId || '', messages: 0, imported: 0, skipped: 0, failed: 0, recovered: 0, error: '' }
+    // Attachments whose download failed earlier are queued on the cursor, so a
+    // temporary Discord/CDN problem does not lose the media for good.
+    let failures = Array.isArray(summary.cursors[id]?.failed) ? [...summary.cursors[id].failed] : []
     try {
+      if (mode === 'store' && failures.length) {
+        const stillFailing = []
+        for (const failure of failures.slice(0, MAX_RETRIES_PER_RUN)) {
+          if ((failure.attempts || 0) >= MAX_ATTACHMENT_RETRIES) continue
+          summary.retries += 1
+          try {
+            const attachments = await fetchAttachments(id, failure.messageId)
+            const attachment = attachments.find((item) => String(item.id) === String(failure.attachmentId))
+            if (!attachment) continue // deleted on Discord — stop retrying
+            const rows = pickMessageRows([{
+              id: failure.messageId,
+              content: failure.title || '',
+              timestamp: failure.at || new Date().toISOString(),
+              author: { username: failure.authorName || 'discord' },
+              attachments: [attachment]
+            }], id).filter((entry) => accepted.has(entry.kind))
+            const pending = rows.filter((entry) => !catalog.media.some((known) => String(known.sourceAttachmentId || '') === entry.attachmentId))
+            for (const item of pending) {
+              const bytes = await loadBytes(item)
+              await store(storageKey(item), bytes, guessMimeType(item), item.filename)
+              item.storedBytes = bytes.length
+            }
+            const recovered = mergeImportedIntoCatalog(catalog, { channel, rows: pending, targetChannelId: mapping?.channelId || '', mode: 'store' })
+            catalog = recovered.catalog
+            row.recovered += recovered.added.length
+            summary.recovered += recovered.added.length
+            if (!recovered.added.length) stillFailing.push({ ...failure, attempts: (failure.attempts || 0) + 1 })
+          } catch {
+            stillFailing.push({ ...failure, attempts: (failure.attempts || 0) + 1, at: new Date().toISOString() })
+          }
+        }
+        failures = stillFailing
+      }
+
       // Incremental: only messages newer than the cursor we stored last time.
       let after = incremental ? String(summary.cursors[id]?.cursor || '') : ''
       let cursor = after
@@ -768,6 +812,16 @@ export async function importChannels({
             row.failed += 1
             summary.failed += 1
             if (error instanceof DiscordError) row.error = error.message
+            failures.push({
+              messageId: item.messageId,
+              attachmentId: item.attachmentId,
+              filename: item.filename,
+              title: item.title,
+              authorName: item.authorName,
+              attempts: 1,
+              error: error instanceof DiscordError ? error.message : 'Download failed.',
+              at: new Date().toISOString()
+            })
             continue
           }
         }
@@ -794,8 +848,10 @@ export async function importChannels({
           ...(cursor ? { cursor } : {}),
           at: new Date().toISOString(),
           lastAttemptAt: new Date().toISOString(),
-          imported: (previous.imported || 0) + merged.added.length,
+          imported: (previous.imported || 0) + merged.added.length + row.recovered,
           name: row.name,
+          recovered: (previous.recovered || 0) + row.recovered,
+          failed: failures,
           error: ''
         }
       }

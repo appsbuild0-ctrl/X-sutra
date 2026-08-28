@@ -39,7 +39,19 @@ export const handler = async (event) => {
     // Not in the catalog → not a channel the admin mapped. Say nothing more.
     if (!entry) return json(404, { error: 'Media not found.' })
 
-    const resolved = await resolveAttachment(entry)
+    let resolved
+    try {
+      resolved = await resolveAttachment(entry)
+    } catch (error) {
+      // An attachment that is gone for good must not leave a dead signed URL in
+      // the catalog: forget it, so the next sync/refresh can re-read Discord.
+      if (error instanceof DiscordError && error.code === 'ATTACHMENT_GONE' && entry.cdnUrl) {
+        entry.cdnUrl = ''
+        entry.cdnExpiresAt = 0
+        await writeCatalog(catalog).catch(() => undefined)
+      }
+      throw error
+    }
 
     if (resolved.refreshed) {
       // Persist the new signature so the next viewer does not hit Discord again.

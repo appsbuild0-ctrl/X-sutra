@@ -80,10 +80,17 @@ Netlify builds the app and deploys the public API function together. A plain sta
 
 ## Discord as the Premium media source
 
-Post or forward an image/video into a mapped Discord channel and it shows up in
-X-Sutra Premium by itself — there is no second upload. Configure
-`DISCORD_BOT_TOKEN` and `DISCORD_GUILD_ID` on the hosting provider (see
-`.env.example`); the token never leaves the server.
+**You post from your own Discord account; the bot only reads.** Upload or forward
+an image/video into a mapped channel with your normal account and it shows up in
+X-Sutra Premium by itself — there is no second upload, and nothing is ever
+uploaded *through* the bot. Configure `DISCORD_BOT_TOKEN` and `DISCORD_GUILD_ID`
+on the hosting provider (see `.env.example`); the token never leaves the server
+and never appears in the browser bundle or in any frontend request.
+
+The bot needs **View Channel** and **Read Message History** on the channels you
+map — reading attachments needs no privileged intent. Enable the *Message Content*
+intent only if you want the message caption used as the media title; without it
+Discord hides other users' text and the filename is used instead.
 
 ```
 Discord channel → Discord API → /api/discord/feed → X-Sutra Premium
@@ -109,7 +116,13 @@ Discord channel → Discord API → /api/discord/feed → X-Sutra Premium
    text-only messages are ignored, unsupported files (pdf, zip, audio) are
    skipped, duplicates are detected by `(channel, message, attachment)`, and
    Discord's own timestamps decide the order.
-5. **Access** — Discord media only appears inside `/premium/library` and
+5. **Failures are retried, not lost** — a download or read that fails for a
+   temporary reason is queued on the channel cursor and retried on the next sync
+   (up to 5 attempts); an attachment deleted on Discord leaves the queue. An
+   expired signed URL is never kept: it is refreshed from Discord on demand and a
+   dead one is dropped from the catalog. Only channels the admin mapped can be
+   synced — any other channel id is rejected with 403.
+6. **Access** — Discord media only appears inside `/premium/library` and
    `/premium/channel/:id`, both behind the existing `PremiumOnly` role gate. The
    resolver only serves attachments that are already in the catalog, so it cannot
    be used to reach other channels, and the public feed response carries no bot
@@ -120,8 +133,9 @@ anything Discord reports as `image/*` or `video/*`; the filename is the fallback
 when `content_type` is missing). Images open in the viewer at their original
 aspect ratio, videos open in the existing X-Sutra player.
 
-The admin console also shows last successful sync, per-channel counts and an
-error log.
+The admin console (Admin Panel → Discord) shows connection status, the mapping,
+the auto-sync switch and interval, **Sync now** / **Re-scan history**, the last
+successful sync time, synced/failed counts per channel and an error log.
 
 ## Tests
 

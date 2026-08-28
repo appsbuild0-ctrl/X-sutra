@@ -350,14 +350,17 @@ export async function scanPremiumPages(urls: string): Promise<{ ok: boolean; err
 
 export function premiumMediaToItem(entry: PremiumMedia): MediaItem {
   const isVideo = entry.type === 'video'
+  // Discord videos have no poster image, so `#t=0.1` makes the browser paint the
+  // real first frame as the preview instead of an empty black tile.
+  const videoPreview = entry.source === 'discord' ? `${entry.url}#t=0.1` : entry.url
   return {
     id: entry.id,
     title: entry.title || (isVideo ? 'Premium video' : 'Premium image'),
     description: entry.title || '',
     creator: 'premium',
-    thumbnail: entry.thumbnail || (isVideo ? '' : entry.url),
-    thumbnailUrls: [entry.thumbnail || (!isVideo ? entry.url : '')].filter(Boolean),
-    previewUrl: isVideo ? entry.url : entry.url,
+    thumbnail: entry.thumbnail || (isVideo ? (entry.source === 'discord' ? videoPreview : '') : entry.url),
+    thumbnailUrls: [entry.thumbnail || (!isVideo ? entry.url : videoPreview)].filter(Boolean),
+    previewUrl: isVideo ? videoPreview : entry.url,
     videoUrl: isVideo ? entry.url : undefined,
     videoUrlSd: isVideo ? entry.url : undefined,
     sourceUrl: entry.url,

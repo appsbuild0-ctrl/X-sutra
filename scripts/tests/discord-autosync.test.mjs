@@ -137,12 +137,14 @@ describe('Discord → Premium auto-sync', () => {
           { discordChannelId: '900', channelId: premiumId, name: 'premium' },
           { discordChannelId: '901', channelId: videosId, name: 'videos', kinds: ['video'] },
           { discordChannelId: '902', channelId: imagesId, name: 'images', kinds: ['image'] },
-          { discordChannelId: '903', channelId: 'does-not-exist' }
+          { discordChannelId: '903', channelId: 'does-not-exist' },
+          // mapped but not a real channel — exercises the failure path
+          { discordChannelId: '999', channelId: premiumId, name: 'ghost' }
         ]
       }
     })
     assert.equal(saved.status, 200)
-    assert.equal(saved.body.config.mappings.length, 4)
+    assert.equal(saved.body.config.mappings.length, 5)
     assert.equal(saved.body.config.mappings[0].channelId, premiumId)
     // A mapping that points at a channel that is not in the catalog is neutralised.
     assert.equal(saved.body.config.mappings[3].channelId, '')
@@ -233,7 +235,7 @@ describe('Discord → Premium auto-sync', () => {
     // Age the last attempts past the interval, then post something new.
     await ageCursors(interval + 1000)
     state.post('900', { content: 'auto', attachments: [{ filename: 'auto.jpg', contentType: 'image/jpeg', width: 500, height: 500 }] })
-    assert.deepEqual(dueChannels((await catalog()).discord).sort(), ['900', '901', '902', '903'])
+    assert.deepEqual(dueChannels((await catalog()).discord).sort(), ['900', '901', '902', '903', '999'])
 
     const first = JSON.parse((await feedHandler({ httpMethod: 'GET', headers: {}, queryStringParameters: { limit: 5 } })).body)
     assert.equal(first.synced.imported, 1)
@@ -286,7 +288,7 @@ describe('Discord → Premium auto-sync', () => {
 
   it('exposes sections with their mapping and last sync, but no bot or cursor details', async () => {
     const body = JSON.parse((await feedHandler({ httpMethod: 'GET', headers: {}, queryStringParameters: { limit: 1 } })).body)
-    assert.equal(body.sections.length, 4)
+    assert.equal(body.sections.length, 5)
     const premiumSection = body.sections.find((section) => section.discordChannelId === '900')
     assert.equal(premiumSection.name, 'Premium')
     assert.ok(premiumSection.lastSyncAt)
@@ -310,8 +312,8 @@ describe('Discord → Premium auto-sync', () => {
   })
 
   it('records sync failures in the admin error log', async () => {
+    // 999 is mapped but Discord answers 404 for a channel that does not exist.
     const status = await post(syncHandler, { password: ADMIN, action: 'sync', channelIds: ['999'] })
-    // Channel 999 is not in the guild, so Discord answers 404 for its history.
     assert.equal(status.status, 200)
     assert.equal(status.body.status.errors.length > 0, true)
     assert.equal(status.body.status.autoSync, true)

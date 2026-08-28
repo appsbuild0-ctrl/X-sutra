@@ -7,7 +7,6 @@ import {
   listDiscordChannels,
   saveDiscordConfig,
   syncDiscordNow,
-  uploadToDiscord,
   DiscordAdminError,
   type DiscordChannelInfo,
   type DiscordHealthStatus,
@@ -19,15 +18,6 @@ import { ADMIN_KEY, fetchPremiumCatalog, premiumAdmin, type PremiumCatalog } fro
 import { UNCROPPED_IMAGE_STYLE } from '../lib/imageFit'
 
 type Stage = 'loading' | 'ready' | 'connected'
-type UploadState = 'waiting' | 'uploading' | 'done' | 'failed'
-
-interface UploadRow {
-  file: File
-  preview: string
-  status: UploadState
-  url?: string
-  error?: string
-}
 
 const INTERVAL_OPTIONS = [30000, 60000, 300000, 600000, 1800000]
 
@@ -171,7 +161,6 @@ export function DiscordAdminCard({ onChanged }: { onChanged?: () => void }): Rea
       {status?.overall === 'ok' && (
         <>
           <DiscordAutoSyncCard channels={channels} reloadChannels={() => void loadChannels().catch(() => undefined)} onChanged={changed} />
-          <DiscordUploadCard channels={channels} onChanged={changed} />
         </>
       )}
 
@@ -184,11 +173,12 @@ export function DiscordAdminCard({ onChanged }: { onChanged?: () => void }): Rea
           <ul className="form-help" style={{ margin: '8px 0', paddingLeft: 20 }}>
             <li><code>DISCORD_BOT_TOKEN</code> — Your bot token from Discord Developer Portal</li>
             <li><code>DISCORD_GUILD_ID</code> — Your Discord server ID</li>
-            <li><code>DISCORD_CHANNEL_ID</code> — Fallback channel for uploads</li>
+            <li><code>DISCORD_CHANNEL_ID</code> — Optional, unused by the reader</li>
           </ul>
           <p className="form-help">
-            Required bot permissions: View Channel, Read Message History (plus Attach Files
-            and Send Messages for uploads). The token stays server-side only.
+            The bot only <strong>reads</strong>: it needs View Channel and Read Message History
+            on the channels you map. You keep posting from your own Discord account — nothing
+            is ever uploaded through the bot, and the token stays server-side only.
           </p>
         </div>
       )}
@@ -305,6 +295,12 @@ function DiscordAutoSyncCard({ channels, reloadChannels, onChanged }: { channels
           <StatusBadge ok={mappedCount > 0}>{mappedCount ? `${mappedCount} mapped` : 'Not mapped'}</StatusBadge>
         </div>
 
+        <p className="form-help">
+          <strong>You post, the bot only reads.</strong> Apne normal Discord account se image/video
+          mapped channel me daalo ya forward karo — bot background me naye messages padhta hai aur
+          media Premium section me apne aap aa jaata hai. X-Sutra me dobara upload karne ki zaroorat nahi.
+        </p>
+
         <label className="setting-row">
           <span><strong>Auto-sync</strong><small>Har {intervalLabel(intervalMs)} me naya media apne aap</small></span>
           <input className="switch" type="checkbox" checked={autoSync} onChange={(event) => setAutoSync(event.target.checked)} />
@@ -398,8 +394,14 @@ function DiscordAutoSyncCard({ channels, reloadChannels, onChanged }: { channels
         </div>
         {status && (
           <div className="setting-row">
-            <span><strong>Imported so far</strong><small>{status.totals.images} images · {status.totals.videos} videos</small></span>
+            <span><strong>Synced media</strong><small>{status.totals.images} images · {status.totals.videos} videos</small></span>
             <strong>{status.totals.media}</strong>
+          </div>
+        )}
+        {status?.lastResult && (
+          <div className="setting-row">
+            <span><strong>Last sync</strong><small>{status.lastResult.scanned} messages read · {status.lastResult.skipped} already stored{status.lastResult.partial ? ' · partial, will continue' : ''}</small></span>
+            <strong>{status.lastResult.failed ? `${status.lastResult.failed} failed` : `${status.lastResult.imported} new`}</strong>
           </div>
         )}
         {status?.mappings.map((mapping) => (
@@ -459,7 +461,7 @@ function DiscordAutoSyncCard({ channels, reloadChannels, onChanged }: { channels
               <figure className="discord-imported__item" key={item.id}>
                 {item.kind === 'image'
                   ? <img src={item.url} alt={item.title} loading="lazy" style={UNCROPPED_IMAGE_STYLE} />
-                  : <video src={item.url} controls preload="metadata" playsInline style={UNCROPPED_IMAGE_STYLE} />}
+                  : <video src={item.url} controls preload="none" playsInline style={UNCROPPED_IMAGE_STYLE} />}
                 <figcaption>
                   <strong>{item.title || item.filename || item.id}</strong>
                   <small>{item.targetChannelName || item.channelName || item.channelId} · {item.width && item.height ? `${item.width}×${item.height} · ` : ''}{formatBytes(item.bytes)}</small>
@@ -470,78 +472,5 @@ function DiscordAutoSyncCard({ channels, reloadChannels, onChanged }: { channels
         </div>
       )}
     </>
-  )
-}
-
-/** Uploads go to the channel selected here — not just the server default. */
-function DiscordUploadCard({ channels, onChanged }: { channels: DiscordChannelInfo[]; onChanged: () => void }): React.JSX.Element {
-  const { notify } = useApp()
-  const [rows, setRows] = useState<UploadRow[]>([])
-  const [targetId, setTargetId] = useState('')
-  const [caption, setCaption] = useState('')
-  const [running, setRunning] = useState(false)
-
-  const target = channels.find((channel) => channel.id === targetId)
-
-  const pick = (files: FileList | null) => {
-    const next = [...(files ?? [])].filter((file) => /^(image|video|audio)\//.test(file.type))
-    setRows(next.map((file) => ({ file, preview: URL.createObjectURL(file), status: 'waiting' })))
-  }
-
-  const upload = async () => {
-    if (!targetId) { notify('Upload ke liye channel select karo', 'error'); return }
-    setRunning(true)
-    let done = 0
-    for (const [index, row] of rows.entries()) {
-      if (row.status === 'done') continue
-      setRows((current) => current.map((entry, position) => position === index ? { ...entry, status: 'uploading' } : entry))
-      try {
-        const result = await uploadToDiscord(row.file, ADMIN_KEY, caption, targetId)
-        setRows((current) => current.map((entry, position) => position === index ? { ...entry, status: 'done', url: result.attachmentUrl } : entry))
-        done += 1
-      } catch (caught) {
-        setRows((current) => current.map((entry, position) => position === index ? { ...entry, status: 'failed', error: caught instanceof DiscordAdminError ? caught.message : 'Upload failed' } : entry))
-      }
-    }
-    setRunning(false)
-    onChanged()
-    notify(`Discord upload · ${done}/${rows.length} → #${target?.name ?? targetId}`, 'success')
-  }
-
-  return (
-    <div className="settings-card">
-      <div className="setting-row"><span><strong>Upload to Discord</strong><small>Selected channel me files bhejo</small></span></div>
-      <div className="setting-row">
-        <span><strong>Channel</strong><small>{target ? `#${target.name}` : 'Discord channel chuno'}</small></span>
-        <select value={targetId} onChange={(event) => setTargetId(event.target.value)}>
-          <option value="">Select channel…</option>
-          {channels.map((channel) => <option key={channel.id} value={channel.id}>#{channel.name}</option>)}
-        </select>
-      </div>
-      <div className="premium-post-form">
-        <input value={caption} onChange={(event) => setCaption(event.target.value)} placeholder="Optional caption" />
-        <label className="primary-button primary-button--wide">
-          Select multiple files
-          <input className="sr-only" type="file" accept="image/*,video/*,audio/*" multiple onChange={(event) => pick(event.target.files)} />
-        </label>
-      </div>
-      {rows.length > 0 && (
-        <div className="premium-scan-grid">
-          {rows.map((row) => (
-            <div key={row.file.name + row.file.size} className="premium-scan-item">
-              {row.file.type.startsWith('image/')
-                ? <img className="premium-scan-item__thumb" src={row.preview} alt="" />
-                : <video className="premium-scan-item__thumb" src={row.preview} muted playsInline preload="metadata" />}
-              <small>{row.file.name}</small>
-              <small>{target ? `→ #${target.name}` : '→ no channel'}</small>
-              <small>{row.status}{row.error ? ` · ${row.error}` : ''}</small>
-            </div>
-          ))}
-        </div>
-      )}
-      <button className="primary-button primary-button--wide" type="button" disabled={running || !rows.length || !targetId} onClick={() => void upload()}>
-        {running ? 'Uploading…' : `Upload all (${rows.length})`}
-      </button>
-    </div>
   )
 }

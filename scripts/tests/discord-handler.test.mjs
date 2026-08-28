@@ -121,9 +121,9 @@ describe('/api/discord/sync', () => {
 
     const saved = parse(await post({
       password: ADMIN, action: 'config',
-      config: { autoSync: false, intervalMs: 45000, perChannel: 30, mode: 'store', mappings: [{ discordChannelId: '901', channelId, name: 'desi-media' }, { discordChannelId: '901', channelId: 'nope' }] }
+      config: { autoSync: false, intervalMs: 45000, perChannel: 30, mode: 'store', mappings: [{ discordChannelId: '901', channelId, name: 'desi-media' }, { discordChannelId: '901', channelId: 'nope' }, { discordChannelId: '999', channelId, name: 'deleted-channel' }] }
     }))
-    assert.equal(saved.config.mappings.length, 1, 'duplicate Discord channels collapse')
+    assert.equal(saved.config.mappings.length, 2, 'duplicate Discord channels collapse')
     assert.equal(saved.config.mappings[0].channelId, channelId)
     assert.equal(saved.config.autoSync, false)
     assert.equal(saved.config.mode, 'store')
@@ -134,12 +134,12 @@ describe('/api/discord/sync', () => {
 
   it('imports the real messages into the mapped section and stores the bytes (store mode)', async () => {
     const channelId = globalThis.__channelId
-    const body = parse(await post({ action: 'sync', password: ADMIN }))
+    const body = parse(await post({ action: 'sync', password: ADMIN, channelIds: ['901'] }))
     assert.equal(body.scanned, 3)
     assert.equal(body.imported, 3)
     assert.equal(body.failed, 0)
     assert.equal(body.mode, 'store')
-    assert.deepEqual(body.channels, [{ id: '901', name: 'desi-media', targetChannelId: channelId, messages: 3, imported: 3, skipped: 0, failed: 0, error: '' }])
+    assert.deepEqual(body.channels, [{ id: '901', name: 'desi-media', targetChannelId: channelId, messages: 3, imported: 3, skipped: 0, failed: 0, recovered: 0, error: '' }])
 
     const files = (await readdir(join(workDir, 'media'))).sort()
     assert.deepEqual(files, ['dc-m1-a1', 'dc-m1-a1.json', 'dc-m1-a2', 'dc-m1-a2.json', 'dc-m2-a3', 'dc-m2-a3.json'])
@@ -171,7 +171,7 @@ describe('/api/discord/sync', () => {
   })
 
   it('does not re-import what is already stored', async () => {
-    const body = parse(await post({ action: 'sync', password: ADMIN, full: true }))
+    const body = parse(await post({ action: 'sync', password: ADMIN, channelIds: ['901'], full: true }))
     assert.equal(body.imported, 0)
     assert.equal(body.skipped, 3)
   })
@@ -183,6 +183,12 @@ describe('/api/discord/sync', () => {
     assert.equal(body.status.totals.media, 3)
     assert.equal(body.status.totals.images, 2)
     assert.equal(body.status.totals.videos, 1)
+  })
+
+  it('refuses to sync a channel the admin never mapped', async () => {
+    const result = await post({ action: 'sync', password: ADMIN, channelIds: ['123456'] })
+    assert.equal(result.statusCode, 403)
+    assert.match(parse(result).error, /not configured for sync/)
   })
 
   it('logs an error when a mapped channel cannot be read', async () => {

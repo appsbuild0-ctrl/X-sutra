@@ -90,7 +90,8 @@ export function discordFeedItemToMedia(item: DiscordFeedItem): MediaItem {
     thumbnailUrls: [item.thumbnail || (!isVideo ? item.url : '')].filter(Boolean),
     // The resolver URL keeps the real extension (&f=clip.mp4), so the player and
     // the download path both recognise it as video and stream it from Discord.
-    previewUrl: isVideo ? item.url : item.url,
+    // `#t=0.1` makes the browser paint a real first frame as the preview.
+    previewUrl: isVideo ? `${item.url}#t=0.1` : item.url,
     videoUrl: isVideo ? item.url : undefined,
     videoUrlSd: isVideo ? item.url : undefined,
     sourceUrl: item.url,
@@ -113,7 +114,8 @@ export function discordFeedItemToPremiumMedia(item: DiscordFeedItem): PremiumMed
     id: item.id,
     type: item.type,
     url: item.url,
-    thumbnail: item.thumbnail || (isVideo ? '' : item.url),
+    // Videos have no poster from Discord, so the player paints the first frame.
+    thumbnail: item.thumbnail || (isVideo ? `${item.url}#t=0.1` : item.url),
     title: item.title || (isVideo ? 'Discord video' : 'Discord image'),
     tags: [],
     channelId: item.channelId,
@@ -167,6 +169,7 @@ export function useDiscordFeed(options: { channelId?: string; pageSize?: number;
   const [error, setError] = useState('')
   const [hasMore, setHasMore] = useState(false)
   const [autoSync, setAutoSync] = useState(true)
+  const [intervalMs, setIntervalMs] = useState(DEFAULT_POLL_MS)
   const [configured, setConfigured] = useState(true)
   const [syncError, setSyncError] = useState('')
   const oldest = useRef('')
@@ -175,6 +178,7 @@ export function useDiscordFeed(options: { channelId?: string; pageSize?: number;
   const apply = useCallback((feed: DiscordFeed, mode: 'first' | 'more' | 'poll') => {
     setSections(feed.sections)
     setAutoSync(feed.autoSync)
+    setIntervalMs(feed.intervalMs)
     setConfigured(feed.configured)
     setSyncError(feed.syncError)
     if (mode === 'more') {
@@ -187,7 +191,12 @@ export function useDiscordFeed(options: { channelId?: string; pageSize?: number;
     setHasMore(feed.hasMore)
   }, [])
 
+  const inFlight = useRef(false)
+
   const load = useCallback(async (mode: 'first' | 'more' | 'poll') => {
+    // One request at a time — a poll must never stack on top of another.
+    if (inFlight.current) return
+    inFlight.current = true
     if (mode === 'first') setLoading(true)
     else if (mode === 'more') setLoadingMore(true)
     else setRefreshing(true)
@@ -203,6 +212,7 @@ export function useDiscordFeed(options: { channelId?: string; pageSize?: number;
       // A failed background poll must never blank a screen that already has media.
       if (mode === 'first') setError(caught instanceof Error ? caught.message : 'Discord feed unavailable.')
     } finally {
+      inFlight.current = false
       setLoading(false)
       setLoadingMore(false)
       setRefreshing(false)
@@ -216,18 +226,21 @@ export function useDiscordFeed(options: { channelId?: string; pageSize?: number;
   }, [enabled, load])
 
   // Background polling — the fallback behind the server's read-time auto-sync.
+  // The cadence comes from the server's auto-sync interval so the client never
+  // polls faster than the server would sync anyway.
   useEffect(() => {
     if (!enabled || !autoSync) return
+    const every = Math.max(MIN_POLL_MS, Math.min(intervalMs, 300000))
     let timer: ReturnType<typeof setTimeout> | undefined
     const tick = async () => {
       if (document.visibilityState === 'visible') await load('poll')
-      timer = setTimeout(() => { void tick() }, Math.max(MIN_POLL_MS, Math.min(items.length ? DEFAULT_POLL_MS : 10000, 60000)))
+      timer = setTimeout(() => { void tick() }, every)
     }
-    timer = setTimeout(() => { void tick() }, Math.max(MIN_POLL_MS, 10000))
+    timer = setTimeout(() => { void tick() }, every)
     const onVisible = () => { if (document.visibilityState === 'visible') void load('poll') }
     document.addEventListener('visibilitychange', onVisible)
     return () => { if (timer) clearTimeout(timer); document.removeEventListener('visibilitychange', onVisible) }
-  }, [autoSync, enabled, items.length, load])
+  }, [autoSync, enabled, intervalMs, load])
 
   return {
     items,
