@@ -18,6 +18,9 @@ const redirects = `# Tier 1: bundled function proxy with the app User-Agent.
 /api/premium-scan  /.netlify/functions/premium-scan  200
 /api/premium-file  /.netlify/functions/premium-file  200
 /api/hotpic  /.netlify/functions/hotpic  200
+# Discord media feed: reading it also auto-imports new images/videos posted
+# in the guild's channels, so "post on Discord → shows in Premium" works.
+/api/discord/feed  /.netlify/functions/discord-feed  200
 # Discord web login (real OAuth2 account login for Premium). The client
 # secret is server-side only — it is never exposed to the browser.
 /api/discord/login  /.netlify/functions/discord-login  200

@@ -20,6 +20,7 @@ const LOCAL_API_HANDLERS: Record<string, string> = {
   '/api/premium-scan': './netlify/functions/premium-scan.mjs',
   '/api/premium-file': './netlify/functions/premium-file.mjs',
   '/api/hotpic': './netlify/functions/hotpic.mjs',
+  '/api/discord/feed': './netlify/functions/discord-feed.mjs',
   '/api/discord/login': './netlify/functions/discord-login.mjs',
   '/api/discord/callback': './netlify/functions/discord-callback.mjs',
   '/api/discord/refresh': './netlify/functions/discord-refresh.mjs'

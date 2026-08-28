@@ -13,7 +13,8 @@
 - Local-only likes, saved clips, follows, collections, download history, autoplay/mute preferences, and blocked-tag filtering
 - Optional device-local login page (`#/login`) with username/password fields, sign-in / create-account modes, a show/hide password eye toggle, and a built-in admin account (`admin` / `admin123`) that opens the admin panel
 - Premium section (Home + Library) with a Discord-style channel chat, admin-managed channels/albums and stored media
-- **Real Discord web login for Premium** — the standard Discord OAuth2 account login: one tap, sign in on discord.com, done. No bot, no channel mapping
+- **Discord media import** — post an image/video in any channel of the x-sutra Discord server and it appears in the Premium Library by itself (auto-sync, no upload, no mapping)
+- **Real Discord web login for Premium** — the standard Discord OAuth2 account login: one tap, sign in on discord.com, done
 - **Login stays logged in**: the session (profile + tokens) is stored on the device; the one-hour access token is renewed silently with the refresh token, so the user never sees the login screen again
 - **Admin auto-connect**: when the local admin account is signed in, the Discord login is started automatically on first run (cancelled logins are not retried for 24 h)
 - Uploaded images render at their own aspect ratio and resolution — no CSS cropping
@@ -80,10 +81,34 @@ main
 
 Netlify builds the app and deploys the public API function together. A plain static `index.html` opened via `file://` cannot call the same-origin function, so use the Netlify deployment for live data/playback.
 
+## Discord media import (post on Discord → shows in Premium)
+
+A small bot reads the **x-sutra** Discord server (default guild
+`1542540297005834242`) and pulls every image/video posted into any channel —
+**no mapping, no upload, no per-channel setup**. The Premium Library polls
+`/api/discord/feed`; on every read the endpoint auto-syncs channels that are
+due (default every 60 s) using stored cursors, so a file posted a moment ago
+is already in the app. Media streams straight from the Discord CDN; set
+`DISCORD_STORE_ATTACHMENTS=true` only if you want the bytes mirrored.
+
+Setup (one time):
+
+1. [Discord Developer Portal](https://discord.com/developers/applications) →
+   your application → **Bot** → **Reset Token** → copy the token.
+2. Same **Bot** tab → **Invite Your Bot** → tick *View Channel* and *Read
+   Message History* → pick the x-sutra server → Authorize.
+3. Set `DISCORD_BOT_TOKEN` on the hosting provider and redeploy.
+
+The bot only reads: it needs no privileged intents (attachment metadata is
+enough for images/videos; the message caption is used as the title when the
+*Message Content* intent is on, the filename otherwise). One row per
+attachment, text-only and unsupported files ignored, dedupe by
+`(channel, message, attachment)`, transient failures retried on the next sync.
+
 ## Discord web login (Premium)
 
-Premium is entered with a **real Discord account** — the standard Discord OAuth2
-web login, not a bot. Users tap **Login with Discord**, sign in on discord.com,
+Premium is also entered with a **real Discord account** — the standard Discord
+OAuth2 web login. Users tap **Login with Discord**, sign in on discord.com,
 and land back in the app already connected.
 
 ```
@@ -124,13 +149,15 @@ npm test
 ```
 
 Node's built-in test runner over `scripts/tests/*.test.mjs`. It covers the
-Discord web-login handlers end-to-end against a stubbed Discord API — the
-authorize redirect (client id, root-origin redirect_uri, scopes, origin
-normalisation, the unconfigured 501 page), the code→session exchange (secret
-sent server-side only, public profile in, email/secret never out), the silent
-refresh grant, and Discord error surfacing — plus the upload form's assignment
-of many selected files to one channel, the premium catalog's channel/media
-persistence, and the uncropped image display rules.
+Discord import engine (channel discovery, attachment classification, catalog
+merge, cursor-based incremental reads, dedupe, the time budget), the Discord
+web-login handlers end-to-end against a stubbed Discord API — the authorize
+redirect (client id, root-origin redirect_uri, scopes, origin normalisation,
+the unconfigured 501 page), the code→session exchange (secret sent
+server-side only, public profile in, email/secret never out), the silent
+refresh grant, and Discord error surfacing — plus the upload form's
+assignment of many selected files to one channel, the premium catalog's
+channel/media persistence, and the uncropped image display rules.
 
 ## Production build
 

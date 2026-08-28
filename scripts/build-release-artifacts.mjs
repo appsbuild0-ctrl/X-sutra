@@ -56,6 +56,8 @@ await writeFile(
     '# Private Telegram source; telegram-auth is owner-only (x-admin-setup-secret required).',
     '/api/telegram/channels  /.netlify/functions/telegram-channels  200',
     '/api/internal/telegram-auth  /.netlify/functions/telegram-admin  200',
+    '# Discord media feed (auto-imports new images/videos from the guild).',
+    '/api/discord/feed  /.netlify/functions/discord-feed  200',
     '# Discord web login (real OAuth2 account login for Premium).',
     '/api/discord/login  /.netlify/functions/discord-login  200',
     '/api/discord/callback  /.netlify/functions/discord-callback  200',

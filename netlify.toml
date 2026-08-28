@@ -54,6 +54,14 @@
   status = 200
   force = true
 
+# Discord media feed: reading it also pulls new images/videos posted in the
+# guild's channels (auto-sync), so "post on Discord → shows in Premium" works.
+[[redirects]]
+  from = "/api/discord/feed"
+  to = "/.netlify/functions/discord-feed"
+  status = 200
+  force = true
+
 # Discord web login (real OAuth2 account login for Premium). The client
 # secret stays in these functions — the browser only ever sees the login
 # redirect, the code exchange and the silent token refresh.

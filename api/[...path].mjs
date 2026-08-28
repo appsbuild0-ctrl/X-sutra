@@ -6,6 +6,7 @@ import { handler as premium } from '../netlify/functions/premium.mjs'
 import { handler as premiumScan } from '../netlify/functions/premium-scan.mjs'
 import { handler as premiumFile } from '../netlify/functions/premium-file.mjs'
 import { handler as hotpic } from '../netlify/functions/hotpic.mjs'
+import { handler as discordFeed } from '../netlify/functions/discord-feed.mjs'
 import { handler as discordLogin } from '../netlify/functions/discord-login.mjs'
 import { handler as discordCallback } from '../netlify/functions/discord-callback.mjs'
 import { handler as discordRefresh } from '../netlify/functions/discord-refresh.mjs'
@@ -17,6 +18,7 @@ const ROUTES = new Map([
   ['/api/premium-scan', premiumScan],
   ['/api/premium-file', premiumFile],
   ['/api/hotpic', hotpic],
+  ['/api/discord/feed', discordFeed],
   ['/api/discord/login', discordLogin],
   ['/api/discord/callback', discordCallback],
   ['/api/discord/refresh', discordRefresh],
