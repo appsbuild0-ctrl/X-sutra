@@ -21,6 +21,7 @@ import { PremiumNav } from './components/PremiumNav'
 import { PremiumAlbumScreen } from './screens/PremiumAlbumScreen'
 import { PremiumAnnouncementsScreen } from './screens/PremiumAnnouncementsScreen'
 import { PremiumChannelScreen } from './screens/PremiumChannelScreen'
+import { PremiumLibraryScreen } from './screens/PremiumLibraryScreen'
 import { PremiumDownloadsScreen } from './screens/PremiumDownloadsScreen'
 import { PremiumHotpicAlbumScreen } from './screens/PremiumHotpicAlbumScreen'
 import { PremiumModelScreen } from './screens/PremiumModelScreen'
@@ -73,6 +74,7 @@ function XsApp(): React.JSX.Element {
           <Route path="/premium/downloads" element={<PremiumOnly><PremiumDownloadsScreen /></PremiumOnly>} />
           <Route path="/premium/announcements" element={<PremiumOnly><PremiumAnnouncementsScreen /></PremiumOnly>} />
           <Route path="/premium/videos" element={<PremiumOnly><PremiumVideosScreen /></PremiumOnly>} />
+          <Route path="/premium/library" element={<PremiumOnly><PremiumLibraryScreen /></PremiumOnly>} />
           <Route path="/premium/channel/:id" element={<PremiumOnly><PremiumChannelScreen /></PremiumOnly>} />
           <Route path="/premium/album/:id" element={<PremiumOnly><PremiumAlbumScreen /></PremiumOnly>} />
           <Route path="/admin" element={<AdminPanelScreen />} />

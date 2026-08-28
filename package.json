@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "RedGrab — Download GIFs, images and videos from RedGifs. Browse, search, save and play clips in HD.",
+  "description": "RedGrab \u2014 Download GIFs, images and videos from RedGifs. Browse, search, save and play clips in HD.",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
@@ -11,6 +11,7 @@
     "build:artifacts": "npm run build:drop && node scripts/build-release-artifacts.mjs",
     "preview": "vite preview --host 0.0.0.0",
     "check": "tsc --noEmit",
+    "test": "node --test scripts/tests/*.test.mjs",
     "cap:sync": "npm run build && cap sync android",
     "android:open": "cap open android"
   },

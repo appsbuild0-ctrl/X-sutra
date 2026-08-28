@@ -23,6 +23,9 @@ export interface PremiumChannel {
   status: 'on' | 'off'
   order: number
   createdAt: string
+  /** Where the channel came from: 'discord' channels are created by a sync. */
+  source?: 'upload' | 'discord' | 'telegram'
+  sourceId?: string
 }
 
 export interface PremiumAlbum {
@@ -52,6 +55,15 @@ export interface PremiumMedia {
   size?: number
   hash?: string
   role?: 'content' | 'hero'
+  /** Real pixel size — what lets the app render an image at its own ratio. */
+  width?: number
+  height?: number
+  source?: string
+  sourceChannelId?: string
+  sourceChannelName?: string
+  sourceMessageId?: string
+  sourceAttachmentId?: string
+  authorName?: string
 }
 
 export interface PremiumHero {
@@ -264,6 +276,9 @@ function applyLocalAdmin(action: string, payload: Record<string, unknown>): Prem
         filename: String(raw.filename || ''),
         size: Number(raw.size) || 0,
         hash: String(raw.hash || ''),
+        width: Number(raw.width) || 0,
+        height: Number(raw.height) || 0,
+        source: String(raw.source || 'upload'),
         role: (raw.role === 'hero' ? 'hero' : 'content') as 'content' | 'hero'
       }
       if (raw.role === 'hero') {
@@ -335,22 +350,25 @@ export async function scanPremiumPages(urls: string): Promise<{ ok: boolean; err
 
 export function premiumMediaToItem(entry: PremiumMedia): MediaItem {
   const isVideo = entry.type === 'video'
+  // Discord videos have no poster image, so `#t=0.1` makes the browser paint the
+  // real first frame as the preview instead of an empty black tile.
+  const videoPreview = entry.source === 'discord' ? `${entry.url}#t=0.1` : entry.url
   return {
     id: entry.id,
     title: entry.title || (isVideo ? 'Premium video' : 'Premium image'),
     description: entry.title || '',
     creator: 'premium',
-    thumbnail: entry.thumbnail || (isVideo ? '' : entry.url),
-    thumbnailUrls: [entry.thumbnail || (!isVideo ? entry.url : '')].filter(Boolean),
-    previewUrl: isVideo ? entry.url : entry.url,
+    thumbnail: entry.thumbnail || (isVideo ? (entry.source === 'discord' ? videoPreview : '') : entry.url),
+    thumbnailUrls: [entry.thumbnail || (!isVideo ? entry.url : videoPreview)].filter(Boolean),
+    previewUrl: isVideo ? videoPreview : entry.url,
     videoUrl: isVideo ? entry.url : undefined,
     videoUrlSd: isVideo ? entry.url : undefined,
     sourceUrl: entry.url,
     duration: 0,
     likes: 0,
     views: 0,
-    width: 0,
-    height: 0,
+    width: Number(entry.width) || 0,
+    height: Number(entry.height) || 0,
     createdAt: Date.parse(entry.createdAt) || 0,
     hasAudio: isVideo,
     tags: entry.tags || [],
@@ -408,6 +426,29 @@ function bytesToBase64(bytes: Uint8Array): string {
     binary += String.fromCharCode(...bytes.subarray(index, index + chunk))
   }
   return btoa(binary)
+}
+
+/**
+ * Read an uploaded file's real pixel size so it can be displayed uncropped.
+ * Videos report 0 when metadata is not decodable — the reel frame is used then.
+ */
+export function readMediaSize(file: File): Promise<{ width: number; height: number }> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file)
+    const done = (width: number, height: number) => { URL.revokeObjectURL(url); resolve({ width, height }) }
+    const isVideo = file.type.startsWith('video/')
+    const element = (isVideo ? document.createElement('video') : document.createElement('img')) as HTMLVideoElement | HTMLImageElement
+    element.onerror = () => done(0, 0)
+    if (isVideo) {
+      const video = element as HTMLVideoElement
+      video.preload = 'metadata'
+      video.onloadedmetadata = () => done(video.videoWidth || 0, video.videoHeight || 0)
+    } else {
+      const image = element as HTMLImageElement
+      image.onload = () => done(image.naturalWidth || 0, image.naturalHeight || 0)
+    }
+    element.src = url
+  })
 }
 
 export async function hashFile(file: File): Promise<string> {

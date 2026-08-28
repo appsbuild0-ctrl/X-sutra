@@ -9,6 +9,8 @@ import { PayQrModal, PlanCards, type PlanId } from '../components/PlanPay'
 import { useApp } from '../context/AppContext'
 import { useCommunity } from '../context/CommunityContext'
 import { uploadToCloudinary, isCloudinaryConfigured } from '../lib/cloudinary'
+import { UNCROPPED_IMAGE_STYLE } from '../lib/imageFit'
+import { DiscordLiveStrip } from '../components/DiscordLiveStrip'
 import { hasPremiumAccess, roleLabel } from '../lib/roles'
 import type { CommunityChannel, CommunityCategory, CommunityMessage, MessageAttachment } from '../lib/community'
 import { ChevronRightIcon, PlusIcon, SendIcon, PinIcon, TrashIcon, EditIcon, SmileIcon, ReplyIcon, XIcon } from '../components/icons'
@@ -85,10 +87,11 @@ function ImageGrid({ attachments, authorName }: { attachments: MessageAttachment
   return (
     <div className="msg-attachments">
       {images.length > 0 && (
-        <div className={gridClass} style={{ display: 'grid', gap: 3, borderRadius: 12, overflow: 'hidden', maxWidth: 420, gridTemplateColumns: gridCols === 1 ? '1fr' : '1fr 1fr', gridTemplateRows: gridCols >= 3 ? '1fr 1fr' : undefined }}>
+        <div className={gridClass} style={{ display: 'grid', gap: 3, borderRadius: 12, overflow: 'hidden', maxWidth: 420, alignItems: 'start', gridTemplateColumns: gridCols === 1 ? '1fr' : '1fr 1fr' }}>
           {images.slice(0, 4).map((img, i) => (
-            <button key={img.id} type="button" className="tg-image-btn" onClick={() => { setLbIdx(i); setZoomScale(1) }} style={{ position: 'relative', display: 'block', overflow: 'hidden', borderRadius: 12, background: '#1a1415', border: 'none', padding: 0, cursor: 'pointer', minHeight: 100 }}>
-              <img src={img.url} alt={img.name} loading="lazy" draggable={false} style={{ width: '100%', height: 'auto', display: 'block', minHeight: 100, maxHeight: 320, objectFit: 'cover' }} />
+            <button key={img.id} type="button" className="tg-image-btn" onClick={() => { setLbIdx(i); setZoomScale(1) }} style={{ position: 'relative', display: 'block', overflow: 'hidden', borderRadius: 12, background: '#1a1415', border: 'none', padding: 0, cursor: 'pointer' }}>
+              {/* original aspect ratio + resolution: fitted, never cropped */}
+              <img src={img.url} alt={img.name} loading="lazy" draggable={false} style={{ ...UNCROPPED_IMAGE_STYLE, maxHeight: 340 }} />
               {i === 3 && images.length > 4 && <span className="tg-image-overflow">+{images.length - 4}</span>}
             </button>
           ))}
@@ -259,6 +262,8 @@ function PremiumChannelList({ onOpen }: { onOpen: (ch: CommunityChannel) => void
       </header>
 
       <div className="comm-list__body">
+        {/* Media forwarded into a mapped Discord channel lands here by itself. */}
+        <DiscordLiveStrip />
         {cats.map((cat) => {
           const chs = state.channels.filter((c) => c.categoryId === cat.id).sort((a, b) => a.order - b.order).filter((c) => canView(c))
           if (chs.length === 0 && cat.collapsed) return null
