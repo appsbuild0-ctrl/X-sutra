@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect } from 'react'
 import { CommunityProvider } from './context/CommunityContext'
+import { DiscordLoginProvider, useDiscordLogin } from './context/DiscordLoginContext'
 import { HashRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { BottomNav } from './components/BottomNav'
 import { ContentShield } from './components/ContentShield'
@@ -19,14 +20,11 @@ import { LibraryScreen } from './screens/LibraryScreen'
 import { LoginScreen } from './screens/LoginScreen'
 import { PremiumNav } from './components/PremiumNav'
 import { PremiumAlbumScreen } from './screens/PremiumAlbumScreen'
-import { PremiumAnnouncementsScreen } from './screens/PremiumAnnouncementsScreen'
 import { PremiumChannelScreen } from './screens/PremiumChannelScreen'
 import { PremiumLibraryScreen } from './screens/PremiumLibraryScreen'
-import { PremiumDownloadsScreen } from './screens/PremiumDownloadsScreen'
 import { PremiumHotpicAlbumScreen } from './screens/PremiumHotpicAlbumScreen'
 import { PremiumModelScreen } from './screens/PremiumModelScreen'
 import { PremiumScreen } from './screens/PremiumScreen'
-import { PremiumSearchScreen } from './screens/PremiumSearchScreen'
 import { PremiumVideosScreen } from './screens/PremiumVideosScreen'
 import { NicheScreen } from './screens/NicheScreen'
 import { SearchScreen } from './screens/SearchScreen'
@@ -42,7 +40,9 @@ function ScrollToTop(): null {
 
 function PremiumOnly({ children }: { children: React.ReactNode }): React.JSX.Element {
   const { account } = useApp()
-  return hasPremiumAccess(account?.role) ? <>{children}</> : <Navigate to="/premium" replace />
+  const { user } = useDiscordLogin()
+  // A local premium role or a real Discord login session both unlock Premium.
+  return hasPremiumAccess(account?.role) || user ? <>{children}</> : <Navigate to="/premium" replace />
 }
 
 function XsApp(): React.JSX.Element {
@@ -68,11 +68,8 @@ function XsApp(): React.JSX.Element {
           <Route path="/you" element={<YouScreen />} />
           <Route path="/login" element={<LoginScreen />} />
           <Route path="/premium" element={<PremiumScreen />} />
-          <Route path="/premium/search" element={<PremiumOnly><PremiumSearchScreen /></PremiumOnly>} />
           <Route path="/premium/model/:username" element={<PremiumOnly><PremiumModelScreen /></PremiumOnly>} />
           <Route path="/premium/hotpic/:id" element={<PremiumOnly><PremiumHotpicAlbumScreen /></PremiumOnly>} />
-          <Route path="/premium/downloads" element={<PremiumOnly><PremiumDownloadsScreen /></PremiumOnly>} />
-          <Route path="/premium/announcements" element={<PremiumOnly><PremiumAnnouncementsScreen /></PremiumOnly>} />
           <Route path="/premium/videos" element={<PremiumOnly><PremiumVideosScreen /></PremiumOnly>} />
           <Route path="/premium/library" element={<PremiumOnly><PremiumLibraryScreen /></PremiumOnly>} />
           <Route path="/premium/channel/:id" element={<PremiumOnly><PremiumChannelScreen /></PremiumOnly>} />
@@ -92,5 +89,18 @@ function XsApp(): React.JSX.Element {
 }
 
 export default function App(): React.JSX.Element {
-  return    <AppProvider><CommunityProvider><HashRouter><XsApp /></HashRouter></CommunityProvider></AppProvider>
+  return (
+    <AppProvider>
+      <CommunityProvider>
+        <HashRouter>
+          {/* The Discord web-login provider must sit inside the router: it
+              navigates after the OAuth redirect and exposes useDiscordLogin
+              to the premium gate + every premium route. */}
+          <DiscordLoginProvider>
+            <XsApp />
+          </DiscordLoginProvider>
+        </HashRouter>
+      </CommunityProvider>
+    </AppProvider>
+  )
 }

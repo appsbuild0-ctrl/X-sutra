@@ -23,7 +23,8 @@ function botToken() {
 }
 
 function guildId() {
-  const id = env('DISCORD_GUILD_ID')
+  // Defaults to the X-Sutra server so the owner only has to set the bot token.
+  const id = env('DISCORD_GUILD_ID') || '1542540297005834242'
   if (!id) throw new DiscordError('Discord guild ID is not configured.', 'CONFIG_MISSING')
   return id
 }
@@ -656,18 +657,11 @@ async function defaultWriteCatalog(catalog) {
 }
 
 /**
- * Best effort: a missing DATABASE_URL must not lose an import — the catalog
- * entry is already stored, the database is the durable index.
+ * No durable database index in this setup — the premium catalog blob is the
+ * source of truth, so the rows simply stay in the catalog.
  */
 async function defaultSaveRows(channel, entries, importedCount) {
-  try {
-    const { upsertDiscordChannel, upsertDiscordMedia } = await import('./database.mjs')
-    await upsertDiscordChannel({ id: channel.id, guildId: env('DISCORD_GUILD_ID'), name: channel.name, topic: channel.topic, kind: channel.type, importedCount })
-    if (entries.length) await upsertDiscordMedia(entries)
-    return 'saved'
-  } catch {
-    return 'skipped'
-  }
+  return 'skipped'
 }
 
 /**

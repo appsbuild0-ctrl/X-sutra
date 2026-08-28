@@ -29,15 +29,12 @@ export const defaultSettings = {
 }
 
 /**
- * Discord as a media source.
+ * Discord as a media source (auto mode).
  *
  * `mode: 'link'` is the default on purpose: media is referenced by its Discord
- * attachment URL (resolved through /api/discord/media, which refreshes expired
- * signatures) instead of being copied into a second store. Set
- * DISCORD_STORE_ATTACHMENTS=true only if you want the bytes mirrored locally.
- *
- * `mappings` is what ties a Discord channel to an X-Sutra Premium section:
- * { discordChannelId, channelId } — the media lands in that catalog channel.
+ * attachment URL instead of being copied into a second store. `mappings` is
+ * usually empty — the feed then imports every channel in the guild into its
+ * own Premium section by itself.
  */
 export function defaultDiscordConfig() {
   return {
@@ -56,21 +53,6 @@ export function defaultDiscordConfig() {
 
 export const DEFAULT_DISCORD_DEPTH = 25
 export const MAX_DISCORD_ERRORS = 20
-
-/** Only what a signed-in Premium user needs — no cursors, no error log, no bot info. */
-export function publicDiscordConfig(config) {
-  return {
-    autoSync: config?.autoSync !== false,
-    intervalMs: Math.max(15000, Number(config?.intervalMs) || 60000),
-    mode: config?.mode === 'store' ? 'store' : 'link',
-    sections: (config?.mappings || []).map((mapping) => ({
-      channelId: String(mapping.channelId || ''),
-      discordChannelId: String(mapping.discordChannelId || ''),
-      name: String(mapping.name || ''),
-      kinds: Array.isArray(mapping.kinds) && mapping.kinds.length ? mapping.kinds : ['image', 'video']
-    }))
-  }
-}
 
 function normalizeDiscordConfig(raw) {
   const config = defaultDiscordConfig()
@@ -246,8 +228,7 @@ export function publicCatalog(catalog) {
     media,
     heroes: (catalog.heroes || []).filter((item) => item.published !== false),
     announcements: catalog.settings.announcements ? catalog.announcements : [],
-    adminHub: catalog.adminHub || defaultAdminHub(),
-    discord: publicDiscordConfig(catalog.discord)
+    adminHub: catalog.adminHub || defaultAdminHub()
   }
 }
 
