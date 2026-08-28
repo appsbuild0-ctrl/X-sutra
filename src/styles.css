@@ -1343,6 +1343,56 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .discord-imported__item strong { color: var(--text); font-size: 11px; line-height: 1.3; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .discord-imported__item small { color: var(--muted); font-family: 'DM Mono', monospace; font-size: 9px; }
 
+/* Live from Discord — Premium home strip */
+.discord-live { display: grid; gap: 8px; margin-bottom: 16px; }
+.discord-live--empty {
+  gap: 3px;
+  padding: 12px 14px;
+  border: 1px dashed rgba(255,196,107,.35);
+  border-radius: 14px;
+  background: rgba(255,196,107,.06);
+}
+.discord-live--empty strong { color: var(--text); font-size: 12px; }
+.discord-live--empty small { color: var(--muted); font-size: 10px; line-height: 1.5; }
+.discord-live__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.discord-live__head strong { display: block; font-size: 13px; }
+.discord-live__head small { color: var(--muted); font-size: 10px; }
+.discord-live__cta { color: var(--gold); font-size: 11px; font-weight: 700; }
+.discord-live__row { display: flex; gap: 7px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+.discord-live__row::-webkit-scrollbar { display: none; }
+.discord-live__tile {
+  position: relative;
+  flex: 0 0 auto;
+  width: 104px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #160f10;
+  cursor: pointer;
+}
+.discord-live__tile img, .discord-live__tile video { display: block; width: 104px; height: 140px; object-fit: contain; }
+.discord-live__play {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: rgba(0,0,0,.6);
+  color: #fff;
+  font-size: 9px;
+}
+
 /* Discord → Premium mapping rows (admin console) */
 .discord-mapping { display: grid; gap: 6px; align-items: start; grid-template-columns: 1fr; }
 .discord-mapping select { width: 100%; }

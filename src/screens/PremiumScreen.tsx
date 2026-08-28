@@ -10,6 +10,7 @@ import { useApp } from '../context/AppContext'
 import { useCommunity } from '../context/CommunityContext'
 import { uploadToCloudinary, isCloudinaryConfigured } from '../lib/cloudinary'
 import { UNCROPPED_IMAGE_STYLE } from '../lib/imageFit'
+import { DiscordLiveStrip } from '../components/DiscordLiveStrip'
 import { hasPremiumAccess, roleLabel } from '../lib/roles'
 import type { CommunityChannel, CommunityCategory, CommunityMessage, MessageAttachment } from '../lib/community'
 import { ChevronRightIcon, PlusIcon, SendIcon, PinIcon, TrashIcon, EditIcon, SmileIcon, ReplyIcon, XIcon } from '../components/icons'
@@ -261,6 +262,8 @@ function PremiumChannelList({ onOpen }: { onOpen: (ch: CommunityChannel) => void
       </header>
 
       <div className="comm-list__body">
+        {/* Media forwarded into a mapped Discord channel lands here by itself. */}
+        <DiscordLiveStrip />
         {cats.map((cat) => {
           const chs = state.channels.filter((c) => c.categoryId === cat.id).sort((a, b) => a.order - b.order).filter((c) => canView(c))
           if (chs.length === 0 && cat.collapsed) return null
