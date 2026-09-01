@@ -9,6 +9,7 @@ dist-drop/
 !.env.example
 *.keystore
 *.jks
+.signing-local/
 android/.gradle/
 android/build/
 android/app/build/
