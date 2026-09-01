@@ -11,7 +11,7 @@
 - Public watch-link / clip-ID resolver and device/browser download flow using the current media URL returned by the API
 - Browser response validation rejects HTML/error documents instead of renaming them as video files; CORS-only fallbacks are reported as opened, not completed
 - Local-only likes, saved clips, follows, collections, download history, autoplay/mute preferences, and blocked-tag filtering
-- Optional device-local login page (`#/login`) with username/password fields, sign-in / create-account modes, a show/hide password eye toggle, and a built-in admin account (`admin` / `admin123`) that opens the admin panel
+- Optional device-local login page (`#/login`) with username/password fields, sign-in / create-account modes, a show/hide password eye toggle, and a built-in admin account () that opens the admin panel
 - Premium section (Home + Library) with a Discord-style channel chat, admin-managed channels/albums and stored media
 - **Discord media import** — post an image/video in any channel of the x-sutra Discord server and it appears in the Premium Library by itself (auto-sync, no upload, no mapping)
 - **Real Discord web login for Premium** — the standard Discord OAuth2 account login: one tap, sign in on discord.com, done
