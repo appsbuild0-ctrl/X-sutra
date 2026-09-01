@@ -9,6 +9,10 @@ dist-drop/
 !.env.example
 *.keystore
 *.jks
+# Release signing keystore is intentionally committed (repo is private) so CI can sign builds.
+!android/app/xsutra-release.keystore
+!android/app/release-signing.properties
+.signing-local/
 android/.gradle/
 android/build/
 android/app/build/
