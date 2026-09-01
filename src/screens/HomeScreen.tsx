@@ -92,7 +92,6 @@ export function HomeScreen(): React.JSX.Element {
             <button className="notify-bell" type="button" onClick={openNotes} aria-label="Notifications">
               🔔{unread > 0 && <i>{unread}</i>}
             </button>
-            <button className="home-cta home-cta--premium" type="button" onClick={() => navigate('/premium')}>⭐ Collections</button>
             <button className="home-cta home-cta--login" type="button" onClick={() => navigate(account ? (account.role === 'admin' ? '/admin' : '/you') : '/login')}>{account ? roleLabel(account.role) : 'Login'}</button>
           </div>
         } />
