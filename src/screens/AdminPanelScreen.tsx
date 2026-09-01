@@ -11,7 +11,7 @@ import type { UserRole } from '../types'
 import { fetchPremiumCatalog, premiumAdmin, type PremiumCatalog } from '../lib/premium'
 import { fileToDataUrl, writePayQr, clearPayQr } from '../lib/payQr'
 
-type Tab = 'dash' | 'users' | 'videos' | 'settings'
+type Tab = 'dash' | 'users' | 'videos' | 'settings' | 'notifications'
 
 export function AdminPanelScreen(): React.JSX.Element {
   const navigate = useNavigate()
@@ -46,13 +46,14 @@ export function AdminPanelScreen(): React.JSX.Element {
 
   return (
     <section className="screen screen--admin">
-      <ScreenHeader title="Admin" eyebrow="X-sutra control" actions={<button className="round-button" type="button" onClick={() => navigate('/you')}>‹</button>} />
+      <ScreenHeader title="Admin" eyebrow="RedGrab Control" actions={<button className="round-button" type="button" onClick={() => navigate('/you')}>‹</button>} />
       {tab === 'dash' && <Dash hub={hub} catalog={catalog} />}
       {tab === 'users' && <Users />}
       {tab === 'videos' && <Videos catalog={catalog} setCatalog={setCatalog} hub={hub} persist={persist} />}
+      {tab === 'notifications' && <Notifications hub={hub} persist={persist} />}
       {tab === 'settings' && <Settings hub={hub} persist={persist} />}
       <nav className="admin-tabs" aria-label="Admin sections">
-        {([['dash', 'Dashboard'], ['users', 'Users'], ['videos', 'Videos'], ['settings', 'Settings']] as const).map(([id, label]) => (
+        {([['dash', 'Dashboard'], ['users', 'Users'], ['videos', 'Videos'], ['notifications', 'Notifications'], ['settings', 'Settings']] as const).map(([id, label]) => (
           <button key={id} className={tab === id ? 'is-active' : ''} type="button" onClick={() => setTab(id)}>{label}</button>
         ))}
       </nav>
@@ -280,5 +281,99 @@ function NotifyEditor({ hub, setDraft }: { hub: AdminHub; setDraft: (hub: AdminH
         </div>
       ))}
     </>
+  )
+}
+
+// Simple Notifications Tab
+function Notifications({ hub, persist }: { hub: AdminHub; persist: (hub: AdminHub) => Promise<void> }): React.JSX.Element {
+  const { notify } = useApp()
+  const [message, setMessage] = useState('')
+  const [linkText, setLinkText] = useState('')
+  const [linkUrl, setLinkUrl] = useState('')
+
+  const sendNotification = async () => {
+    if (!message.trim()) {
+      notify('Please enter a notification message', 'error')
+      return
+    }
+    const item: HubNotification = {
+      id: `nt-${Date.now()}`,
+      title: '📢 Announcement',
+      message: message.trim(),
+      link: linkUrl.trim(),
+      buttonText: linkText.trim() || 'View',
+      active: true,
+      createdAt: new Date().toISOString()
+    }
+    const next = { ...hub, notifications: [item, ...hub.notifications] }
+    await persist(next)
+    setMessage('')
+    setLinkText('')
+    setLinkUrl('')
+    notify('Notification sent to all users!', 'success')
+  }
+
+  return (
+    <div className="premium-post-form">
+      <h3>📢 Send Notification to All Users</h3>
+      <p className="form-help">This notification will appear for ALL users in the notification bell on homepage.</p>
+      
+      <textarea
+        value={message}
+        onChange={(e) => setMessage(e.target.value)}
+        placeholder="Type your notification message here..."
+        rows={4}
+        style={{ width: '100%', minHeight: '100px', resize: 'vertical' }}
+      />
+      
+      <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
+        <input
+          value={linkText}
+          onChange={(e) => setLinkText(e.target.value)}
+          placeholder="Button text (optional)"
+          style={{ flex: 1 }}
+        />
+        <input
+          value={linkUrl}
+          onChange={(e) => setLinkUrl(e.target.value)}
+          placeholder="Link URL (optional)"
+          style={{ flex: 2 }}
+        />
+      </div>
+
+      <button className="primary-button primary-button--wide" type="button" onClick={() => void sendNotification()}>
+        🔔 Send Notification
+      </button>
+
+      <h3 style={{ marginTop: '24px' }}>📋 Previous Notifications</h3>
+      {hub.notifications.length === 0 ? (
+        <p className="form-help">No notifications sent yet.</p>
+      ) : (
+        hub.notifications.map((item) => (
+          <div key={item.id} className="settings-card" style={{ marginBottom: '10px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <strong>{item.title}</strong>
+              <span style={{ fontSize: '11px', color: 'var(--muted)' }}>
+                {new Date(item.createdAt).toLocaleString()}
+              </span>
+            </div>
+            <p style={{ margin: '0 0 8px 0', fontSize: '14px' }}>{item.message}</p>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {item.link && (
+                <span className="tag" style={{ fontSize: '10px' }}>
+                  🔗 {item.link}
+                </span>
+              )}
+              <button className="text-button" type="button" onClick={async () => {
+                await persist({ ...hub, notifications: hub.notifications.filter(n => n.id !== item.id) })
+                notify('Notification deleted', 'success')
+              }}>
+                Delete
+              </button>
+            </div>
+          </div>
+        ))
+      )}
+    </div>
   )
 }
