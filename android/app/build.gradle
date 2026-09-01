@@ -1,3 +1,9 @@
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = file('release-signing.properties')
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
 apply plugin: 'com.android.application'
 
 android {
@@ -16,8 +22,21 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        release {
+            storeFile keystoreProperties['storeFile'] ? file(keystoreProperties['storeFile']).absoluteFile : null
+            storePassword keystoreProperties['storePassword']
+            keyAlias keystoreProperties['keyAlias']
+            keyPassword keystoreProperties['keyPassword']
+        }
+    }
     buildTypes {
         release {
+            if (signingConfigs.release.storeFile != null && signingConfigs.release.storeFile.exists()) {
+                signingConfig signingConfigs.release
+            } else {
+                logger.warn('release-signing.properties/keystore missing - release APK will be UNSIGNED')
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
