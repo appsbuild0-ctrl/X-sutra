@@ -105,12 +105,9 @@ export function HomeScreen(): React.JSX.Element {
   }, [firstApiPage, mode])
   const feed = usePagedMedia(loadFeed, [mode, firstApiPage])
 
-  useEffect(() => {
-    const timer = window.setInterval(() => { void feed.mergeFresh() }, 60_000)
-    return () => window.clearInterval(timer)
-  }, [feed.mergeFresh])
+  // Stable feed - no auto-refresh that changes order. User scrolls = load more at bottom only.
 
-  // Build personalized feed by mixing creator feeds with trending
+  // Build personalized feed ONCE when feed loads - stable, no re-sorting
   const personalizedItems = useMemo(() => {
     if (mode !== 'foryou' || !hasPersonalization) return feed.items
     
@@ -125,9 +122,10 @@ export function HomeScreen(): React.JSX.Element {
       })
     })
     
-    // Sort by user's viewing preferences
+    // Sort by user's viewing preferences - ONLY ONCE when feed first loads
     return sortForUser(allItems).slice(0, 100)
-  }, [feed.items, mode, hasPersonalization, creatorFeeds])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [feed.items.length > 0 ? feed.items[0].id : 'empty', mode, hasPersonalization, creatorFeeds.size])
 
   const visibleItems = useMemo(() => {
     const blocked = new Set(preferences.blockedTags.map((tag) => tag.toLowerCase()))
