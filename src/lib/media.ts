@@ -15,16 +15,16 @@ export function mediaProxyUrl(url: string): string | null {
 }
 
 /**
- * Ordered playback/download candidates. The API returns permanent clean
- * media.redgifs.com URLs, and that host serves browsers directly (it blocks
- * datacenter IPs, not residential/mobile ones) — so direct URLs come first.
- * The same-origin media proxy stays as a final fallback for environments
- * where direct loading is refused.
+ * Ordered playback/download candidates. SD (mobile) versions come first for
+ * instant playback, then HD. The API returns permanent clean media.redgifs.com
+ * URLs, and that host serves browsers directly (it blocks datacenter IPs, not
+ * residential/mobile ones) — so direct URLs come first. The same-origin media
+ * proxy stays as a final fallback for environments where direct loading is refused.
  */
 export function playbackCandidates(item: MediaItem): string[] {
   const direct = [
-    item.videoUrl,
-    item.videoUrlSd,
+    item.videoUrlSd,   // SD first for faster initial playback
+    item.videoUrl,     // HD as fallback after SD starts
     /\.(?:mp4|webm)(?:[?#]|$)/i.test(item.previewUrl ?? '') ? item.previewUrl : undefined,
     ...(item.watermarkedUrls ?? [])
   ].filter((url): url is string => typeof url === 'string' && /^https?:\/\//i.test(url) && !/hotpic\.(vip|cc|one)\/i\//i.test(url) && /\.(?:mp4|webm|mov|m4v)(?:[?#]|$)/i.test(url))

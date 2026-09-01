@@ -286,7 +286,7 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
     }
   }
 
-  // Keep one extra upcoming slide mounted so consecutive swipes stay instant.
+  // Keep current + next 2 slides mounted with preload for instant consecutive playback.
   const first = Math.max(0, playerIndex - 1)
   const slides = playerQueue.slice(first, Math.min(playerQueue.length, playerIndex + 3))
 
