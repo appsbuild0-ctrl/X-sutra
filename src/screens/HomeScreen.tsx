@@ -86,14 +86,27 @@ export function HomeScreen(): React.JSX.Element {
     let result: PageResult<MediaItem>
     
     if (mode === 'foryou') {
-      // For You: Mix trending + personalized content
-      const trending = await publicMediaApi.trending(apiPage)
+      // For You: Mix trending + latest for variety
+      const [trending, latest] = await Promise.all([
+        publicMediaApi.trending(apiPage),
+        publicMediaApi.latest(apiPage, 'latest')
+      ])
+      
       if (!hasViewHistory()) {
-        return normalizePage(trending, logicalPage, firstApiPage, mode)
+        // No history yet - mix trending and latest
+        const mixed = [...trending.items, ...latest.items]
+        // Shuffle for variety
+        for (let i = mixed.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [mixed[i], mixed[j]] = [mixed[j], mixed[i]]
+        }
+        return { ...trending, items: mixed, page: logicalPage, pages: Math.max(trending.pages, latest.pages) }
       }
+      
       // Sort by user preferences
-      const personalized = sortForUser(trending.items)
-      return { ...trending, items: personalized, page: logicalPage, pages: trending.pages }
+      const allItems = [...trending.items, ...latest.items]
+      const personalized = sortForUser(allItems)
+      return { ...trending, items: personalized, page: logicalPage, pages: Math.max(trending.pages, latest.pages) }
     }
     
     if (mode === 'trending') result = await publicMediaApi.trending(apiPage)
@@ -106,6 +119,18 @@ export function HomeScreen(): React.JSX.Element {
   const feed = usePagedMedia(loadFeed, [mode, firstApiPage])
 
   // Stable feed - no auto-refresh that changes order. User scrolls = load more at bottom only.
+  const [scrollProgress, setScrollProgress] = useState(0)
+  
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollTop = window.scrollY
+      const docHeight = document.documentElement.scrollHeight - window.innerHeight
+      const progress = docHeight > 0 ? (scrollTop / docHeight) * 100 : 0
+      setScrollProgress(Math.min(progress, 100))
+    }
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
 
   // Build personalized feed ONCE when feed loads - stable, no re-sorting
   const personalizedItems = useMemo(() => {
@@ -146,6 +171,7 @@ export function HomeScreen(): React.JSX.Element {
 
   return (
     <PullToRefresh onRefresh={refreshRealFeed}>
+      <div className="feed-progress-bar" style={{ width: `${scrollProgress}%` }} />
       <section className="screen screen--home">
         <ScreenHeader showMark title="RedGrab" actions={
           <div className="home-header-actions">
