@@ -25,10 +25,10 @@ export function NicheScreen(): React.JSX.Element {
 
   return (
     <section className="screen">
-      <ScreenHeader title={id} eyebrow="Public niche" actions={<button className="round-button" type="button" onClick={() => void feed.reload()} aria-label="Refresh niche"><RefreshIcon size={19} /></button>} />
+      <ScreenHeader title={id} eyebrow="Public niche" showBack />
       <div className="niche-detail-hero"><p className="eyebrow">Live V2 niche</p><h2>{id}</h2><p>Browse publicly indexed clips inside this niche. Results come from the live source endpoint.</p></div>
       {related.length > 0 && <><div className="subsection-heading subsection-heading--spaced">Related niches</div><div className="niche-row">{related.slice(0, 10).map((niche) => <button className="niche-chip" type="button" key={niche.id} onClick={() => navigate(`/niche/${encodeURIComponent(niche.id)}`)}>{niche.name} <small>{compactNumber(niche.gifs)}</small></button>)}</div></>}
-      <div className="feed-toolbar creator-feed-toolbar"><div className="section-heading section-heading--inline"><div><p className="eyebrow">Niche feed</p><h3>Public clips</h3></div></div><label className="sort-control"><span className="sr-only">Sort niche results</span><select value={order} onChange={(event) => setOrder(event.target.value as FeedOrder)}><option value="latest">Latest</option><option value="score">Score</option><option value="top">Top</option></option></select></label></div>
+      <div className="feed-toolbar creator-feed-toolbar"><div className="section-heading section-heading--inline"><div><p className="eyebrow">Niche feed</p><h3>Public clips</h3></div></div><label className="sort-control"><span className="sr-only">Sort niche results</span><select value={order} onChange={(event) => setOrder(event.target.value as FeedOrder)}><option value="latest">Latest</option><option value="score">Score</option><option value="top">Top</option></select></label></div>
       {feed.error ? <LiveError message={feed.error} onRetry={feed.reload} title="Niche clips could not load." /> : <MediaGrid items={feed.items} loading={feed.loading} canLoadMore={feed.canLoadMore} loadingMore={feed.loadingMore} onLoadMore={() => void feed.loadMore()} empty={<div className="empty-state"><strong>No public clips are available in this niche.</strong></div>} />}
       {!feed.loading && !feed.error && feed.items.length === 0 && <ScreenNotice>Try another niche or refresh the live feed.</ScreenNotice>}
     </section>
