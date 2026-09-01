@@ -11,11 +11,13 @@ import { useOnlineMembers } from '../hooks/useOnlineMembers'
 import { usePagedMedia } from '../hooks/usePagedMedia'
 import { defaultHub, loadHub, markNotificationsRead, openHubLink, relativeTime, unreadCount, type AdminHub } from '../lib/adminHub'
 import { isRedgifsVideo, publicMediaApi } from '../lib/redgifs'
+import { sortForUser, hasViewHistory, getTopCreators, getTopTags } from '../lib/viewHistory'
 import type { FeedOrder, MediaItem, PageResult } from '../types'
 
-type HomeFeed = 'latest' | 'trending' | 'likes' | 'views' | 'longest'
+type HomeFeed = 'latest' | 'trending' | 'likes' | 'views' | 'longest' | 'foryou'
 
 const HOME_FEEDS: Array<{ id: HomeFeed; label: string; eyebrow: string; title: string }> = [
+  { id: 'foryou', label: 'For You', eyebrow: 'Personalized', title: 'Your feed' },
   { id: 'latest', label: 'Latest', eyebrow: 'Newest uploads', title: 'Latest clips' },
   { id: 'trending', label: 'Trending', eyebrow: 'Public feed', title: 'Trending now' },
   { id: 'likes', label: 'Most liked', eyebrow: 'Ranked by likes', title: 'Most liked' },
@@ -39,21 +41,74 @@ function normalizePage(result: PageResult<MediaItem>, logicalPage: number, first
 export function HomeScreen(): React.JSX.Element {
   const navigate = useNavigate()
   const { preferences, account } = useApp()
-  const [mode, setMode] = useState<HomeFeed>('trending')
+  const [mode, setMode] = useState<HomeFeed>('foryou')
   const [firstApiPage, setFirstApiPage] = useState(1)
   const [hub, setHub] = useState<AdminHub>(defaultHub)
   const [notesOpen, setNotesOpen] = useState(false)
+  const [creatorFeeds, setCreatorFeeds] = useState<Map<string, MediaItem[]>>(new Map())
   const onlineMembers = useOnlineMembers()
   const selected = HOME_FEEDS.find((feed) => feed.id === mode) ?? HOME_FEEDS[0]
   const card = hub.homeCard
   const notes = hub.notifications.filter((item) => item.active)
   const unread = unreadCount(hub)
+  const hasPersonalization = hasViewHistory()
+  const topCreators = getTopCreators(5)
+  const topTags = getTopTags(8)
 
   useEffect(() => { void loadHub().then(setHub) }, [])
+
+  // Load feeds from top creators for personalization
+  useEffect(() => {
+    if (!hasPersonalization) return
+    const creators = getTopCreators(6)
+    let cancelled = false
+    
+    async function loadCreatorFeeds() {
+      const feeds = new Map<string, MediaItem[]>()
+      for (const creator of creators) {
+        if (cancelled) break
+        try {
+          const result = await publicMediaApi.creator(creator, 1, 'latest')
+          feeds.set(creator, result.items.slice(0, 10))
+        } catch {
+          // Skip failed creator feeds
+        }
+      }
+      if (!cancelled) setCreatorFeeds(feeds)
+    }
+    
+    void loadCreatorFeeds()
+    return () => { cancelled = true }
+  }, [hasPersonalization])
 
   const loadFeed = useCallback(async (logicalPage: number) => {
     const apiPage = firstApiPage + logicalPage - 1
     let result: PageResult<MediaItem>
+    
+    if (mode === 'foryou') {
+      // For You: Mix trending + latest for variety
+      const [trending, latest] = await Promise.all([
+        publicMediaApi.trending(apiPage),
+        publicMediaApi.latest(apiPage, 'latest')
+      ])
+      
+      if (!hasViewHistory()) {
+        // No history yet - mix trending and latest
+        const mixed = [...trending.items, ...latest.items]
+        // Shuffle for variety
+        for (let i = mixed.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [mixed[i], mixed[j]] = [mixed[j], mixed[i]]
+        }
+        return { ...trending, items: mixed, page: logicalPage, pages: Math.max(trending.pages, latest.pages) }
+      }
+      
+      // Sort by user preferences
+      const allItems = [...trending.items, ...latest.items]
+      const personalized = sortForUser(allItems)
+      return { ...trending, items: personalized, page: logicalPage, pages: Math.max(trending.pages, latest.pages) }
+    }
+    
     if (mode === 'trending') result = await publicMediaApi.trending(apiPage)
     else {
       const order: FeedOrder = mode === 'likes' ? 'top' : mode === 'views' ? 'score' : 'latest'
@@ -63,16 +118,46 @@ export function HomeScreen(): React.JSX.Element {
   }, [firstApiPage, mode])
   const feed = usePagedMedia(loadFeed, [mode, firstApiPage])
 
+  // Stable feed - no auto-refresh that changes order. User scrolls = load more at bottom only.
+  const [scrollProgress, setScrollProgress] = useState(0)
+  
   useEffect(() => {
-    const timer = window.setInterval(() => { void feed.mergeFresh() }, 60_000)
-    return () => window.clearInterval(timer)
-  }, [feed.mergeFresh])
+    const handleScroll = () => {
+      const scrollTop = window.scrollY
+      const docHeight = document.documentElement.scrollHeight - window.innerHeight
+      const progress = docHeight > 0 ? (scrollTop / docHeight) * 100 : 0
+      setScrollProgress(Math.min(progress, 100))
+    }
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
+
+  // Build personalized feed ONCE when feed loads - stable, no re-sorting
+  const personalizedItems = useMemo(() => {
+    if (mode !== 'foryou' || !hasPersonalization) return feed.items
+    
+    const allItems: MediaItem[] = [...feed.items]
+    
+    // Add items from top creators user watches
+    creatorFeeds.forEach((items) => {
+      items.forEach(item => {
+        if (!allItems.some(i => i.id === item.id)) {
+          allItems.push(item)
+        }
+      })
+    })
+    
+    // Sort by user's viewing preferences - ONLY ONCE when feed first loads
+    return sortForUser(allItems).slice(0, 100)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [feed.items.length > 0 ? feed.items[0].id : 'empty', mode, hasPersonalization, creatorFeeds.size])
 
   const visibleItems = useMemo(() => {
     const blocked = new Set(preferences.blockedTags.map((tag) => tag.toLowerCase()))
     const hidden = new Set(hub.hiddenVideos)
-    return feed.items.filter((item) => isRedgifsVideo(item) && !hidden.has(item.id) && !item.tags.some((tag) => blocked.has(tag.toLowerCase())))
-  }, [feed.items, preferences.blockedTags, hub.hiddenVideos])
+    const sourceItems = mode === 'foryou' && hasPersonalization ? personalizedItems : feed.items
+    return sourceItems.filter((item) => isRedgifsVideo(item) && !hidden.has(item.id) && !item.tags.some((tag) => blocked.has(tag.toLowerCase())))
+  }, [feed.items, personalizedItems, mode, hasPersonalization, preferences.blockedTags, hub.hiddenVideos])
 
   const refreshRealFeed = useCallback(async () => {
     setFirstApiPage((current) => current >= 7 ? 1 : current + 1)
@@ -86,13 +171,13 @@ export function HomeScreen(): React.JSX.Element {
 
   return (
     <PullToRefresh onRefresh={refreshRealFeed}>
+      <div className="feed-progress-bar" style={{ width: `${scrollProgress}%` }} />
       <section className="screen screen--home">
         <ScreenHeader showMark title="RedGrab" actions={
           <div className="home-header-actions">
             <button className="notify-bell" type="button" onClick={openNotes} aria-label="Notifications">
               🔔{unread > 0 && <i>{unread}</i>}
             </button>
-            <button className="home-cta home-cta--premium" type="button" onClick={() => navigate('/premium')}>⭐ Collections</button>
             <button className="home-cta home-cta--login" type="button" onClick={() => navigate(account ? (account.role === 'admin' ? '/admin' : '/you') : '/login')}>{account ? roleLabel(account.role) : 'Login'}</button>
           </div>
         } />

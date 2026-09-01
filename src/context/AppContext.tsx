@@ -13,6 +13,7 @@ import { hotpicApi } from '../lib/hotpic'
 import { publicMediaApi } from '../lib/redgifs'
 import { createUser, onAccountsChange, readSession, verifyLogin, writeSession } from '../lib/accounts'
 import { readStored, writeStored, removeStored } from '../lib/storage'
+import { recordView } from '../lib/viewHistory'
 import type { AuthResult, Creator, DownloadRecord, DownloadStatus, LocalAccount, LocalCollection, MediaItem, Preferences } from '../types'
 
 type ToastTone = 'default' | 'success' | 'error'
@@ -301,13 +302,19 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
     setPlayerQueue(resolvedQueue)
     setPlayerIndex(index)
     setActiveMedia(resolvedQueue[index] ?? item)
+    // Track view for personalized algorithm
+    recordView(item)
   }, [])
 
   const stepPlayer = useCallback((direction: -1 | 1) => {
     setPlayerIndex((current) => {
       const next = Math.min(Math.max(current + direction, 0), Math.max(playerQueue.length - 1, 0))
       const nextItem = playerQueue[next]
-      if (nextItem) setActiveMedia(nextItem)
+      if (nextItem) {
+        setActiveMedia(nextItem)
+        // Track view for personalized algorithm
+        recordView(nextItem)
+      }
       return next
     })
   }, [playerQueue])

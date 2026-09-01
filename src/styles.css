@@ -84,6 +84,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .pull-refresh__indicator.is-refreshing svg { color: var(--ember-strong); animation: pull-spin .78s linear infinite; }
 @keyframes pull-spin { to { transform: rotate(360deg); } }
 .feed-sentinel { display: flex; min-height: 52px; align-items: center; justify-content: center; margin: 18px 0 0; color: var(--muted); font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: .05em; text-transform: uppercase; }
+.feed-progress-bar { position: fixed; top: 0; left: 0; height: 3px; background: linear-gradient(90deg, var(--ember-strong), #ff6b35); z-index: 100; transition: width 0.1s ease; box-shadow: 0 0 10px var(--ember-strong); }
 .feed-sentinel__loading::before { content: '•'; padding-right: 5px; color: var(--ember-strong); animation: pulse 1s infinite ease-in-out; }
 .segmented { display: inline-flex; min-height: 39px; padding: 3px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
 .segmented button { min-height: 31px; padding: 0 13px; border-radius: 9px; color: var(--muted); background: transparent; font-size: 12px; font-weight: 600; transition: color .18s, background .18s, box-shadow .18s; }
