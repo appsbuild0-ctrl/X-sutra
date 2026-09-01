@@ -89,9 +89,16 @@ export function localHub(): AdminHub {
 export async function loadHub(): Promise<AdminHub> {
   const local = localHub()
   try {
-    const catalog = await fetchPremiumCatalog()
-    if (catalog.adminHub) return cacheHub({ ...defaultHub(), ...catalog.adminHub })
-  } catch { /* use local */ }
+    const response = await fetch('/api/premium', { headers: { Accept: 'application/json' } })
+    if (response.ok) {
+      const data = await response.json() as Partial<AdminHub>
+      if (data && Object.keys(data).length > 0) {
+        return cacheHub({ ...defaultHub(), ...data })
+      }
+    }
+  } catch {
+    /* use local data on any network error */
+  }
   return local
 }
 

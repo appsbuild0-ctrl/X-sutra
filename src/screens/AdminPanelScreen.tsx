@@ -21,8 +21,8 @@ export function AdminPanelScreen(): React.JSX.Element {
   const [catalog, setCatalog] = useState<PremiumCatalog | null>(null)
 
   useEffect(() => {
-    void loadHub().then(setHub)
-    void fetchPremiumCatalog().then(setCatalog)
+    void loadHub().then(setHub).catch(() => setHub(defaultHub()))
+    void fetchPremiumCatalog().then(setCatalog).catch(() => setCatalog(null))
   }, [])
 
   useEffect(() => { if (!account) navigate('/login') }, [account, navigate])
