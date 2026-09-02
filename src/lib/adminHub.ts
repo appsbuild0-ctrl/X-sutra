@@ -77,13 +77,32 @@ export function defaultHub(): AdminHub {
   }
 }
 
+// Guarantees a fully-formed AdminHub even when the API (or cached data) returns a
+// partial / mis-shaped payload. Without this, `hub.users.length` etc. can throw and
+// blank the whole Admin panel through the ErrorBoundary.
+export function normalizeHub(input: Partial<AdminHub> | null | undefined): AdminHub {
+  const base = defaultHub()
+  const data = (input && typeof input === 'object') ? input : {}
+  return {
+    qr: typeof data.qr === 'string' ? data.qr : base.qr,
+    plans: {
+      premium: { ...base.plans.premium, ...(data.plans?.premium ?? {}) },
+      vip: { ...base.plans.vip, ...(data.plans?.vip ?? {}) }
+    },
+    homeCard: { ...base.homeCard, ...(data.homeCard ?? {}) },
+    notifications: Array.isArray(data.notifications) ? data.notifications : base.notifications,
+    users: Array.isArray(data.users) && data.users.length > 0 ? data.users : base.users,
+    hiddenVideos: Array.isArray(data.hiddenVideos) ? data.hiddenVideos : base.hiddenVideos
+  }
+}
+
 export function cacheHub(hub: AdminHub): AdminHub {
-  writeStored(HUB_KEY, hub)
-  return hub
+  writeStored(HUB_KEY, normalizeHub(hub))
+  return normalizeHub(hub)
 }
 
 export function localHub(): AdminHub {
-  return { ...defaultHub(), ...readStored<Partial<AdminHub>>(HUB_KEY, {}) }
+  return normalizeHub(readStored<Partial<AdminHub>>(HUB_KEY, {}))
 }
 
 export async function loadHub(): Promise<AdminHub> {
@@ -93,7 +112,7 @@ export async function loadHub(): Promise<AdminHub> {
     if (response.ok) {
       const data = await response.json() as Partial<AdminHub>
       if (data && Object.keys(data).length > 0) {
-        return cacheHub({ ...defaultHub(), ...data })
+        return cacheHub(normalizeHub(data))
       }
     }
   } catch {

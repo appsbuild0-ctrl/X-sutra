@@ -64,10 +64,12 @@ export function AdminPanelScreen(): React.JSX.Element {
 function Dash({ hub, catalog }: { hub: AdminHub; catalog: PremiumCatalog | null }): React.JSX.Element {
   const online = useOnlineMembers()
   const roster = publicUsers()
-  const users = Math.max(hub.users.length, roster.length)
+  const hubUsers = Array.isArray(hub.users) ? hub.users : []
+  const media = Array.isArray(catalog?.media) ? catalog!.media : []
+  const users = Math.max(hubUsers.length, roster.length)
   const premium = roster.filter((user) => user.role === 'premium').length
   const vip = roster.filter((user) => user.role === 'vip').length
-  const videos = catalog?.media.filter((item) => item.type === 'video').length ?? 0
+  const videos = media.filter((item) => item.type === 'video').length
   return (
     <>
       <div className="admin-stats">
@@ -75,7 +77,7 @@ function Dash({ hub, catalog }: { hub: AdminHub; catalog: PremiumCatalog | null 
         <div><ShieldIcon size={18} /><strong>{premium}</strong><span>Premium</span></div>
         <div><HeartIcon size={18} /><strong>{vip}</strong><span>VIP</span></div>
         <div><LibraryIcon size={18} /><strong>{videos}</strong><span>Videos</span></div>
-        <div><DownloadIcon size={18} /><strong>{catalog?.media.length ?? 0}</strong><span>Downloads*</span></div>
+        <div><DownloadIcon size={18} /><strong>{media.length}</strong><span>Downloads*</span></div>
         <div><SettingsIcon size={18} /><strong>{online.toLocaleString('en-IN')}</strong><span>Online</span></div>
       </div>
       <p className="form-help">* Media items in the premium catalog. Home feed stays on the public API.</p>

@@ -27,8 +27,8 @@
 }
 
 * { box-sizing: border-box; }
-html { min-height: 100%; background: var(--bg); }
-body { margin: 0; min-width: 320px; min-height: 100dvh; background: radial-gradient(circle at 50% -10%, #311817 0, var(--bg) 43rem); }
+html { min-height: 100%; width: 100%; max-width: 100%; overflow-x: hidden; background: var(--bg); }
+body { margin: 0; width: 100%; max-width: 100%; min-width: 0; min-height: 100dvh; overflow-x: hidden; overscroll-behavior-x: none; -webkit-text-size-adjust: 100%; background: radial-gradient(circle at 50% -10%, #311817 0, var(--bg) 43rem); }
 button, input, select { font: inherit; }
 button { color: inherit; }
 button, a, select { -webkit-tap-highlight-color: transparent; }
@@ -44,8 +44,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
 
-.app-frame { width: min(100%, 1120px); min-height: 100dvh; margin: 0 auto; background: linear-gradient(180deg, rgba(27, 16, 16, .52) 0, var(--bg) 24rem); position: relative; }
-.app-content { min-height: 100dvh; }
+.app-frame { width: min(100%, 480px); max-width: 100%; min-height: 100dvh; margin: 0 auto; overflow-x: hidden; background: linear-gradient(180deg, rgba(27, 16, 16, .52) 0, var(--bg) 24rem); position: relative; }
+.app-content { min-height: 100dvh; max-width: 100%; overflow-x: hidden; }
 .screen { width: 100%; padding: 23px 17px calc(94px + var(--safe-bottom)); animation: screen-in .32s ease both; }
 @keyframes screen-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 
@@ -141,7 +141,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 @keyframes shimmer { to { background-position: -200% 0; } }
 .load-more-wrap { display: flex; justify-content: center; margin: 24px 0 6px; }
 
-.bottom-nav { position: fixed; z-index: 20; bottom: 0; left: 50%; display: grid; width: min(100%, 1120px); min-height: calc(65px + var(--safe-bottom)); grid-template-columns: repeat(5, 1fr); padding: 8px 8px calc(8px + var(--safe-bottom)); transform: translateX(-50%); border-top: 1px solid var(--line); background: rgba(16, 12, 13, .88); box-shadow: 0 -12px 30px rgba(0,0,0,.22); backdrop-filter: blur(17px) saturate(1.2); }
+.bottom-nav { position: fixed; z-index: 20; bottom: 0; left: 50%; display: grid; width: min(100%, 480px); min-height: calc(65px + var(--safe-bottom)); grid-template-columns: repeat(5, 1fr); padding: 8px 8px calc(8px + var(--safe-bottom)); transform: translateX(-50%); border-top: 1px solid var(--line); background: rgba(16, 12, 13, .88); box-shadow: 0 -12px 30px rgba(0,0,0,.22); backdrop-filter: blur(17px) saturate(1.2); }
 .nav-tab { display: flex; min-width: 0; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 1px 2px; color: #8f7f78; background: transparent; font-size: 8px; font-weight: 650; letter-spacing: .015em; transition: color .18s ease; }
 .nav-icon { display: grid; width: 30px; height: 28px; place-items: center; border-radius: 9px; transition: color .18s, background .18s, transform .18s; }
 .nav-tab.is-active { color: var(--text); }
@@ -352,7 +352,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .app-frame { border-left: 1px solid rgba(255,255,255,.035); border-right: 1px solid rgba(255,255,255,.035); }
   .screen { padding: 30px 30px calc(100px + var(--safe-bottom)); }
   .niche-row { margin-left: -30px; margin-right: -30px; padding-left: 30px; padding-right: 30px; }
-  .media-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 22px 15px; }
+  .media-grid { gap: 20px 13px; }
   .media-skeleton { min-height: 265px; }
   .home-intro { min-height: 183px; padding: 29px; }
   .home-intro h2 { max-width: 370px; }
@@ -365,15 +365,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 
 @media (min-width: 920px) {
-  .screen { padding: 34px 42px 108px; }
-  .screen-header { margin-bottom: 34px; }
-  .media-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 25px 17px; }
-  .media-skeleton { min-height: 285px; }
-  .niche-row { margin-left: -42px; margin-right: -42px; padding-left: 42px; padding-right: 42px; }
   .bottom-nav { min-height: 70px; padding-top: 9px; padding-bottom: 9px; border: 1px solid var(--line); border-bottom: 0; border-radius: 19px 19px 0 0; }
   .nav-tab { font-size: 9px; }
   .home-intro { min-height: 198px; }
-  .download-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 370px) {
