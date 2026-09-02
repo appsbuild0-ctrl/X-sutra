@@ -102,6 +102,7 @@ export function MediaCard({ item, queue, priority = false }: MediaCardProps): Re
   const [imageExhausted, setImageExhausted] = useState(false)
   const [previewFailed, setPreviewFailed] = useState(false)
   const [opening, setOpening] = useState(false)
+  const [videoPausedByUser, setVideoPausedByUser] = useState(false)
 
   // Use shared grid observer instead of per-card observer
   useEffect(() => {
@@ -176,6 +177,71 @@ export function MediaCard({ item, queue, priority = false }: MediaCardProps): Re
     setTimeout(() => setOpening(false), 300)
   }
 
+  // Handle video ref for autoplay control
+  const videoRef = useRef<HTMLVideoElement>(null)
+
+  useEffect(() => {
+    // When video element is ready, setup autoplay with muted start
+    // On user click, we'll unmute for playback
+    if (!videoRef.current) return
+
+    const video = videoRef.current
+    video.muted = true // Required for autoplay on mobile browsers
+    video.playsInline = true
+    video.preload = 'auto' // Load metadata immediately for zero lag
+
+    // Store original playback rate if needed
+    const originalRate = video.playbackRate
+
+    // Ensure consistent playback rate
+    video.playbackRate = Math.max(0.5, Math.min(2, originalRate || 1))
+
+    // Reset video state when source changes
+    video.onplaying = () => {
+      // Video started playing - can unmuet if user interacted
+      setVideoPausedByUser(false)
+    }
+
+    video.onpause = () => {
+      setVideoPausedByUser(true)
+    }
+
+    // Cleanup
+    return () => {
+      video.src = ''
+      video.load()
+      video.pause()
+      video.currentTime = 0
+      video.removeAttribute('autoplay')
+    }
+  }, [display.previewUrl, display.videoUrlSd, display.videoUrl, resolved?.id, inView])
+
+  const handlePlayClick = () => {
+    // User clicked play - unpause/mute handling
+    setVideoPausedByUser(false)
+    // The video element will handle autoplay unmute on user interaction
+  }
+
+  const nextThumbnail = () => {
+    if (thumbnailIndex + 1 < thumbnails.length) setThumbnailIndex((current) => current + 1)
+    else setImageExhausted(true)
+  }
+
+  const open = () => {
+    setOpening(true)
+    const full = resolved ?? item
+    const fullQueue = (queue?.length ? queue : [item]).map((entry) => entry.id === full.id ? full : (detailCache.get(entry.id) ?? entry))
+    openPlayer(full, fullQueue)
+
+    // Hydrate in background to get better URLs if not already loaded
+    if (!resolved && !isPremium) {
+      void throttleDetailRequest(item.id, () => publicMediaApi.getById(item.id)).then((hydrated) => {
+        setResolved(hydrated)
+      }).catch(() => undefined)
+    }
+    setTimeout(() => setOpening(false), 300)
+  }
+
   return (
     <article className="media-card" ref={cardRef}>
       <button
@@ -188,14 +254,23 @@ export function MediaCard({ item, queue, priority = false }: MediaCardProps): Re
         {activeThumbnail ? (
           <img key={activeThumbnail} src={activeThumbnail} alt="" loading={priority ? 'eager' : 'lazy'} decoding="async" onError={nextThumbnail} />
         ) : previewSource && inView && !previewFailed ? (
-          <video key={previewSource} src={previewSource} muted playsInline preload="metadata" poster={display.thumbnail} onError={() => setPreviewFailed(true)} />
+          <video
+            ref={videoRef}
+            key={previewSource}
+            src={previewSource}
+            muted
+            playsInline
+            preload="auto"
+            poster={display.thumbnail}
+            onError={() => setPreviewFailed(true)}
+          />
         ) : previewFailed ? (
           <span className="media-card__missing">Video unavailable</span>
         ) : (
           <span className="media-card__missing">{opening ? 'Opening…' : 'Preview'}</span>
         )}
         <span className="media-card__shade" aria-hidden="true" />
-        <span className="media-card__play" aria-hidden="true"><PlayIcon size={18} /></span>
+        <span className="media-card__play" aria-hidden="true" onClick={handlePlayClick}><PlayIcon size={18} /></span>
         <span className="media-card__duration">{durationLabel(display.duration)}</span>
         {display.hasAudio && <span className="media-card__audio">Audio</span>}
       </button>
