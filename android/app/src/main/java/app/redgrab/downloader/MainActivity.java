@@ -1,4 +1,4 @@
-package app.xsutra.mobile;
+package app.redgrab.downloader;
 
 import android.os.Bundle;
 import android.view.WindowManager;

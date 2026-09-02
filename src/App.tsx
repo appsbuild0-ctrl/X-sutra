@@ -1,6 +1,4 @@
 import { lazy, Suspense, useEffect } from 'react'
-import { CommunityProvider } from './context/CommunityContext'
-import { DiscordLoginProvider, useDiscordLogin } from './context/DiscordLoginContext'
 import { HashRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
 import { BottomNav } from './components/BottomNav'
 import { ContentShield } from './components/ContentShield'
@@ -8,6 +6,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { ToastHost } from './components/ToastHost'
 import { VideoPlayerSheet } from './components/VideoPlayerSheet'
 import { AppProvider, useApp } from './context/AppContext'
+import { CommunityProvider } from './context/CommunityContext'
 import { hasPremiumAccess } from './lib/roles'
 
 const AdminPanelScreen = lazy(async () => ({ default: (await import('./screens/AdminPanelScreen')).AdminPanelScreen }))
@@ -40,9 +39,8 @@ function ScrollToTop(): null {
 
 function PremiumOnly({ children }: { children: React.ReactNode }): React.JSX.Element {
   const { account } = useApp()
-  const { user } = useDiscordLogin()
-  // A local premium role or a real Discord login session both unlock Premium.
-  return hasPremiumAccess(account?.role) || user ? <>{children}</> : <Navigate to="/premium" replace />
+  // A local premium/vip role unlocks Premium.
+  return hasPremiumAccess(account?.role) ? <>{children}</> : <Navigate to="/premium" replace />
 }
 
 function XsApp(): React.JSX.Element {
@@ -93,12 +91,7 @@ export default function App(): React.JSX.Element {
     <AppProvider>
       <CommunityProvider>
         <HashRouter>
-          {/* The Discord web-login provider must sit inside the router: it
-              navigates after the OAuth redirect and exposes useDiscordLogin
-              to the premium gate + every premium route. */}
-          <DiscordLoginProvider>
-            <XsApp />
-          </DiscordLoginProvider>
+          <XsApp />
         </HashRouter>
       </CommunityProvider>
     </AppProvider>

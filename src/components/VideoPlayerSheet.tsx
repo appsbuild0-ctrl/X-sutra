@@ -429,7 +429,6 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
           item={current}
           onClose={() => setDownloadOpen(false)}
           onNormalDownload={(item) => requestDownload(item)}
-          onBuyNow={() => { setDownloadOpen(false); closePlayer(); navigate('/login') }}
         />
       )}
     </div>

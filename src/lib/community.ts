@@ -1,6 +1,6 @@
 /**
  * Community data layer — localStorage-backed Discord-style community system.
- * Follows the same persistence pattern as the existing X-Sutra app.
+ * Follows the same persistence pattern as the existing RedGrab app.
  */
 
 import { readStored, writeStored } from './storage'
