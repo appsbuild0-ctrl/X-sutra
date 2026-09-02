@@ -7,10 +7,10 @@ if (keystorePropertiesFile.exists()) {
 apply plugin: 'com.android.application'
 
 android {
-    namespace "app.xsutra.mobile"
+    namespace "app.redgrab.downloader"
     compileSdk rootProject.ext.compileSdkVersion
     defaultConfig {
-        applicationId "app.xsutra.mobile"
+        applicationId "app.redgrab.downloader"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.1.0",
   "type": "module",
-  "description": "RedGrab \u2014 Download GIFs, images and videos from RedGifs. Browse, search, save and play clips in HD.",
+  "description": "RedGrab — Download GIFs, images and videos from RedGifs. Browse, search, save and play clips in HD.",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
@@ -31,6 +31,8 @@
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
     "esbuild": "^0.28.2",
+    "jsdom": "^30.0.1",
+    "sharp": "^0.35.4",
     "typescript": "^5.6.3",
     "vite": "^5.4.10"
   }
