@@ -138,44 +138,40 @@ export function MediaCard({ item, queue, priority = false }: MediaCardProps): Re
     setTimeout(() => setOpening(false), 300)
   }
 
-  // Handle video ref for autoplay control
+  // Handle video ref for autoplay control.
+  //
+  // Stability contract (the feed "blink" fix): this effect must ONLY re-run when
+  // the <video> element itself is replaced (previewSource is also its React
+  // key). Late detail hydration changes `resolved` — an unrelated value — and
+  // previously sat in the dependency list, so the effect re-ran, its cleanup
+  // wiped video.src, and because the key was unchanged React never restored
+  // the source: every feed card blinked black the moment its detail loaded.
   const videoRef = useRef<HTMLVideoElement>(null)
 
   useEffect(() => {
-    // When video element is ready, setup autoplay with muted start
-    // On user click, we'll unmute for playback
-    if (!videoRef.current) return
-
     const video = videoRef.current
-    video.muted = true // Required for autoplay on mobile browsers
+    if (!video) return
+
+    // Mobile browsers only autoplay muted, inline video.
+    video.muted = true
     video.playsInline = true
     video.preload = 'auto' // Load metadata immediately for zero lag
+    video.playbackRate = Math.max(0.5, Math.min(2, video.playbackRate || 1))
 
-    // Store original playback rate if needed
-    const originalRate = video.playbackRate
+    const onPlaying = () => setVideoPausedByUser(false)
+    const onPause = () => setVideoPausedByUser(true)
+    video.addEventListener('playing', onPlaying)
+    video.addEventListener('pause', onPause)
 
-    // Ensure consistent playback rate
-    video.playbackRate = Math.max(0.5, Math.min(2, originalRate || 1))
-
-    // Reset video state when source changes
-    video.onplaying = () => {
-      // Video started playing - can unmute if user interacted
-      setVideoPausedByUser(false)
-    }
-
-    video.onpause = () => {
-      setVideoPausedByUser(true)
-    }
-
-    // Cleanup
     return () => {
-      video.src = ''
-      video.load()
-      video.pause()
-      video.currentTime = 0
-      video.removeAttribute('autoplay')
+      video.removeEventListener('playing', onPlaying)
+      video.removeEventListener('pause', onPause)
+      // NEVER clear video.src in this cleanup: the element is either discarded
+      // by React (nothing to preserve) or kept with its source. Wiping it on a
+      // kept element leaves a permanently black, unresponsive preview.
+      try { video.pause() } catch { /* jsdom/autplay edge cases */ }
     }
-  }, [display.previewUrl, display.videoUrlSd, display.videoUrl, resolved?.id, inView])
+  }, [previewSource])
 
   const handlePlayClick = () => {
     // User clicked play - unpause/mute handling

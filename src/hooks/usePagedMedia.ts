@@ -85,8 +85,12 @@ export function usePagedMedia(
       if (generation.current === requestGeneration) setLoading(false)
     }
   // loader identity is deliberately controlled by the screen's dependency list.
+  // NOTE: `loading` must NEVER be listed here. It changes on every fetch, which
+  // recreated this callback, re-fired the load effect and turned the feed into
+  // an infinite refetch loop — the home feed visibly blinked/re-shuffled every
+  // second on devices. reload() reads no state, so deps stay [loader, dailySeed].
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loader, dailySeed, loading])
+  }, [loader, dailySeed])
 
   const loadMore = useCallback(async () => {
     if (loading || loadingMore || page >= pages) return
