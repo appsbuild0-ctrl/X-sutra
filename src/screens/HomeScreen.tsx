@@ -183,7 +183,14 @@ export function HomeScreen(): React.JSX.Element {
             <button className="notify-bell" type="button" onClick={openNotes} aria-label="Notifications">
               🔔{unread > 0 && <i>{unread}</i>}
             </button>
-            <button className="home-cta home-cta--login" type="button" onClick={() => navigate(account ? (account.role === 'admin' ? '/admin' : '/you') : '/login')}>{account ? roleLabel(account.role) : 'Login'}</button>
+            {account ? (
+              <div className="home-profile-area" onClick={() => navigate('/you')} role="button" aria-label="Go to your profile">
+                <InstagramAvatar src={account?.profileImageUrl || undefined} label={account?.username || account?.name || 'U'} size={40} />
+                <span className="home-profile-text">{account.username ? '@' + account.username : ''}</span>
+              </div>
+            ) : (
+              <button className="home-cta home-cta--login" type="button" onClick={() => navigate('/login')}>Login</button>
+            )}
           </div>
         } />
 
@@ -200,6 +207,13 @@ export function HomeScreen(): React.JSX.Element {
             ))}
           </div>
         )}
+
+        <style>{`
+          .home-profile-area { display: flex; align-items: center; gap: 8px; }
+          .home-profile-area:hover { background: rgba(255,255,255,0.1); border-radius: 20px; padding: 6px 12px; }
+          .home-profile-text { color: var(--p-text, #333); font-size: 13px; }
+          .home-cta--login { min-width: 120px; }
+        `}</style>
 
         {card.enabled && (
           <div className="home-intro" style={card.image ? { backgroundImage: `${card.overlay ? 'linear-gradient(180deg, rgba(8,6,6,.25), rgba(8,6,6,.78)), ' : ''}url(${card.image})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}>
