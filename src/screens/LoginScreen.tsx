@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { CrownMark } from '../components/CrownMark'
+import { PayQrModal, PlanCards, type PlanId } from '../components/PlanPay'
 import { EyeIcon, EyeOffIcon, ShieldIcon } from '../components/icons'
 import { useApp, validUsername } from '../context/AppContext'
 import { roleLabel } from '../lib/roles'
@@ -17,6 +18,7 @@ export function LoginScreen(): React.JSX.Element {
   const [showPassword, setShowPassword] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [plan, setPlan] = useState<PlanId | null>(null)
 
   const creating = mode === 'signup'
 
@@ -158,6 +160,10 @@ export function LoginScreen(): React.JSX.Element {
             {busy ? 'Please wait…' : creating ? 'Create account' : 'Sign in'}
           </button>
         </form>
+
+        <p className="eyebrow login-plans-title">Upgrade plans</p>
+        <PlanCards onPick={setPlan} />
+        {plan && <PayQrModal plan={plan} onClose={() => setPlan(null)} />}
 
         <p className="login-note">
           <ShieldIcon size={13} /> Local-only login. Your password is hashed on this device and never sent to any server.

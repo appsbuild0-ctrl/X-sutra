@@ -461,6 +461,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .login-guest-arrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; margin: 0 0 14px; padding: 9px 12px; border: 1px dashed rgba(255,196,107,.38); border-radius: 12px; background: rgba(255,196,107,.06); color: var(--gold); font-size: 11px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; }
 .login-guest-arrow:hover { background: rgba(255,196,107,.14); }
 .login-guest-arrow__head { font-size: 14px; line-height: 1; }
+.login-plans-title { margin: 18px 0 0; text-align: center; }
 .login-note { display: flex; align-items: flex-start; gap: 6px; margin: 16px 0 0; padding-top: 13px; border-top: 1px solid var(--line); color: var(--muted); font-size: 10px; line-height: 1.5; }
 .login-note svg { flex: 0 0 auto; margin-top: 1px; color: var(--success); }
 .guest-card__actions { display: flex; gap: 8px; margin-top: 11px; }
