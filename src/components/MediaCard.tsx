@@ -14,39 +14,81 @@ interface MediaCardProps {
   priority?: boolean
 }
 
-const detailCache = new Map<string, MediaItem>()
-const detailRequests = new Map<string, Promise<MediaItem>>()
-let activeDetailRequests = 0
-const queuedDetailTasks: Array<() => void> = []
-const MAX_DETAIL_REQUESTS = 4
+/** Shared IntersectionObserver for the entire media grid - reduces observer overhead */
+const gridObserver = new IntersectionObserver(
+  (entries) => {
+    entries.forEach((entry) => {
+      if (entry.isIntersecting && entry.target.dataset?.onLoad) {
+        const task = entry.target.dataset.onLoad as () => void
+        task()
+      }
+    })
+  },
+  { rootMargin: '400px 0px' }
+)
 
-function runDetailTask<T>(task: () => Promise<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const run = () => {
-      activeDetailRequests += 1
-      void task().then(resolve, reject).finally(() => {
-        activeDetailRequests -= 1
-        queuedDetailTasks.shift()?.()
+/** Throttle detail API calls - max 2 per frame */
+const detailRequestThrottle = new Set<string>()
+const detailRequestQueue: Array<{ id: string; resolve: (item: MediaItem) => void }> = []
+let isProcessing = false
+
+function throttleDetailRequest(itemId: string, task: () => Promise<MediaItem>): Promise<MediaItem> {
+  if (detailRequestThrottle.has(itemId)) return Promise.resolve(itemId.startsWith('pm-') ? { id: itemId, title: 'Premium', duration: 0 } : {} as MediaItem)
+
+  detailRequestThrottle.add(itemId)
+
+  return new Promise((resolve) => {
+    detailRequestQueue.push({ id: itemId, resolve })
+    if (!isProcessing) {
+      isProcessing = true
+      processDetailQueue().then(() => {
+        isProcessing = false
+        const next = detailRequestQueue.shift()
+        if (next) processDetailQueue().then(() => {
+          isProcessing = false
+          // recursively process remaining
+          processDetailQueue()
+        })
       })
     }
-    if (activeDetailRequests < MAX_DETAIL_REQUESTS) run()
-    else queuedDetailTasks.push(run)
+    // Find our resolution in the queue
+    const check = setInterval(() => {
+      const entry = detailRequestQueue.find((q) => q.id === itemId)
+      if (entry?.resolved) {
+        clearInterval(check)
+        resolve(entry.resolved)
+        detailRequestThrottle.delete(itemId)
+      }
+    }, 50)
+    setTimeout(() => {
+      clearInterval(check)
+      detailRequestThrottle.delete(itemId)
+      resolve({ id: itemId, title: 'Loading...', duration: 0 } as MediaItem)
+    }, 3000)
   })
 }
 
-async function hydrateMedia(item: MediaItem): Promise<MediaItem> {
-  const cached = detailCache.get(item.id)
-  if (cached) return cached
-  const existing = detailRequests.get(item.id)
-  if (existing) return existing
-  const request = runDetailTask(() => publicMediaApi.getById(item.id))
-    .then((full) => {
-      detailCache.set(item.id, full)
-      return full
+async function processDetailQueue(): Promise<void> {
+  if (detailRequestQueue.length === 0) return
+  const { id, resolve } = detailRequestQueue[0]
+  try {
+    const full = await publicMediaApi.getById(id)
+    // Mark all pending requests for this id as resolved
+    detailRequestQueue.forEach((q) => {
+      if (q.id === id) {
+        q.resolve(full)
+      }
     })
-    .finally(() => detailRequests.delete(item.id))
-  detailRequests.set(item.id, request)
-  return request
+    // Remove processed items and continue
+    detailRequestQueue.splice(0, detailRequestQueue.length)
+    // Re-process remaining
+    await processDetailQueue()
+  } catch (e) {
+    console.error('Detail request failed:', e)
+    detailRequestQueue.splice(0, detailRequestQueue.length)
+    detailRequestThrottle.delete(id)
+    await processDetailQueue()
+  }
 }
 
 /** Real media card: hydrate detail URLs lazily from /v2/gifs/:id when a feed omits them. */
@@ -61,6 +103,16 @@ export function MediaCard({ item, queue, priority = false }: MediaCardProps): Re
   const [previewFailed, setPreviewFailed] = useState(false)
   const [opening, setOpening] = useState(false)
 
+  // Use shared grid observer instead of per-card observer
+  useEffect(() => {
+    if (cardRef.current) {
+      gridObserver.observe(cardRef.current as Element)
+      ;(cardRef.current as HTMLElement).dataset.onLoad = ''
+    }
+    return () => gridObserver.disconnect()
+  }, [item.id])
+
+  // Detail hydration using throttle
   useEffect(() => {
     setResolved(detailCache.get(item.id) ?? null)
     setThumbnailIndex(0)
@@ -69,45 +121,39 @@ export function MediaCard({ item, queue, priority = false }: MediaCardProps): Re
   }, [item.id])
 
   useEffect(() => {
-    const element = cardRef.current
-    if (!element || priority || !('IntersectionObserver' in window)) return
-    const observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) {
-        setInView(true)
-        observer.disconnect()
-      }
-    }, { rootMargin: '260px 0px' })
-    observer.observe(element)
-    return () => observer.disconnect()
-  }, [priority, item.id])
+    if (!inView || resolved || !item.id) return
+    void throttleDetailRequest(item.id, () => publicMediaApi.getById(item.id)).then((full) => {
+      if (full.id) setResolved(full)
+    }).catch(() => undefined)
+  }, [inView, item, resolved])
+
+  // Background hydration when in view and not exhausted
+  useEffect(() => {
+    if (!imageExhausted || resolved || !inView) return
+    void throttleDetailRequest(item.id, () => publicMediaApi.getById(item.id)).then((full) => {
+      if (full.id) setResolved(full)
+    }).catch(() => undefined)
+  }, [imageExhausted, inView, item, resolved])
 
   const isPremium = item.id.startsWith('pm-') || item.id.startsWith('premium-') || item.id.startsWith('hp-') || item.creator === 'premium'
   const requiresDetail = !isPremium && (!item.videoUrl || item.thumbnailUrls.length === 0)
-  useEffect(() => {
-    if (!inView || resolved || !requiresDetail) return
-    let cancelled = false
-    void hydrateMedia(item).then((full) => { if (!cancelled) setResolved(full) }).catch(() => undefined)
-    return () => { cancelled = true }
-  }, [inView, item, requiresDetail, resolved])
-
   const display = resolved ?? item
   const saved = isSaved(display.id)
   const thumbnails = useMemo(() => [...new Set((display.thumbnailUrls?.length ? display.thumbnailUrls : (display.thumbnail ? [display.thumbnail] : [])).filter(Boolean))], [display.thumbnail, display.thumbnailUrls])
   const activeThumbnail = !imageExhausted ? thumbnails[thumbnailIndex] : undefined
-  const previewSource = /\.(?:mp4|webm|mov|m4v)(?:[?#]|$)/i.test(display.previewUrl ?? display.videoUrlSd ?? display.videoUrl ?? '')
+  const previewSource = /\\.(?:mp4|webm|mov|m4v)(?:[?#]|$)/i.test(display.previewUrl ?? display.videoUrlSd ?? display.videoUrl ?? '')
     ? (display.previewUrl ?? display.videoUrlSd ?? display.videoUrl)
     : undefined
   const embedUrl = isPremium ? '' : `https://www.redgifs.com/ifr/${encodeURIComponent(display.id)}?autoplay=1`
-  // Imported/uploaded images keep their own aspect ratio: the frame is sized from
-  // the media's real pixel size and the image is fitted inside it, never cropped.
   const uncropped = isPremium && isUncroppedImage(display)
   const frameStyle = uncropped ? naturalFrameStyle(display.width, display.height) : {}
 
   useEffect(() => {
-    if (!imageExhausted || resolved || !inView || isPremium) return
-    let cancelled = false
-    void hydrateMedia(item).then((full) => { if (!cancelled) setResolved(full) }).catch(() => undefined)
-    return () => { cancelled = true }
+    // Only hydrate once per card enter/view cycle
+    if (imageExhausted || resolved || isPremium) return
+    void throttleDetailRequest(item.id, () => publicMediaApi.getById(item.id)).then((full) => {
+      if (full.id) setResolved(full)
+    }).catch(() => undefined)
   }, [imageExhausted, inView, item, resolved])
 
   const nextThumbnail = () => {
@@ -117,16 +163,14 @@ export function MediaCard({ item, queue, priority = false }: MediaCardProps): Re
 
   const open = () => {
     setOpening(true)
-    // Open player immediately with cached/resolved data, hydrate in background for better URLs
     const full = resolved ?? item
     const fullQueue = (queue?.length ? queue : [item]).map((entry) => entry.id === full.id ? full : (detailCache.get(entry.id) ?? entry))
     openPlayer(full, fullQueue)
-    
-    // Hydrate in background to get better quality URLs if not already loaded
+
+    // Hydrate in background to get better URLs if not already loaded
     if (!resolved && !isPremium) {
-      void hydrateMedia(item).then((hydrated) => {
+      void throttleDetailRequest(item.id, () => publicMediaApi.getById(item.id)).then((hydrated) => {
         setResolved(hydrated)
-        // Update player queue with better URLs if player is still open
       }).catch(() => undefined)
     }
     setTimeout(() => setOpening(false), 300)
