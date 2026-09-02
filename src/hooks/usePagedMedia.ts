@@ -13,7 +13,7 @@ interface PagedMediaState {
 }
 
 /** Get a deterministic daily seed based on current date */
-function getDailySeed(): string {
+export function getDailySeed(): string {
   const now = new Date()
   const year = now.getFullYear()
   const month = String(now.getMonth() + 1).padStart(2, '0')
@@ -22,7 +22,7 @@ function getDailySeed(): string {
 }
 
 /** Shuffle array deterministically using daily seed */
-function deterministicShuffle<T>(array: T[], seed: string): T[] {
+export function deterministicShuffle<T>(array: T[], seed: string): T[] {
   // Create a hash from the seed string
   let hash = 0
   for (let i = 0; i < seed.length; i++) {
@@ -100,7 +100,7 @@ export function usePagedMedia(
         const known = new Set(current.map((item) => item.id))
         const incoming = response.items.filter((item) => !known.has(item.id))
         // Apply deterministic shuffle to new incoming items
-        const shuffledIncoming = deterministicShuffle(incoming, dailySeed)
+        const shuffledIncoming = deterministicShuffle(incoming, dailySeed ?? '')
         return [...current, ...shuffledIncoming]
       })
       setPage(response.page)
@@ -122,7 +122,7 @@ export function usePagedMedia(
       setItems((current) => {
         const known = new Set(current.map((item) => item.id))
         const incoming = response.items.filter((item) => !known.has(item.id))
-        const shuffledIncoming = deterministicShuffle(incoming, dailySeed)
+        const shuffledIncoming = deterministicShuffle(incoming, dailySeed ?? '')
         return incoming.length ? [...current, ...shuffledIncoming] : current
       })
     } catch {
