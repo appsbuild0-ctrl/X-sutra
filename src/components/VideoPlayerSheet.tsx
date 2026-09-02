@@ -21,7 +21,7 @@ import type { MediaItem } from '../types'
 const SWIPE_COMMIT = 0.18
 const WHEEL_STEP_PX = 60
 const STEP_LOCK_MS = 320
-const DOUBLE_TAP_MS = 280
+const DOUBLE_TAP_MS = 200
 
 /**
  * Full-screen swipe/wheel player, ported 1:1 from the reference app's
@@ -286,7 +286,7 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
     }
   }
 
-  // Keep one extra upcoming slide mounted so consecutive swipes stay instant.
+  // Keep current + next 2 slides mounted with preload for instant consecutive playback.
   const first = Math.max(0, playerIndex - 1)
   const slides = playerQueue.slice(first, Math.min(playerQueue.length, playerIndex + 3))
 
@@ -399,18 +399,14 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
         <div className="player-id">
           <button
             className={`player-follow${following ? ' on' : ''}`}
-            onClick={() => {
-              if (!current) return
-              toggleFollow({ username: current.creator, displayName: current.creator, followers: 0, gifs: 0, views: 0, verified: false })
-              setFollowing(!following)
-            }}
+            onClick={(e) => { e.stopPropagation(); if (!current) return; toggleFollow({ username: current.creator, displayName: current.creator, followers: 0, gifs: 0, views: 0, verified: false }); setFollowing(!following) }}
             aria-label={following ? 'Following — tap to unfollow' : 'Follow'}
           >
             <UserIcon size={24} />
             <span className="player-follow-badge">{following ? <CheckIcon size={12} /> : <PlusIcon size={12} />}</span>
           </button>
           <div className="player-id-text">
-            <button className="player-handle" onClick={goCreator}>@{current.creator}</button>
+            <button className="player-handle" onClick={(e) => { e.stopPropagation(); goCreator() }}>@{current.creator}</button>
             <div className="player-stats">
               {compactNumber(current.views)} views · {durationLabel(current.duration)}
             </div>
@@ -419,7 +415,7 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
         {current.tags.length > 0 && (
           <div className="player-tags">
             {current.tags.slice(0, 6).map((tag) => (
-              <button key={tag} className="player-tag" onClick={() => goTag(tag)}>
+              <button key={tag} className="player-tag" onClick={(e) => { e.stopPropagation(); goTag(tag) }}>
                 #{tag}
               </button>
             ))}
@@ -453,7 +449,7 @@ function RailBtn({
 }): React.JSX.Element {
   return (
     <div style={{ textAlign: 'center' }}>
-      <button className={`player-rail-btn ${on ? 'on' : ''}`} onClick={onClick} aria-label={label}>
+      <button className={`player-rail-btn ${on ? 'on' : ''}`} onClick={(e) => { e.stopPropagation(); onClick() }} aria-label={label}>
         {children}
       </button>
       <div className="player-rail-label">{label}</div>

@@ -115,19 +115,21 @@ export function MediaCard({ item, queue, priority = false }: MediaCardProps): Re
     else setImageExhausted(true)
   }
 
-  const open = async () => {
+  const open = () => {
     setOpening(true)
-    try {
-      const full = item.id.startsWith('hp-')
-        ? await hotpicApi.resolve(item)
-        : isPremium
-          ? item
-          : (resolved ?? await hydrateMedia(item).catch(() => item))
-      const fullQueue = (queue?.length ? queue : [item]).map((entry) => entry.id === full.id ? full : (detailCache.get(entry.id) ?? entry))
-      openPlayer(full, fullQueue)
-    } finally {
-      setOpening(false)
+    // Open player immediately with cached/resolved data, hydrate in background for better URLs
+    const full = resolved ?? item
+    const fullQueue = (queue?.length ? queue : [item]).map((entry) => entry.id === full.id ? full : (detailCache.get(entry.id) ?? entry))
+    openPlayer(full, fullQueue)
+    
+    // Hydrate in background to get better quality URLs if not already loaded
+    if (!resolved && !isPremium) {
+      void hydrateMedia(item).then((hydrated) => {
+        setResolved(hydrated)
+        // Update player queue with better URLs if player is still open
+      }).catch(() => undefined)
     }
+    setTimeout(() => setOpening(false), 300)
   }
 
   return (

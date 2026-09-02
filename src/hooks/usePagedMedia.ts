@@ -75,10 +75,11 @@ export function usePagedMedia(
     try {
       const response = await loader(1)
       if (generation.current !== requestGeneration) return
+      // Only append NEW items at the BOTTOM - don't change existing order
       setItems((current) => {
         const known = new Set(current.map((item) => item.id))
         const incoming = response.items.filter((item) => !known.has(item.id))
-        return incoming.length ? [...incoming, ...current] : current
+        return incoming.length ? [...current, ...incoming] : current
       })
     } catch {
       /* keep the visible feed if a background refresh fails */

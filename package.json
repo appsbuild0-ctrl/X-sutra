@@ -1,7 +1,7 @@
 {
   "name": "redgrab",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "type": "module",
   "description": "RedGrab \u2014 Download GIFs, images and videos from RedGifs. Browse, search, save and play clips in HD.",
   "scripts": {
