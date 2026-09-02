@@ -1,4 +1,5 @@
 import type { MediaItem } from '../types'
+import { fetchWithRetry } from './http'
 import { idbPutFile, resolvePremiumSrc } from './premium-idb'
 import { readStored, writeStored } from './storage'
 
@@ -174,7 +175,7 @@ export const emptyCatalog = (): PremiumCatalog => ({
 export async function fetchPremiumCatalog(): Promise<PremiumCatalog> {
   const local = localCatalog()
   try {
-    const response = await fetch(ENDPOINT, { headers: { Accept: 'application/json' } })
+    const response = await fetchWithRetry(ENDPOINT, { headers: { Accept: 'application/json' } })
     if (!response.ok) return cacheCatalog(local)
     const data = await response.json() as Partial<PremiumCatalog>
     const fallback = emptyCatalog()
@@ -312,7 +313,7 @@ function applyLocalAdmin(action: string, payload: Record<string, unknown>): Prem
 
 export async function premiumAdmin(action: string, payload: Record<string, unknown> = {}): Promise<{ ok: boolean; error?: string; catalog?: PremiumCatalog; added?: number; skipped?: number }> {
   try {
-    const response = await fetch(ENDPOINT, {
+    const response = await fetchWithRetry(ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ password: ADMIN_KEY, action, ...payload })
@@ -335,7 +336,7 @@ export async function premiumAdmin(action: string, payload: Record<string, unkno
 
 export async function scanPremiumPages(urls: string): Promise<{ ok: boolean; error?: string; pages?: ScanPage[]; totals?: { images: number; videos: number; media: number } }> {
   try {
-    const response = await fetch(SCAN, {
+    const response = await fetchWithRetry(SCAN, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ password: ADMIN_KEY, urls })

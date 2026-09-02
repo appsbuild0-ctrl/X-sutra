@@ -1,3 +1,4 @@
+import { fetchWithRetry } from './http'
 import { fetchPremiumCatalog, premiumAdmin } from './premium'
 import { readStored, writeStored } from './storage'
 
@@ -108,7 +109,7 @@ export function localHub(): AdminHub {
 export async function loadHub(): Promise<AdminHub> {
   const local = localHub()
   try {
-    const response = await fetch('/api/premium', { headers: { Accept: 'application/json' } })
+    const response = await fetchWithRetry('/api/premium', { headers: { Accept: 'application/json' } })
     if (response.ok) {
       const data = await response.json() as Partial<AdminHub>
       if (data && Object.keys(data).length > 0) {

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { defaultHub, loadHub, type AdminHub, type PlanInfo } from '../lib/adminHub'
+import { durationLabel } from '../lib/format'
 import { readPayQr } from '../lib/payQr'
 
 export type PlanId = 'premium' | 'vip'
@@ -23,7 +24,8 @@ export function PlanCards({ onPick }: { onPick: (plan: PlanId) => void }): React
 
 export function PayQrModal({ plan, onClose }: { plan: PlanId; onClose: () => void }): React.JSX.Element {
   const [hub, setHub] = useState<AdminHub>(defaultHub)
-  const [seconds, setSeconds] = useState(60)
+  // 119s window, always rendered as m:ss ("1:59" → "1:00" → "0:09"), never bare seconds.
+  const [seconds, setSeconds] = useState(119)
   useEffect(() => { void loadHub().then(setHub) }, [])
   useEffect(() => {
     const timer = window.setInterval(() => setSeconds((current) => Math.max(0, current - 1)), 1000)
@@ -40,7 +42,7 @@ export function PayQrModal({ plan, onClose }: { plan: PlanId; onClose: () => voi
         {info.price && <p>{info.price}</p>}
         {qr ? <img src={qr} alt={`${info.name} payment QR`} /> : <p>Admin ne QR upload nahi kiya.</p>}
         {!expired && <p>Scan QR to complete payment</p>}
-        <strong className="dl-gate__timer">{expired ? 'Expired' : `Payment expires in ${seconds}s`}</strong>
+        <strong className="dl-gate__timer">{expired ? 'Expired' : `Payment expires in ${durationLabel(seconds)}`}</strong>
         <button className="secondary-button" type="button" onClick={onClose}>CLOSE</button>
       </div>
     </div>

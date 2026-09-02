@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { CrownMark } from '../components/CrownMark'
+import { PayQrModal, PlanCards, type PlanId } from '../components/PlanPay'
 import { EyeIcon, EyeOffIcon, ShieldIcon } from '../components/icons'
 import { useApp, validUsername } from '../context/AppContext'
 import { roleLabel } from '../lib/roles'
@@ -17,6 +18,7 @@ export function LoginScreen(): React.JSX.Element {
   const [showPassword, setShowPassword] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
+  const [plan, setPlan] = useState<PlanId | null>(null)
 
   const creating = mode === 'signup'
 
@@ -77,6 +79,15 @@ export function LoginScreen(): React.JSX.Element {
   return (
     <section className="screen screen--login">
       <div className="login-card">
+          <button
+            className="login-guest-arrow"
+            type="button"
+            aria-label="Continue as guest"
+            onClick={() => { notify('Continuing in guest mode'); navigate('/') }}
+          >
+            <span>Continue as guest</span>
+            <span className="login-guest-arrow__head" aria-hidden="true">→</span>
+          </button>
           <span className="login-card__mark"><CrownMark size={34} /></span>
         <p className="eyebrow">{creating ? 'Create local account' : 'Welcome back'}</p>
         <h2>{creating ? 'Set up your profile'            : 'Sign in to RedGrab'}</h2>
@@ -150,13 +161,9 @@ export function LoginScreen(): React.JSX.Element {
           </button>
         </form>
 
-        <button
-          className="text-button login-swap"
-          type="button"
-          onClick={() => { notify('Continuing in guest mode'); navigate('/you') }}
-        >
-          Continue as guest →
-        </button>
+        <p className="eyebrow login-plans-title">Upgrade plans</p>
+        <PlanCards onPick={setPlan} />
+        {plan && <PayQrModal plan={plan} onClose={() => setPlan(null)} />}
 
         <p className="login-note">
           <ShieldIcon size={13} /> Local-only login. Your password is hashed on this device and never sent to any server.
