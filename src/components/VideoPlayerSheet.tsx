@@ -45,6 +45,7 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
     isFollowing,
     toggleFollow,
     requestDownload,
+    account,
     preferences,
     updatePreferences,
     notify
@@ -425,7 +426,7 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
 
       <div className="player-scrub"><i style={{ width: `${Math.round(progress * 100)}%` }} /></div>
       {downloadOpen && current && (
-        <DownloadGate
+        <DownloadGate userRole={account?.role}
           item={current}
           onClose={() => setDownloadOpen(false)}
           onNormalDownload={(item) => requestDownload(item)}
