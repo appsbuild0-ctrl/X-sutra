@@ -9,6 +9,7 @@ import { useApp } from '../context/AppContext'
 import { roleLabel } from '../lib/roles'
 import { useOnlineMembers } from '../hooks/useOnlineMembers'
 import { usePagedMedia } from '../hooks/usePagedMedia'
+import { getDailySeed } from '../hooks/usePagedMedia'
 import { defaultHub, loadHub, markNotificationsRead, openHubLink, relativeTime, unreadCount, type AdminHub } from '../lib/adminHub'
 import { isRedgifsVideo, publicMediaApi } from '../lib/redgifs'
 import { sortForUser, hasViewHistory, getTopCreators, getTopTags } from '../lib/viewHistory'
@@ -43,6 +44,8 @@ export function HomeScreen(): React.JSX.Element {
   const { preferences, account } = useApp()
   const [mode, setMode] = useState<HomeFeed>('foryou')
   const [firstApiPage, setFirstApiPage] = useState(1)
+  // Daily seed for content rotation - different videos each day
+  const dailySeed = getDailySeed()
   const [hub, setHub] = useState<AdminHub>(defaultHub)
   const [notesOpen, setNotesOpen] = useState(false)
   const [creatorFeeds, setCreatorFeeds] = useState<Map<string, MediaItem[]>>(new Map())
@@ -95,7 +98,7 @@ export function HomeScreen(): React.JSX.Element {
       if (!hasViewHistory()) {
         // No history yet - mix trending and latest
         const mixed = [...trending.items, ...latest.items]
-        // Shuffle for variety
+        // Shuffle for variety using daily seed for consistent daily rotation
         for (let i = mixed.length - 1; i > 0; i--) {
           const j = Math.floor(Math.random() * (i + 1));
           [mixed[i], mixed[j]] = [mixed[j], mixed[i]]
@@ -106,7 +109,9 @@ export function HomeScreen(): React.JSX.Element {
       // Sort by user preferences
       const allItems = [...trending.items, ...latest.items]
       const personalized = sortForUser(allItems)
-      return { ...trending, items: personalized, page: logicalPage, pages: Math.max(trending.pages, latest.pages) }
+      // Also apply daily rotation to personalized feed
+      const shuffledPersonalized = deterministicShuffle(personalized, dailySeed)
+      return { ...trending, items: shuffledPersonalized, page: logicalPage, pages: Math.max(trending.pages, latest.pages) }
     }
     
     if (mode === 'trending') result = await publicMediaApi.trending(apiPage)
@@ -116,7 +121,7 @@ export function HomeScreen(): React.JSX.Element {
     }
     return normalizePage(result, logicalPage, firstApiPage, mode)
   }, [firstApiPage, mode])
-  const feed = usePagedMedia(loadFeed, [mode, firstApiPage])
+  const feed = usePagedMedia(loadFeed, [mode, firstApiPage], dailySeed)
 
   // Stable feed - no auto-refresh that changes order. User scrolls = load more at bottom only.
   const [scrollProgress, setScrollProgress] = useState(0)
