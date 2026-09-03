@@ -1,8 +1,17 @@
 /** Owner contact links shown in the premium download panel.
- *  NOTE: replace these with the real Discord invite / Telegram handle. */
+ *  Each channel carries the owner's public handle (shown to the user) and the
+ *  real invite / DM URL that opens when the button is tapped. */
 export const OWNER_CONTACT = {
-  discord: 'https://discord.gg/xsutra',
-  telegram: 'https://t.me/xsutra',
+  discord: {
+    label: 'Discord',
+    handle: 'GodxEye0',
+    url: 'https://discord.gg/PsMq5j3Xjv'
+  },
+  telegram: {
+    label: 'Telegram',
+    handle: 'GodxEye0',
+    url: 'https://t.me/GodxEye0'
+  }
 } as const
 
 export type OwnerContactChannel = keyof typeof OWNER_CONTACT

@@ -77,18 +77,18 @@ export function DownloadGate({
             <p className="eyebrow">Owner contact</p>
             <h2>{premium ? 'Contact / support' : 'Premium access'}</h2>
             <p>Niche diye Discord / Telegram channels pe owner se contact karein.</p>
-            <button className="dl-contact" type="button" onClick={() => openContact(OWNER_CONTACT.discord)}>
+            <button className="dl-contact" type="button" onClick={() => openContact(OWNER_CONTACT.discord.url)}>
               <span aria-hidden="true">💬</span>
               <span>
                 <strong>Discord</strong>
-                <small>{OWNER_CONTACT.discord.replace(/^https?:\/\//, '')}</small>
+                <small>{OWNER_CONTACT.discord.handle}</small>
               </span>
             </button>
-            <button className="dl-contact" type="button" onClick={() => openContact(OWNER_CONTACT.telegram)}>
+            <button className="dl-contact" type="button" onClick={() => openContact(OWNER_CONTACT.telegram.url)}>
               <span aria-hidden="true">✈️</span>
               <span>
                 <strong>Telegram</strong>
-                <small>{OWNER_CONTACT.telegram.replace(/^https?:\/\//, '')}</small>
+                <small>{OWNER_CONTACT.telegram.handle}</small>
               </span>
             </button>
           </>
