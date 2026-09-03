@@ -40,61 +40,6 @@
   force = true
 
 [[redirects]]
-  from = "/api/telegram/channels"
-  to = "/.netlify/functions/telegram-channels"
-  status = 200
-  force = true
-
-# Owner bootstrap only. The function requires the x-admin-setup-secret header
-# (timing-safe compared against ADMIN_SETUP_SECRET). Used by the owner-only
-# Telegram tab in the admin panel and by trusted terminals.
-[[redirects]]
-  from = "/api/internal/telegram-auth"
-  to = "/.netlify/functions/telegram-admin"
-  status = 200
-  force = true
-
-# Discord admin + real channel import. Without these the catch-all below would
-# answer /api/discord/* with index.html instead of the function.
-[[redirects]]
-  from = "/api/discord/health"
-  to = "/.netlify/functions/discord-health"
-  status = 200
-  force = true
-
-[[redirects]]
-  from = "/api/discord/upload"
-  to = "/.netlify/functions/discord-upload"
-  status = 200
-  force = true
-
-[[redirects]]
-  from = "/api/discord/delete"
-  to = "/.netlify/functions/discord-delete"
-  status = 200
-  force = true
-
-[[redirects]]
-  from = "/api/discord/sync"
-  to = "/.netlify/functions/discord-sync"
-  status = 200
-  force = true
-
-# Premium media feed (read-time auto-sync) and the attachment URL resolver that
-# 302s to a fresh Discord CDN link.
-[[redirects]]
-  from = "/api/discord/feed"
-  to = "/.netlify/functions/discord-feed"
-  status = 200
-  force = true
-
-[[redirects]]
-  from = "/api/discord/media"
-  to = "/.netlify/functions/discord-media"
-  status = 200
-  force = true
-
-[[redirects]]
   from = "/api/hotpic"
   to = "/.netlify/functions/hotpic"
   status = 200
@@ -110,9 +55,3 @@
   from = "/*"
   to = "/index.html"
   status = 200
-
-# Background fallback for the Discord auto-sync: re-reads the mapped channels on
-# a schedule even when nobody has the app open. It is a no-op when auto-sync is
-# disabled or no channel is mapped.
-[functions."discord-cron"]
-  schedule = "@every 10m"

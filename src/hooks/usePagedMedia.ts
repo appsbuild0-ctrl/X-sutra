@@ -12,10 +12,45 @@ interface PagedMediaState {
   mergeFresh: () => Promise<void>
 }
 
-/** Shared real-data pagination with stale-request protection. */
+/** Get a deterministic daily seed based on current date */
+export function getDailySeed(): string {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
+/** Shuffle array deterministically using daily seed */
+export function deterministicShuffle<T>(array: T[], seed: string): T[] {
+  // Create a hash from the seed string
+  let hash = 0
+  for (let i = 0; i < seed.length; i++) {
+    const char = seed.charCodeAt(i)
+    hash = ((hash << 5) - hash) + char
+    hash = hash | 0 // Convert to 32bit integer
+  }
+
+  // Use hash to create a repeatable random sequence
+  const shuffled = [...array]
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    // Deterministic random index based on hash
+    let randomIndex = 0
+    for (let j = 0; j < 32; j++) {
+      randomIndex = (randomIndex * 16777619) ^ ((hash >> j) & 1)
+    }
+    randomIndex = Math.abs(randomIndex) % (i + 1)
+    
+    ;[shuffled[i], shuffled[randomIndex]] = [shuffled[randomIndex], shuffled[i]]
+  }
+  return shuffled
+}
+
+/** Shared real-data pagination with stale-request protection and daily rotation. */
 export function usePagedMedia(
-  loader: (page: number) => Promise<PageResult<MediaItem>>,
-  dependencies: ReadonlyArray<unknown>
+  loader: (page: number, dailySeed?: string) => Promise<PageResult<MediaItem>>,
+  dependencies: ReadonlyArray<unknown>,
+  dailySeed?: string
 ): PagedMediaState {
   const [items, setItems] = useState<MediaItem[]>([])
   const [page, setPage] = useState(1)
@@ -30,9 +65,14 @@ export function usePagedMedia(
     setLoading(true)
     setError(null)
     try {
-      const response = await loader(1)
+      const response = await loader(1, dailySeed)
       if (generation.current !== requestGeneration) return
-      setItems(response.items)
+      // Apply deterministic shuffle if we have a daily seed and it's a fresh load
+      let shuffledItems = response.items
+      if (dailySeed && response.pages >= 1) {
+        shuffledItems = deterministicShuffle(response.items, dailySeed)
+      }
+      setItems(shuffledItems)
       setPage(response.page)
       setPages(response.pages)
     } catch (reason) {
@@ -45,8 +85,12 @@ export function usePagedMedia(
       if (generation.current === requestGeneration) setLoading(false)
     }
   // loader identity is deliberately controlled by the screen's dependency list.
+  // NOTE: `loading` must NEVER be listed here. It changes on every fetch, which
+  // recreated this callback, re-fired the load effect and turned the feed into
+  // an infinite refetch loop — the home feed visibly blinked/re-shuffled every
+  // second on devices. reload() reads no state, so deps stay [loader, dailySeed].
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, dependencies)
+  }, [loader, dailySeed])
 
   const loadMore = useCallback(async () => {
     if (loading || loadingMore || page >= pages) return
@@ -54,11 +98,14 @@ export function usePagedMedia(
     const nextPage = page + 1
     setLoadingMore(true)
     try {
-      const response = await loader(nextPage)
+      const response = await loader(nextPage, dailySeed)
       if (generation.current !== requestGeneration) return
       setItems((current) => {
         const known = new Set(current.map((item) => item.id))
-        return [...current, ...response.items.filter((item) => !known.has(item.id))]
+        const incoming = response.items.filter((item) => !known.has(item.id))
+        // Apply deterministic shuffle to new incoming items
+        const shuffledIncoming = deterministicShuffle(incoming, dailySeed ?? '')
+        return [...current, ...shuffledIncoming]
       })
       setPage(response.page)
       setPages(response.pages)
@@ -67,23 +114,25 @@ export function usePagedMedia(
     } finally {
       if (generation.current === requestGeneration) setLoadingMore(false)
     }
-  }, [loader, loading, loadingMore, page, pages])
+  }, [loader, loading, loadingMore, page, pages, dailySeed])
 
   const mergeFresh = useCallback(async () => {
     if (loading || loadingMore) return
     const requestGeneration = generation.current
     try {
-      const response = await loader(1)
+      const response = await loader(1, dailySeed)
       if (generation.current !== requestGeneration) return
+      // Only append NEW items at the BOTTOM - don't change existing order
       setItems((current) => {
         const known = new Set(current.map((item) => item.id))
         const incoming = response.items.filter((item) => !known.has(item.id))
-        return incoming.length ? [...incoming, ...current] : current
+        const shuffledIncoming = deterministicShuffle(incoming, dailySeed ?? '')
+        return incoming.length ? [...current, ...shuffledIncoming] : current
       })
     } catch {
       /* keep the visible feed if a background refresh fails */
     }
-  }, [loader, loading, loadingMore])
+  }, [loader, loading, loadingMore, dailySeed])
 
   useEffect(() => { void reload() }, [reload])
 

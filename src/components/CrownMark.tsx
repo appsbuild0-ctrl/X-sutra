@@ -7,8 +7,8 @@ export function CrownMark({ size = 28, className }: CrownMarkProps): React.JSX.E
   return (
     <img
       className={className}
-      src="/x-sutra-crown.png"
-      alt=""
+      src="/redgrab-logo.svg"
+      alt="RedGrab"
       width={size}
       height={size}
       decoding="async"
