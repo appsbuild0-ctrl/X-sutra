@@ -1097,6 +1097,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .dl-option--gold { background: linear-gradient(140deg, rgba(255,212,126,.18), rgba(245,160,60,.08)); }
 .dl-option small, .dl-contact small { color: var(--muted); font-size: 11px; }
 .dl-contact { grid-template-columns: 28px 1fr; align-items: center; gap: 10px; }
+.dl-contact strong, .dl-contact small { display: block; }
 .plan-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
 .plan-card {
   min-height: 92px; padding: 14px; border: 1px solid rgba(255,196,107,.35); border-radius: 16px;
