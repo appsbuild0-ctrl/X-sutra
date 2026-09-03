@@ -139,12 +139,14 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
     if (v && wantPlayingRef.current) {
       v.muted = muted
       v.currentTime = 0
-      v.play().then(() => setPlaying(true)).catch(() => {
+      // Older Android WebViews return undefined from play() instead of a
+      // Promise — calling .then() on that crashed the player on open.
+      safePlay(v).then(() => setPlaying(true)).catch(() => {
         // Browser blocked audible autoplay: fall back to muted autoplay so the
         // clip still starts instead of showing as paused.
         v.muted = true
         setMuted(true)
-        void v.play().then(() => setPlaying(true)).catch(() => setPlaying(false))
+        void safePlay(v).then(() => setPlaying(true)).catch(() => setPlaying(false))
       })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -162,7 +164,7 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
     if (!v) return
     if (v.paused) {
       wantPlayingRef.current = true
-      void v.play().catch(() => setPlaying(false))
+      void safePlay(v).catch(() => setPlaying(false))
     } else {
       wantPlayingRef.current = false
       v.pause()
@@ -434,6 +436,19 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
       )}
     </div>
   )
+}
+
+/** play() only returns a Promise on modern engines; old Android WebViews
+ *  return undefined, so normalise it before chaining .then/.catch. */
+function safePlay(v: HTMLVideoElement): Promise<void> {
+  try {
+    const p = v.play() as unknown
+    return p && typeof (p as Promise<void>).then === 'function'
+      ? (p as Promise<void>)
+      : Promise.resolve()
+  } catch (error) {
+    return Promise.reject(error instanceof Error ? error : new Error('play failed'))
+  }
 }
 
 function RailBtn({
