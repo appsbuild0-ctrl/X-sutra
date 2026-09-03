@@ -90,7 +90,9 @@ function mergeMediaDetail(item: MediaItem, detail: MediaItem): MediaItem {
     ...item,
     ...detail,
     thumbnail: detail.thumbnail ?? item.thumbnail,
-    thumbnailUrls: detail.thumbnailUrls.length ? detail.thumbnailUrls : item.thumbnailUrls,
+    // The public API shape is intentionally tolerant here: never trust that a
+    // partial/detail response carries thumbnailUrls/watermarkedUrls.
+    thumbnailUrls: detail.thumbnailUrls?.length ? detail.thumbnailUrls : (item.thumbnailUrls?.length ? item.thumbnailUrls : (item.thumbnail ? [item.thumbnail] : [])),
     previewUrl: detail.previewUrl ?? item.previewUrl,
     videoUrl: detail.videoUrl ?? item.videoUrl,
     videoUrlSd: detail.videoUrlSd ?? item.videoUrlSd,

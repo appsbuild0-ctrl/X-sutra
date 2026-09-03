@@ -5,11 +5,14 @@ import { MediaGrid } from '../components/MediaGrid'
 import { PullToRefresh } from '../components/PullToRefresh'
 import { ScreenHeader } from '../components/ScreenHeader'
 import { SparkIcon } from '../components/icons'
+import { InstagramAvatar } from '../components/InstagramAvatar'
 import { useApp } from '../context/AppContext'
 import { roleLabel } from '../lib/roles'
 import { useOnlineMembers } from '../hooks/useOnlineMembers'
 import { usePagedMedia } from '../hooks/usePagedMedia'
-import { defaultHub, loadHub, markNotificationsRead, openHubLink, relativeTime, unreadCount, type AdminHub } from '../lib/adminHub'
+import { deterministicShuffle, getDailySeed } from '../hooks/usePagedMedia'
+import { useHub } from '../hooks/useHub'
+import { markNotificationsRead, openHubLink, refreshHub, relativeTime, unreadCount } from '../lib/adminHub'
 import { isRedgifsVideo, publicMediaApi } from '../lib/redgifs'
 import { sortForUser, hasViewHistory, getTopCreators, getTopTags } from '../lib/viewHistory'
 import type { FeedOrder, MediaItem, PageResult } from '../types'
@@ -43,7 +46,9 @@ export function HomeScreen(): React.JSX.Element {
   const { preferences, account } = useApp()
   const [mode, setMode] = useState<HomeFeed>('foryou')
   const [firstApiPage, setFirstApiPage] = useState(1)
-  const [hub, setHub] = useState<AdminHub>(defaultHub)
+  // Daily seed for content rotation - different videos each day
+  const dailySeed = getDailySeed()
+  const hub = useHub()
   const [notesOpen, setNotesOpen] = useState(false)
   const [creatorFeeds, setCreatorFeeds] = useState<Map<string, MediaItem[]>>(new Map())
   const onlineMembers = useOnlineMembers()
@@ -54,8 +59,6 @@ export function HomeScreen(): React.JSX.Element {
   const hasPersonalization = hasViewHistory()
   const topCreators = getTopCreators(5)
   const topTags = getTopTags(8)
-
-  useEffect(() => { void loadHub().then(setHub) }, [])
 
   // Load feeds from top creators for personalization
   useEffect(() => {
@@ -95,7 +98,7 @@ export function HomeScreen(): React.JSX.Element {
       if (!hasViewHistory()) {
         // No history yet - mix trending and latest
         const mixed = [...trending.items, ...latest.items]
-        // Shuffle for variety
+        // Shuffle for variety using daily seed for consistent daily rotation
         for (let i = mixed.length - 1; i > 0; i--) {
           const j = Math.floor(Math.random() * (i + 1));
           [mixed[i], mixed[j]] = [mixed[j], mixed[i]]
@@ -106,7 +109,9 @@ export function HomeScreen(): React.JSX.Element {
       // Sort by user preferences
       const allItems = [...trending.items, ...latest.items]
       const personalized = sortForUser(allItems)
-      return { ...trending, items: personalized, page: logicalPage, pages: Math.max(trending.pages, latest.pages) }
+      // Also apply daily rotation to personalized feed
+      const shuffledPersonalized = deterministicShuffle(personalized, dailySeed)
+      return { ...trending, items: shuffledPersonalized, page: logicalPage, pages: Math.max(trending.pages, latest.pages) }
     }
     
     if (mode === 'trending') result = await publicMediaApi.trending(apiPage)
@@ -116,7 +121,7 @@ export function HomeScreen(): React.JSX.Element {
     }
     return normalizePage(result, logicalPage, firstApiPage, mode)
   }, [firstApiPage, mode])
-  const feed = usePagedMedia(loadFeed, [mode, firstApiPage])
+  const feed = usePagedMedia(loadFeed, [mode, firstApiPage], dailySeed)
 
   // Stable feed - no auto-refresh that changes order. User scrolls = load more at bottom only.
   const [scrollProgress, setScrollProgress] = useState(0)
@@ -161,7 +166,7 @@ export function HomeScreen(): React.JSX.Element {
 
   const refreshRealFeed = useCallback(async () => {
     setFirstApiPage((current) => current >= 7 ? 1 : current + 1)
-    void loadHub().then(setHub)
+    void refreshHub()
   }, [])
 
   const openNotes = () => {
@@ -178,7 +183,14 @@ export function HomeScreen(): React.JSX.Element {
             <button className="notify-bell" type="button" onClick={openNotes} aria-label="Notifications">
               🔔{unread > 0 && <i>{unread}</i>}
             </button>
-            <button className="home-cta home-cta--login" type="button" onClick={() => navigate(account ? (account.role === 'admin' ? '/admin' : '/you') : '/login')}>{account ? roleLabel(account.role) : 'Login'}</button>
+            {account ? (
+              <div className="home-profile-area" onClick={() => navigate('/you')} role="button" aria-label="Go to your profile">
+                <InstagramAvatar src={account?.profileImageUrl || undefined} label={account?.username || account?.name || 'U'} size={40} />
+                <span className="home-profile-text">{account.username ? '@' + account.username : ''}</span>
+              </div>
+            ) : (
+              <button className="home-cta home-cta--login" type="button" onClick={() => navigate('/login')}>Login</button>
+            )}
           </div>
         } />
 
@@ -195,6 +207,13 @@ export function HomeScreen(): React.JSX.Element {
             ))}
           </div>
         )}
+
+        <style>{`
+          .home-profile-area { display: flex; align-items: center; gap: 8px; }
+          .home-profile-area:hover { background: rgba(255,255,255,0.1); border-radius: 20px; padding: 6px 12px; }
+          .home-profile-text { color: var(--p-text, #333); font-size: 13px; }
+          .home-cta--login { min-width: 120px; }
+        `}</style>
 
         {card.enabled && (
           <div className="home-intro" style={card.image ? { backgroundImage: `${card.overlay ? 'linear-gradient(180deg, rgba(8,6,6,.25), rgba(8,6,6,.78)), ' : ''}url(${card.image})`, backgroundSize: 'cover', backgroundPosition: 'center' } : undefined}>
