@@ -122,7 +122,7 @@ test('admin / admin123 signs in, lands on the full admin panel, and never blinks
     const statLabels = Array.from(stats.querySelectorAll('span')).map((node) => node.textContent)
     assert.deepEqual(statLabels.slice(0, 4), ['Total Users', 'Premium', 'VIP', 'Videos'])
     const tabs = Array.from(window.document.querySelectorAll('.admin-tabs button')).map((node) => node.textContent)
-    assert.deepEqual(tabs, ['Dashboard', 'Users', 'Videos', 'Notifications', 'Settings'])
+    assert.deepEqual(tabs, ['Dashboard', 'Users', 'Videos', 'QR Code', 'Plans', 'Home Card', 'Notifications'])
 
     // The admin session must persist (readSession round-trip) so a refresh stays signed in.
     const session = JSON.parse(window.localStorage.getItem('x-sutra.session.local.v1'))
@@ -136,6 +136,29 @@ test('admin / admin123 signs in, lands on the full admin panel, and never blinks
       [],
       'no whole-page navigation after admin login (the old Discord auto-redirect blink)'
     )
+
+    // 5. The new dedicated tabs (QR / Plans / Home Card / Notifications) each
+    //    render their own Save + Undo bar that reads "Saved ✓" until the admin
+    //    actually changes something, then the Save button becomes live.
+    const plansTab = Array.from(window.document.querySelectorAll('.admin-tabs button')).find((b) => b.textContent === 'Plans')
+    assert.ok(plansTab, 'Plans tab exists')
+    plansTab.click()
+
+    const cleanBar = await waitFor(() => window.document.querySelector('.screen--admin .save-row'), 5000, 'plans save row')
+    assert.equal(cleanBar.querySelector('.primary-button').textContent, 'Saved ✓', 'Save shows Saved ✓ when nothing changed')
+    assert.equal(cleanBar.querySelector('.primary-button').disabled, true, 'Save disabled when nothing changed')
+    assert.equal(cleanBar.querySelector('.secondary-button').disabled, true, 'Undo disabled when nothing changed')
+
+    const nameInput = Array.from(window.document.querySelectorAll('.screen--admin input[placeholder="Plan name"]'))[0]
+    assert.ok(nameInput, 'Premium plan name input exists')
+    setNativeValue(window, nameInput, 'Premium Plus')
+    await waitFor(() => {
+      const bar = window.document.querySelector('.screen--admin .save-row')
+      return bar && bar.querySelector('.primary-button').textContent === 'Save changes'
+    }, 5000, 'Save to become active once the admin edits')
+    const dirtyBar = window.document.querySelector('.screen--admin .save-row')
+    assert.equal(dirtyBar.querySelector('.primary-button').disabled, false, 'Save enabled once dirty')
+    assert.equal(dirtyBar.querySelector('.secondary-button').disabled, false, 'Undo enabled once dirty')
   } finally {
     // Always stop jsdom's timers so the test process exits even on failure.
     window.close()

@@ -11,7 +11,8 @@ import { roleLabel } from '../lib/roles'
 import { useOnlineMembers } from '../hooks/useOnlineMembers'
 import { usePagedMedia } from '../hooks/usePagedMedia'
 import { deterministicShuffle, getDailySeed } from '../hooks/usePagedMedia'
-import { defaultHub, loadHub, markNotificationsRead, openHubLink, relativeTime, unreadCount, type AdminHub } from '../lib/adminHub'
+import { useHub } from '../hooks/useHub'
+import { markNotificationsRead, openHubLink, refreshHub, relativeTime, unreadCount } from '../lib/adminHub'
 import { isRedgifsVideo, publicMediaApi } from '../lib/redgifs'
 import { sortForUser, hasViewHistory, getTopCreators, getTopTags } from '../lib/viewHistory'
 import type { FeedOrder, MediaItem, PageResult } from '../types'
@@ -47,7 +48,7 @@ export function HomeScreen(): React.JSX.Element {
   const [firstApiPage, setFirstApiPage] = useState(1)
   // Daily seed for content rotation - different videos each day
   const dailySeed = getDailySeed()
-  const [hub, setHub] = useState<AdminHub>(defaultHub)
+  const hub = useHub()
   const [notesOpen, setNotesOpen] = useState(false)
   const [creatorFeeds, setCreatorFeeds] = useState<Map<string, MediaItem[]>>(new Map())
   const onlineMembers = useOnlineMembers()
@@ -58,8 +59,6 @@ export function HomeScreen(): React.JSX.Element {
   const hasPersonalization = hasViewHistory()
   const topCreators = getTopCreators(5)
   const topTags = getTopTags(8)
-
-  useEffect(() => { void loadHub().then(setHub) }, [])
 
   // Load feeds from top creators for personalization
   useEffect(() => {
@@ -167,7 +166,7 @@ export function HomeScreen(): React.JSX.Element {
 
   const refreshRealFeed = useCallback(async () => {
     setFirstApiPage((current) => current >= 7 ? 1 : current + 1)
-    void loadHub().then(setHub)
+    void refreshHub()
   }, [])
 
   const openNotes = () => {

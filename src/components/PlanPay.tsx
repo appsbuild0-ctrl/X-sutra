@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
-import { defaultHub, loadHub, type AdminHub, type PlanInfo } from '../lib/adminHub'
+import { useHub } from '../hooks/useHub'
+import { type PlanInfo } from '../lib/adminHub'
 import { durationLabel } from '../lib/format'
 import { readPayQr } from '../lib/payQr'
 
 export type PlanId = 'premium' | 'vip'
 
 export function PlanCards({ onPick }: { onPick: (plan: PlanId) => void }): React.JSX.Element {
-  const [hub, setHub] = useState<AdminHub>(defaultHub)
-  useEffect(() => { void loadHub().then(setHub) }, [])
+  const hub = useHub()
   const Card = ({ id, plan }: { id: PlanId; plan: PlanInfo }) => plan.enabled ? (
     <button className={`plan-card${id === 'vip' ? ' plan-card--vip' : ''}`} type="button" onClick={() => onPick(id)}>
       <strong>{plan.name}</strong>
@@ -23,10 +23,9 @@ export function PlanCards({ onPick }: { onPick: (plan: PlanId) => void }): React
 }
 
 export function PayQrModal({ plan, onClose }: { plan: PlanId; onClose: () => void }): React.JSX.Element {
-  const [hub, setHub] = useState<AdminHub>(defaultHub)
+  const hub = useHub()
   // 119s window, always rendered as m:ss ("1:59" → "1:00" → "0:09"), never bare seconds.
   const [seconds, setSeconds] = useState(119)
-  useEffect(() => { void loadHub().then(setHub) }, [])
   useEffect(() => {
     const timer = window.setInterval(() => setSeconds((current) => Math.max(0, current - 1)), 1000)
     return () => window.clearInterval(timer)
