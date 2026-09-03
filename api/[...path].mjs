@@ -1,13 +1,11 @@
-// X-sutra Vercel backend — single catch-all function.
-// Handlers netlify/functions/ se aate hain (same code Netlify + Vercel dono).
+// RedGrab Vercel backend — single catch-all function.
+// Handlers from netlify/functions/ (same code Netlify + Vercel both use).
 import { handler as redgifs } from '../netlify/functions/redgifs.mjs'
 import { handler as media } from '../netlify/functions/media.mjs'
 import { handler as premium } from '../netlify/functions/premium.mjs'
 import { handler as premiumScan } from '../netlify/functions/premium-scan.mjs'
 import { handler as premiumFile } from '../netlify/functions/premium-file.mjs'
 import { handler as hotpic } from '../netlify/functions/hotpic.mjs'
-import { handler as telegramChannels } from '../netlify/functions/telegram-channels.mjs'
-import { handler as telegramAdmin } from '../netlify/functions/telegram-admin.mjs'
 
 const ROUTES = new Map([
   ['/api/redgifs', redgifs],
@@ -16,8 +14,6 @@ const ROUTES = new Map([
   ['/api/premium-scan', premiumScan],
   ['/api/premium-file', premiumFile],
   ['/api/hotpic', hotpic],
-  ['/api/telegram/channels', telegramChannels],
-  ['/api/internal/telegram-auth', telegramAdmin]
 ])
 
 const HOTPIC_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'

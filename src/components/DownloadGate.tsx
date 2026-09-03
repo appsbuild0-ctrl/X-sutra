@@ -1,36 +1,27 @@
 import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { useApp } from '../context/AppContext'
-import { hasPremiumAccess } from '../lib/roles'
 import type { MediaItem } from '../types'
-import { DiscordIcon, TelegramIcon } from './icons'
-
-const CONTACT_MESSAGE = 'Hey Premium or Vip Plans How much ❤️'
-const DISCORD_USER = 'godxeye0'
-const TELEGRAM_USER = 'godxeye0'
+import { OWNER_CONTACT } from '../lib/ownerContact'
 
 type GateView = 'pick' | 'wait' | 'saving' | 'done' | 'failed' | 'premium'
 
-async function openExternal(url: string): Promise<void> {
-  window.open(url, '_blank', 'noopener,noreferrer')
-}
-
+/** Download gate.
+ *  - Premium/VIP/admin (top): instant "Download Now 👑" straight through the save pipeline.
+ *  - Free (top): 20 second wait, then saves via the app pipeline.
+ *  - Owner Contact (bottom): always offers Discord / Telegram support links. */
 export function DownloadGate({
   item,
   onClose,
   onNormalDownload,
-  onBuyNow
+  userRole,
 }: {
   item: MediaItem
   onClose: () => void
   onNormalDownload: (item: MediaItem) => Promise<boolean>
-  onBuyNow?: () => void
+  userRole?: string | null
 }): React.JSX.Element {
-  const navigate = useNavigate()
-  const { account } = useApp()
-  const instant = hasPremiumAccess(account?.role)
   const [view, setView] = useState<GateView>('pick')
   const [seconds, setSeconds] = useState(20)
+  const premium = userRole === 'premium' || userRole === 'vip' || userRole === 'admin'
 
   useEffect(() => {
     if (view !== 'wait') return
@@ -41,23 +32,20 @@ export function DownloadGate({
     return () => window.clearInterval(timer)
   }, [view])
 
-  const runDownload = (): void => {
+  const runNormalDownload = (): void => {
     setView('saving')
     void onNormalDownload(item).then((ok) => setView(ok ? 'done' : 'failed')).catch(() => setView('failed'))
   }
 
   useEffect(() => {
     if (view !== 'wait' || seconds > 0) return
-    runDownload()
+    runNormalDownload()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, seconds])
 
-  const openDiscord = async (): Promise<void> => {
-    try { await navigator.clipboard.writeText(`${CONTACT_MESSAGE}\n@${DISCORD_USER}`) } catch { /* clipboard optional */ }
-    await openExternal(`https://discord.com/users/${DISCORD_USER}`)
-  }
-
-  const openTelegram = async (): Promise<void> => {
-    await openExternal(`https://t.me/${TELEGRAM_USER}?text=${encodeURIComponent(CONTACT_MESSAGE)}`)
+  const openContact = (url: string): void => {
+    const win = window.open(url, '_blank', 'noopener,noreferrer')
+    if (win) win.focus()
   }
 
   return (
@@ -67,13 +55,41 @@ export function DownloadGate({
           <>
             <p className="eyebrow">Download panel</p>
             <h2>Download</h2>
-            <button className="dl-option" type="button" onClick={() => instant ? runDownload() : setView('wait')}>
-              <strong>Normal Download</strong>
-              <small>{instant ? '⭐ Instant for Premium / VIP' : 'Free Download • 20 sec wait'}</small>
+            {premium ? (
+              <button className="dl-option dl-option--gold" type="button" onClick={runNormalDownload}>
+                <strong>Download Now 👑</strong>
+                <small>Premium / VIP • instant download</small>
+              </button>
+            ) : (
+              <button className="dl-option" type="button" onClick={() => setView('wait')}>
+                <strong>Normal Download</strong>
+                <small>Free Download • 20 sec wait</small>
+              </button>
+            )}
+            <button className="dl-option" type="button" onClick={() => setView('premium')}>
+              <strong>{premium ? 'Owner Contact' : 'Premium Download 👑'}</strong>
+              <small>Discord / Telegram — owner se contact karo</small>
             </button>
-            <button className="dl-option dl-option--gold" type="button" onClick={() => setView('premium')}>
-              <strong>Premium Download ⭐</strong>
-              <small>Get instant/premium access</small>
+          </>
+        )}
+        {view === 'premium' && (
+          <>
+            <p className="eyebrow">Owner contact</p>
+            <h2>{premium ? 'Contact / support' : 'Premium access'}</h2>
+            <p>Niche diye Discord / Telegram channels pe owner se contact karein.</p>
+            <button className="dl-contact" type="button" onClick={() => openContact(OWNER_CONTACT.discord.url)}>
+              <span aria-hidden="true">💬</span>
+              <span>
+                <strong>Discord</strong>
+                <small>{OWNER_CONTACT.discord.handle}</small>
+              </span>
+            </button>
+            <button className="dl-contact" type="button" onClick={() => openContact(OWNER_CONTACT.telegram.url)}>
+              <span aria-hidden="true">✈️</span>
+              <span>
+                <strong>Telegram</strong>
+                <small>{OWNER_CONTACT.telegram.handle}</small>
+              </span>
             </button>
           </>
         )}
@@ -102,32 +118,7 @@ export function DownloadGate({
           <>
             <p className="eyebrow">Normal Download</p>
             <h2>Download failed — Try Again</h2>
-            <button className="primary-button primary-button--wide" type="button" onClick={() => { setSeconds(20); setView('wait') }}>Try Again</button>
-          </>
-        )}
-        {view === 'premium' && (
-          <>
-            <p className="eyebrow">Premium Download ⭐</p>
-            <h2>Choose where you want to contact us</h2>
-            <button className="dl-contact" type="button" onClick={() => void openDiscord()}>
-              <DiscordIcon size={22} />
-              <span><strong>Discord</strong><small>Username: {DISCORD_USER}</small></span>
-            </button>
-            <button className="dl-contact" type="button" onClick={() => void openTelegram()}>
-              <TelegramIcon size={22} />
-              <span><strong>Telegram</strong><small>Username: {TELEGRAM_USER}</small></span>
-            </button>
-            <p className="form-help">Message: {CONTACT_MESSAGE}</p>
-            <button
-              className="primary-button primary-button--wide"
-              type="button"
-              onClick={() => {
-                if (onBuyNow) onBuyNow()
-                else { onClose(); navigate('/login') }
-              }}
-            >
-              BUY NOW
-            </button>
+            <button className="primary-button primary-button--wide" type="button" onClick={() => { if (premium) runNormalDownload(); else { setSeconds(20); setView('wait') } }}>Try Again</button>
           </>
         )}
         <button className="secondary-button" type="button" onClick={onClose}>Close</button>

@@ -20,7 +20,7 @@ export function MediaGrid({ items, loading = false, empty, canLoadMore = false, 
     if (!canLoadMore || loadingMore || !onLoadMore || !sentinelRef.current || !('IntersectionObserver' in window)) return
     const observer = new IntersectionObserver((entries) => {
       if (entries.some((entry) => entry.isIntersecting)) onLoadMore()
-    }, { rootMargin: '360px 0px' })
+    }, { rootMargin: '600px 0px' })
     observer.observe(sentinelRef.current)
     return () => observer.disconnect()
   }, [canLoadMore, loadingMore, onLoadMore, items.length])
@@ -33,8 +33,7 @@ export function MediaGrid({ items, loading = false, empty, canLoadMore = false, 
   return (
     <>
       <div className="media-grid">{items.map((item, index) => <MediaCard key={item.id} item={item} queue={items} priority={index < 4} />)}</div>
-      {canLoadMore && <div className="feed-sentinel" ref={sentinelRef} aria-live="polite">{loadingMore ? <span className="feed-sentinel__loading">Loading more real clips…</span> : <span className="feed-sentinel__ready">Keep scrolling for more</span>}</div>}
-      {canLoadMore && onLoadMore && <div className="load-more-wrap"><button className="secondary-button" type="button" onClick={onLoadMore} disabled={loadingMore}>{loadingMore ? 'Loading…' : 'Load more'}</button></div>}
+      {canLoadMore && <div className="feed-sentinel" ref={sentinelRef} aria-live="polite">{loadingMore && <span className="feed-sentinel__loading">Loading more…</span>}</div>}
     </>
   )
 }

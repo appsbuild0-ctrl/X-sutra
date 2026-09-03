@@ -13,6 +13,19 @@ const BASE_HEADERS: Record<string, string> = {
   Origin: 'https://www.redgifs.com'
 }
 
+// Local development runs the same serverless handlers Netlify/Vercel deploy,
+// so /api/... behaves identically on `npm run dev`.
+const LOCAL_API_HANDLERS: Record<string, string> = {
+  '/api/premium': './netlify/functions/premium.mjs',
+  '/api/premium-scan': './netlify/functions/premium-scan.mjs',
+  '/api/premium-file': './netlify/functions/premium-file.mjs',
+  '/api/hotpic': './netlify/functions/hotpic.mjs',
+  '/api/discord/feed': './netlify/functions/discord-feed.mjs',
+  '/api/discord/login': './netlify/functions/discord-login.mjs',
+  '/api/discord/callback': './netlify/functions/discord-callback.mjs',
+  '/api/discord/refresh': './netlify/functions/discord-refresh.mjs'
+}
+
 function allowedTarget(rawPath: string): URL | null {
   try {
     const url = new URL(rawPath, ORIGIN)
@@ -95,20 +108,14 @@ function premiumDevApi(): Plugin {
           }
           return
         }
-        if (path !== '/api/premium' && path !== '/api/premium-scan' && path !== '/api/premium-file' && path !== '/api/hotpic') return next()
+        if (!(path in LOCAL_API_HANDLERS)) return next()
         process.env.PREMIUM_LOCAL_FILE ||= '.premium-data.json'
         process.env.PREMIUM_MEDIA_DIR ||= '.premium-media'
         try {
           const body = req.method === 'POST' ? await readBody(req) : ''
           const requestUrl = new URL(req.url ?? '/', 'http://localhost')
           const event = { httpMethod: req.method, body, headers: req.headers, queryStringParameters: Object.fromEntries(requestUrl.searchParams), rawUrl: requestUrl.href }
-          const handlerPath = path === '/api/hotpic'
-            ? './netlify/functions/hotpic.mjs'
-            : path === '/api/premium-scan'
-              ? './netlify/functions/premium-scan.mjs'
-              : path === '/api/premium-file'
-                ? './netlify/functions/premium-file.mjs'
-                : './netlify/functions/premium.mjs'
+          const handlerPath = LOCAL_API_HANDLERS[path]
           const mod = await import(/* @vite-ignore */ handlerPath) as { handler: (event: unknown) => Promise<{ statusCode: number; body?: string; headers?: Record<string, string>; isBase64Encoded?: boolean }> }
           const result = await mod.handler(event)
           res.statusCode = result.statusCode

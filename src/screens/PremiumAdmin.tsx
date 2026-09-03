@@ -1,15 +1,16 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useApp } from '../context/AppContext'
 import {
   fetchPremiumCatalog,
   hashFile,
   premiumAdmin,
+  readMediaSize,
   uploadPremiumFile,
   type PremiumCatalog
 } from '../lib/premium'
+import { assignFiles, resolveUploadTargets, type UploadKind } from '../lib/uploadPlan'
 
 type AdminView = 'upload' | 'channels' | 'settings'
-type UploadKind = 'hero' | 'image' | 'video' | 'album'
 type QueueStatus = 'waiting' | 'uploading' | 'done' | 'failed' | 'skipped'
 
 interface QueueItem {
@@ -63,51 +64,61 @@ function UploadAllPanel({ catalog, setCatalog, notify }: { catalog: PremiumCatal
   const [allowDupes, setAllowDupes] = useState(false)
   const [running, setRunning] = useState(false)
   const [directUrl, setDirectUrl] = useState('')
+  // Where the selected files go. '' = auto (first usable channel/album), which
+  // is only a fallback — an explicit pick always wins.
+  const [channelId, setChannelId] = useState('')
+  const [albumId, setAlbumId] = useState('')
 
   if (!catalog.settings.premiumUpload) return <p className="form-help">Premium upload is turned off.</p>
+
+  const selection = useMemo(() => ({ channelId, albumId, kind }), [channelId, albumId, kind])
+  const planned = resolveUploadTargets(catalog, selection)
+  const channelAlbums = catalog.albums.filter((album) => !planned.channelId || album.channelId === planned.channelId || !album.channelId)
 
   const pick = (files: FileList | null) => {
     const next = [...(files ?? [])].filter((file) => file.type.startsWith('image/') || file.type.startsWith('video/'))
     setQueue(next.map((file) => ({ file, preview: URL.createObjectURL(file), status: 'waiting' })))
   }
 
-  const ensureTargets = async (current: PremiumCatalog): Promise<{ catalog: PremiumCatalog; channelId: string; albumId: string }> => {
+  /**
+   * Resolve (and create when missing) the channel + album the whole selection
+   * goes to. Every file in the batch is then assigned this exact channel id.
+   */
+  const ensureTargets = async (current: PremiumCatalog): Promise<{ catalog: PremiumCatalog; channelId: string; albumId: string; channelName: string }> => {
     let next = current
-    let channelId = ''
-    let albumId = ''
-    if (autoChannel || autoCategory) {
+    let targets = resolveUploadTargets(next, selection)
+    if (!targets.detached && targets.needsChannel && (autoChannel || autoCategory)) {
       const name = autoCategory && autoChannel ? 'Premium' : autoCategory ? 'Category' : 'Premium'
-      let channel = next.channels.find((entry) => entry.status !== 'off') ?? next.channels[0]
-      if (!channel) {
-        const result = await premiumAdmin('createChannel', { name, type: 'mixed', status: 'on', order: 1 })
-        if (result.ok && result.catalog) {
-          next = result.catalog
-          channel = next.channels.find((entry) => entry.name === name) ?? next.channels[0]
-        }
+      const result = await premiumAdmin('createChannel', { name, type: 'mixed', status: 'on', order: next.channels.length + 1 })
+      if (result.ok && result.catalog) {
+        next = result.catalog
+        const created = next.channels.find((entry) => entry.name === name)
+        if (created) setChannelId(created.id)
+        targets = resolveUploadTargets(next, { ...selection, channelId: created?.id ?? '' })
       }
-      channelId = channel?.id ?? ''
     }
-    if (autoAlbum) {
-      let album = next.albums.find((entry) => entry.published !== false && (!channelId || entry.channelId === channelId || !entry.channelId))
-      if (!album) {
-        const result = await premiumAdmin('createAlbum', { name: 'Uploads', description: '', tags: '', channelId, published: true })
-        if (result.ok && result.catalog) {
-          next = result.catalog
-          album = next.albums.find((entry) => entry.name === 'Uploads') ?? next.albums[0]
-        }
+    if (!targets.detached && targets.needsAlbum && autoAlbum) {
+      const result = await premiumAdmin('createAlbum', { name: 'Uploads', description: '', tags: '', channelId: targets.channelId, published: true })
+      if (result.ok && result.catalog) {
+        next = result.catalog
+        const created = next.albums.find((entry) => entry.name === 'Uploads' && (!entry.channelId || entry.channelId === targets.channelId))
+        if (created) setAlbumId(created.id)
+        targets = resolveUploadTargets(next, { ...selection, channelId: targets.channelId, albumId: created?.id ?? '' })
       }
-      albumId = album?.id ?? ''
     }
     setCatalog(next)
-    return { catalog: next, channelId, albumId }
+    return { catalog: next, channelId: targets.channelId, albumId: targets.albumId, channelName: targets.channelName }
   }
 
   const uploadQueue = async (onlyFailed = false) => {
     setRunning(true)
-    const targets = kind === 'hero' ? { catalog, channelId: '', albumId: '' } : await ensureTargets(catalog)
-    const items = queue.map((item, index) => ({ item, index })).filter(({ item }) => onlyFailed ? item.status === 'failed' : item.status === 'waiting' || item.status === 'failed')
+    const targets = kind === 'hero' ? { catalog, channelId: '', albumId: '', channelName: '' } : await ensureTargets(catalog)
+    const selected = queue.map((item, index) => ({ item, index })).filter(({ item }) => onlyFailed ? item.status === 'failed' : item.status === 'waiting' || item.status === 'failed')
+    // One assignment pass: all selected files carry the chosen channel id.
+    const plannedFiles = assignFiles(selected.map(({ item }) => ({ file: item.file, item })), { ...targets, albumName: '', detached: kind === 'hero', needsChannel: false, needsAlbum: false })
     let done = 0
-    for (const { item, index } of items) {
+    for (const [position, { item, index }] of selected.entries()) {
+      const assignment = plannedFiles[position]
       setQueue((current) => current.map((entry, entryIndex) => entryIndex === index ? { ...entry, status: 'uploading' } : entry))
       const isVideo = item.file.type.startsWith('video/')
       if ((isVideo && !catalog.settings.videoUpload) || (!isVideo && !catalog.settings.imageUpload)) {
@@ -120,7 +131,7 @@ function UploadAllPanel({ catalog, setCatalog, notify }: { catalog: PremiumCatal
         done += 1
         continue
       }
-      const uploaded = await uploadPremiumFile(item.file)
+      const [uploaded, size] = await Promise.all([uploadPremiumFile(item.file), readMediaSize(item.file)])
       if (!uploaded.ok || !uploaded.url) {
         setQueue((current) => current.map((entry, entryIndex) => entryIndex === index ? { ...entry, status: 'failed', error: uploaded.error } : entry))
         continue
@@ -134,10 +145,12 @@ function UploadAllPanel({ catalog, setCatalog, notify }: { catalog: PremiumCatal
           title: item.file.name,
           hash,
           size: item.file.size,
+          width: size.width,
+          height: size.height,
           role: kind === 'hero' ? 'hero' : 'content'
         }],
-        channelId: targets.channelId,
-        albumId: targets.albumId,
+        channelId: assignment.channelId,
+        albumId: assignment.albumId,
         importDuplicates: allowDupes
       })
       setQueue((current) => current.map((entry, entryIndex) => entryIndex === index ? { ...entry, status: result.ok ? 'done' : 'failed', error: result.error } : entry))
@@ -145,7 +158,8 @@ function UploadAllPanel({ catalog, setCatalog, notify }: { catalog: PremiumCatal
       done += 1
     }
     setRunning(false)
-    notify(`Upload finished · ${done} processed`, 'success')
+    const target = kind === 'hero' ? 'Hero banner' : assignmentLabel(targets.channelName)
+    notify(`Upload finished · ${done} processed → ${target}`, 'success')
   }
 
   const counts = {
@@ -163,42 +177,68 @@ function UploadAllPanel({ catalog, setCatalog, notify }: { catalog: PremiumCatal
         Select multiple files
         <input className="sr-only" type="file" accept="image/*,video/*" multiple onChange={(event) => pick(event.target.files)} />
       </label>
+
+      <div className="premium-kind-row">
+        {(['hero', 'image', 'video', 'album'] as const).map((value) => (
+          <button key={value} className={kind === value ? 'is-active' : ''} type="button" onClick={() => setKind(value)}>{value === 'hero' ? 'Poster / Hero' : value}</button>
+        ))}
+      </div>
+
+      <div className="settings-card">
+        <label className="setting-row">
+          <span><strong>Channel</strong><small>{kind === 'hero' ? 'Hero banners are not channel content' : planned.needsChannel ? 'No channel yet — one is created on upload' : `${planned.channelName} · every selected file goes here`}</small></span>
+          <select value={channelId} disabled={kind === 'hero'} onChange={(event) => { setChannelId(event.target.value); setAlbumId('') }}>
+            <option value="">Auto (first active channel)</option>
+            {catalog.channels.map((channel) => (
+              <option key={channel.id} value={channel.id} disabled={channel.status === 'off'}>
+                {channel.name}{channel.status === 'off' ? ' (off)' : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="setting-row">
+          <span><strong>Album</strong><small>{planned.albumName ? `Inside ${planned.albumName}` : 'Optional — leave on none to post directly in the channel'}</small></span>
+          <select value={albumId} disabled={kind === 'hero'} onChange={(event) => setAlbumId(event.target.value)}>
+            <option value="">None / auto</option>
+            {channelAlbums.map((album) => <option key={album.id} value={album.id}>{album.name}</option>)}
+          </select>
+        </label>
+        <label className="setting-row"><span><strong>Create channel</strong><small>ON = upload pe Premium channel apne aap</small></span><input className="switch" type="checkbox" checked={autoChannel} onChange={(event) => setAutoChannel(event.target.checked)} /></label>
+        <label className="setting-row"><span><strong>Create category</strong><small>ON = category Home pe apne aap</small></span><input className="switch" type="checkbox" checked={autoCategory} onChange={(event) => setAutoCategory(event.target.checked)} /></label>
+        <label className="setting-row"><span><strong>Albums</strong><small>ON = Uploads album apne aap</small></span><input className="switch" type="checkbox" checked={autoAlbum} onChange={(event) => setAutoAlbum(event.target.checked)} /></label>
+        <label className="setting-row"><span><strong>Upload duplicates</strong></span><input className="switch" type="checkbox" checked={allowDupes} onChange={(event) => setAllowDupes(event.target.checked)} /></label>
+      </div>
+
       <input value={directUrl} onChange={(event) => setDirectUrl(event.target.value)} placeholder="Or paste image/video URL (https://...)" inputMode="url" />
       <button className="secondary-button" type="button" onClick={async () => {
         const url = directUrl.trim()
         if (!/^https?:\/\//i.test(url)) return notify('Valid https URL chahiye', 'error')
-        const targets = kind === 'hero' ? { catalog, channelId: '', albumId: '' } : await ensureTargets(catalog)
+        const targets = kind === 'hero' ? { catalog, channelId: '', albumId: '', channelName: '' } : await ensureTargets(catalog)
         const isVideo = /\.(mp4|webm|mov|m4v)(\?|$)/i.test(url) || kind === 'video'
         const result = await premiumAdmin('importMedia', {
           items: [{ url, type: isVideo ? 'video' : 'image', filename: url, thumbnail: isVideo ? '' : url, title: 'Premium media', role: kind === 'hero' ? 'hero' : 'content' }],
           channelId: targets.channelId,
           albumId: targets.albumId
         })
-        if (result.ok && result.catalog) { setCatalog(result.catalog); setDirectUrl(''); notify('URL published to Premium', 'success') }
+        if (result.ok && result.catalog) { setCatalog(result.catalog); setDirectUrl(''); notify(`URL published → ${assignmentLabel(targets.channelName)}`, 'success') }
         else notify(result.error ?? 'URL publish fail', 'error')
       }}>Publish URL</button>
+
       {queue.length > 0 && (
         <div className="premium-scan-grid">
           {queue.map((item) => (
             <div key={item.file.name + item.file.size} className="premium-scan-item">
-              <span className="premium-scan-item__thumb" style={item.file.type.startsWith('image/') ? { backgroundImage: `url(${item.preview})` } : undefined} />
+              {item.file.type.startsWith('image/')
+                ? <img className="premium-scan-item__thumb" src={item.preview} alt="" />
+                : <video className="premium-scan-item__thumb" src={item.preview} muted playsInline preload="metadata" />}
               <small>{item.file.name}</small>
+              <small>{kind === 'hero' ? 'Hero banner' : `→ ${assignmentLabel(planned.channelName)}`}</small>
               <small>{item.status}{item.error ? ` · ${item.error}` : ''}</small>
             </div>
           ))}
         </div>
       )}
-      <div className="premium-kind-row">
-        {(['hero', 'image', 'video', 'album'] as const).map((value) => (
-          <button key={value} className={kind === value ? 'is-active' : ''} type="button" onClick={() => setKind(value)}>{value === 'hero' ? 'Poster / Hero' : value}</button>
-        ))}
-      </div>
-      <div className="settings-card">
-        <label className="setting-row"><span><strong>Create channel</strong><small>ON = upload pe Premium channel apne aap</small></span><input className="switch" type="checkbox" checked={autoChannel} onChange={(event) => setAutoChannel(event.target.checked)} /></label>
-        <label className="setting-row"><span><strong>Create category</strong><small>ON = category Home pe apne aap</small></span><input className="switch" type="checkbox" checked={autoCategory} onChange={(event) => setAutoCategory(event.target.checked)} /></label>
-        <label className="setting-row"><span><strong>Albums</strong><small>ON = Uploads album apne aap</small></span><input className="switch" type="checkbox" checked={autoAlbum} onChange={(event) => setAutoAlbum(event.target.checked)} /></label>
-        <label className="setting-row"><span><strong>Upload duplicates</strong></span><input className="switch" type="checkbox" checked={allowDupes} onChange={(event) => setAllowDupes(event.target.checked)} /></label>
-      </div>
+
       {catalog.channels.length > 0 && (
         <div className="settings-card">
           {catalog.channels.map((channel) => (
@@ -222,7 +262,7 @@ function UploadAllPanel({ catalog, setCatalog, notify }: { catalog: PremiumCatal
         </div>
       )}
       <button className="primary-button primary-button--wide" type="button" disabled={running || !queue.length} onClick={() => void uploadQueue(false)}>
-        {running ? 'Uploading…' : `Upload all (${queue.length})`}
+        {running ? 'Uploading…' : `Upload all (${queue.length}) → ${kind === 'hero' ? 'Hero' : assignmentLabel(planned.channelName)}`}
       </button>
       {queue.length > 0 && (
         <div className="premium-progress">
@@ -234,6 +274,10 @@ function UploadAllPanel({ catalog, setCatalog, notify }: { catalog: PremiumCatal
       {counts.failed > 0 && <button className="secondary-button" type="button" onClick={() => void uploadQueue(true)}>Retry failed ({counts.failed})</button>}
     </div>
   )
+}
+
+function assignmentLabel(name: string): string {
+  return name.trim() ? name : 'new channel'
 }
 
 function ChannelsPane({ catalog, setCatalog, notify }: { catalog: PremiumCatalog; setCatalog: (catalog: PremiumCatalog) => void; notify: (text: string, tone?: 'success' | 'error') => void }): React.JSX.Element {

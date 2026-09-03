@@ -1,9 +1,9 @@
 {
-  "name": "x-sutra",
+  "name": "redgrab",
   "private": true,
-  "version": "0.1.0",
+  "version": "1.1.8",
   "type": "module",
-  "description": "X-sutra — a real public-media browser with local controls.",
+  "description": "RedGrab — Download GIFs, images and videos from RedGifs. Browse, search, save and play clips in HD.",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
@@ -11,7 +11,7 @@
     "build:artifacts": "npm run build:drop && node scripts/build-release-artifacts.mjs",
     "preview": "vite preview --host 0.0.0.0",
     "check": "tsc --noEmit",
-    "check:telegram-security": "node scripts/verify-telegram-security.mjs",
+    "test": "node --test scripts/tests/*.test.mjs",
     "cap:sync": "npm run build && cap sync android",
     "android:open": "cap open android"
   },
@@ -23,8 +23,7 @@
     "postgres": "^3.4.9",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
-    "react-router-dom": "^6.30.6",
-    "teleproto": "^1.228.5"
+    "react-router-dom": "^6.30.6"
   },
   "devDependencies": {
     "@capacitor/cli": "^6.2.1",
@@ -32,6 +31,8 @@
     "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
     "esbuild": "^0.28.2",
+    "jsdom": "^30.0.1",
+    "sharp": "^0.35.4",
     "typescript": "^5.6.3",
     "vite": "^5.4.10"
   }

@@ -6,6 +6,7 @@ import { ErrorBoundary } from './components/ErrorBoundary'
 import { ToastHost } from './components/ToastHost'
 import { VideoPlayerSheet } from './components/VideoPlayerSheet'
 import { AppProvider, useApp } from './context/AppContext'
+import { CommunityProvider } from './context/CommunityContext'
 import { hasPremiumAccess } from './lib/roles'
 
 const AdminPanelScreen = lazy(async () => ({ default: (await import('./screens/AdminPanelScreen')).AdminPanelScreen }))
@@ -18,13 +19,11 @@ import { LibraryScreen } from './screens/LibraryScreen'
 import { LoginScreen } from './screens/LoginScreen'
 import { PremiumNav } from './components/PremiumNav'
 import { PremiumAlbumScreen } from './screens/PremiumAlbumScreen'
-import { PremiumAnnouncementsScreen } from './screens/PremiumAnnouncementsScreen'
 import { PremiumChannelScreen } from './screens/PremiumChannelScreen'
-import { PremiumDownloadsScreen } from './screens/PremiumDownloadsScreen'
+import { PremiumLibraryScreen } from './screens/PremiumLibraryScreen'
 import { PremiumHotpicAlbumScreen } from './screens/PremiumHotpicAlbumScreen'
 import { PremiumModelScreen } from './screens/PremiumModelScreen'
 import { PremiumScreen } from './screens/PremiumScreen'
-import { PremiumSearchScreen } from './screens/PremiumSearchScreen'
 import { PremiumVideosScreen } from './screens/PremiumVideosScreen'
 import { NicheScreen } from './screens/NicheScreen'
 import { SearchScreen } from './screens/SearchScreen'
@@ -40,6 +39,7 @@ function ScrollToTop(): null {
 
 function PremiumOnly({ children }: { children: React.ReactNode }): React.JSX.Element {
   const { account } = useApp()
+  // A local premium/vip role unlocks Premium.
   return hasPremiumAccess(account?.role) ? <>{children}</> : <Navigate to="/premium" replace />
 }
 
@@ -66,12 +66,10 @@ function XsApp(): React.JSX.Element {
           <Route path="/you" element={<YouScreen />} />
           <Route path="/login" element={<LoginScreen />} />
           <Route path="/premium" element={<PremiumScreen />} />
-          <Route path="/premium/search" element={<PremiumOnly><PremiumSearchScreen /></PremiumOnly>} />
           <Route path="/premium/model/:username" element={<PremiumOnly><PremiumModelScreen /></PremiumOnly>} />
           <Route path="/premium/hotpic/:id" element={<PremiumOnly><PremiumHotpicAlbumScreen /></PremiumOnly>} />
-          <Route path="/premium/downloads" element={<PremiumOnly><PremiumDownloadsScreen /></PremiumOnly>} />
-          <Route path="/premium/announcements" element={<PremiumOnly><PremiumAnnouncementsScreen /></PremiumOnly>} />
           <Route path="/premium/videos" element={<PremiumOnly><PremiumVideosScreen /></PremiumOnly>} />
+          <Route path="/premium/library" element={<PremiumOnly><PremiumLibraryScreen /></PremiumOnly>} />
           <Route path="/premium/channel/:id" element={<PremiumOnly><PremiumChannelScreen /></PremiumOnly>} />
           <Route path="/premium/album/:id" element={<PremiumOnly><PremiumAlbumScreen /></PremiumOnly>} />
           <Route path="/admin" element={<AdminPanelScreen />} />
@@ -89,5 +87,13 @@ function XsApp(): React.JSX.Element {
 }
 
 export default function App(): React.JSX.Element {
-  return <AppProvider><HashRouter><XsApp /></HashRouter></AppProvider>
+  return (
+    <AppProvider>
+      <CommunityProvider>
+        <HashRouter>
+          <XsApp />
+        </HashRouter>
+      </CommunityProvider>
+    </AppProvider>
+  )
 }
