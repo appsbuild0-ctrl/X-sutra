@@ -103,7 +103,7 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
     if (!merged || candidatesFor(merged).length === 0) {
       notify('Using the public embed for this clip')
       setFallbackEmbed(true)
-      setPlaying(false)
+      setPlaying(true)
     }
   }, [candidatesFor, notify, refreshActiveMedia])
 
@@ -311,7 +311,7 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
     // Every direct/proxied candidate has failed. For public RedGifs clips, fall
     // back to the official embedded player instead of leaving a black screen.
     setFallbackEmbed(true)
-    setPlaying(false)
+    setPlaying(true)
   }
 
   // Keep current + next 2 slides mounted with preload for instant consecutive playback.
@@ -412,7 +412,7 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
         </div>
       )}
 
-      {!playing && (
+      {!playing && !fallbackEmbed && (
         <div className="player-paused" aria-hidden="true">
           <PlayIcon size={66} />
         </div>
