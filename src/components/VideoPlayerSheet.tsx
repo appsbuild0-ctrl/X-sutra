@@ -203,6 +203,21 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
     setFallbackEmbed(false)
   }, [source])
 
+  // The direct source can arrive AFTER the clip has opened (detail refresh or
+  // a candidate retry). The autoPlay attribute is not reliably honoured by
+  // every Android WebView once the element is mounted or its src is swapped,
+  // so nudge playback whenever a playable source appears while the clip should
+  // be playing. It only ever starts a paused clip — it never pauses one.
+  useEffect(() => {
+    if (!current || !source) return
+    if (!wantPlayingRef.current) return
+    const v = currentVideo()
+    if (!v || !v.paused) return
+    v.muted = muted
+    void safePlay(v).catch(() => undefined)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [source, current?.id])
+
   const onVideoTap = useCallback((): void => {
     const now = Date.now()
     if (now - lastTapRef.current < DOUBLE_TAP_MS) {

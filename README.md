@@ -109,6 +109,16 @@ npm run android:open
 
 Open `android/` in Android Studio to run on a device/emulator or create a signed APK/AAB. The package ID is `app.redgrab.downloader` and the application label is `RedGrab`.
 
+## Android APK download (latest build)
+
+Every push to `main` builds a signed release APK (`.github/workflows/main.yml`). To get the newest build:
+
+1. Open the **Actions** tab → the latest **Build APK** run on `main`.
+2. Download the **X-Sutra-APK** artifact and unzip it.
+3. Install `app-release.apk` on your phone (allow "install unknown apps").
+
+The APK's `versionCode` increases with every release (`1.1.8` in this build), so installing it always upgrades the app instead of leaving an older build in place. If a device still runs an old build after installing, uninstall the app first, then reinstall.
+
 ## Main commands
 
 | Command | Purpose |
