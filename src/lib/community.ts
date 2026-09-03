@@ -173,14 +173,22 @@ export function writeCommunity(state: CommunityState): CommunityState {
 export function ensureCommunity(): CommunityState {
   const raw = readStored<CommunityState | null>(COMMUNITY_KEY, null)
   if (!raw) return writeCommunity(defaultState())
-  // Merge with defaults for any missing fields
+  // Merge with defaults for any missing fields. The stored value can arrive
+  // partially written / from an old build, so every array is validated before
+  // the UI reads it — one malformed row must never crash the whole app.
   const defaults = defaultState()
+  const messages: Record<string, CommunityMessage[]> = {}
+  if (raw.messages && typeof raw.messages === 'object') {
+    for (const [channelId, list] of Object.entries(raw.messages)) {
+      if (Array.isArray(list)) messages[channelId] = list
+    }
+  }
   const state: CommunityState = {
-    categories: raw.categories.length ? raw.categories : defaults.categories,
-    channels: raw.channels.length ? raw.channels : defaults.channels,
-    messages: raw.messages || defaults.messages,
-    members: raw.members || defaults.members,
-    lastRead: raw.lastRead || {},
+    categories: Array.isArray(raw.categories) && raw.categories.length ? raw.categories : defaults.categories,
+    channels: Array.isArray(raw.channels) && raw.channels.length ? raw.channels : defaults.channels,
+    messages,
+    members: Array.isArray(raw.members) ? raw.members : defaults.members,
+    lastRead: raw.lastRead && typeof raw.lastRead === 'object' ? raw.lastRead : {},
   }
   return state
 }
@@ -275,9 +283,36 @@ export function getChannelsByCategory(categoryId: string): CommunityChannel[] {
 
 // ─── Messages ───
 
+function normalizeMessage(msg: Partial<CommunityMessage> | null | undefined): CommunityMessage | null {
+  if (!msg || typeof msg !== 'object' || !msg.id) return null
+  return {
+    id: String(msg.id),
+    channelId: String(msg.channelId || ''),
+    author: String(msg.author || ''),
+    authorName: String(msg.authorName || msg.author || 'Unknown'),
+    authorRole: ['owner', 'admin', 'moderator', 'premium', 'vip', 'member'].includes(String(msg.authorRole)) ? String(msg.authorRole) as CommunityRole : 'member',
+    content: String(msg.content || ''),
+    attachments: Array.isArray(msg.attachments) ? msg.attachments : [],
+    replyTo: msg.replyTo ? String(msg.replyTo) : undefined,
+    replyToContent: msg.replyToContent ? String(msg.replyToContent) : undefined,
+    replyToAuthor: msg.replyToAuthor ? String(msg.replyToAuthor) : undefined,
+    reactions: Array.isArray(msg.reactions) ? msg.reactions.map((reaction) => ({
+      emoji: String(reaction.emoji || ''),
+      users: Array.isArray(reaction.users) ? reaction.users.map(String) : []
+    })).filter((reaction) => Boolean(reaction.emoji)) : [],
+    pinned: Boolean(msg.pinned),
+    edited: Boolean(msg.edited),
+    createdAt: String(msg.createdAt || new Date().toISOString()),
+    updatedAt: msg.updatedAt ? String(msg.updatedAt) : undefined
+  }
+}
+
+
 export function getMessages(channelId: string, limit = 50, offset = 0): CommunityMessage[] {
   const state = ensureCommunity()
-  const msgs = state.messages[channelId] || []
+  const msgs = (state.messages[channelId] || [])
+    .map((msg) => normalizeMessage(msg))
+    .filter((msg): msg is CommunityMessage => Boolean(msg))
   return msgs.slice().sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()).slice(offset, offset + limit)
 }
 
@@ -394,7 +429,9 @@ export function searchMessages(query: string): Array<CommunityMessage & { channe
   const q = query.toLowerCase()
   for (const [channelId, messages] of Object.entries(state.messages)) {
     const channel = state.channels.find((ch) => ch.id === channelId)
-    for (const msg of messages) {
+    for (const rawMsg of messages) {
+      const msg = normalizeMessage(rawMsg)
+      if (!msg) continue
       if (msg.content.toLowerCase().includes(q) || msg.authorName.toLowerCase().includes(q)) {
         results.push({ ...msg, channelName: channel?.name || channelId })
       }

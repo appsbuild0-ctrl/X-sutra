@@ -5,12 +5,14 @@ import { OWNER_CONTACT } from '../lib/ownerContact'
 type GateView = 'pick' | 'wait' | 'saving' | 'done' | 'failed' | 'premium'
 
 /** Download gate.
- *  - Normal Download (top): free, 20 second wait, saves via the app pipeline.
- *  - Premium Download (bottom): opens a Discord / Telegram contact panel only. */
+ *  - Premium/VIP/admin (top): instant "Download Now 👑" straight through the save pipeline.
+ *  - Free (top): 20 second wait, then saves via the app pipeline.
+ *  - Owner Contact (bottom): always offers Discord / Telegram support links. */
 export function DownloadGate({
   item,
   onClose,
   onNormalDownload,
+  userRole,
 }: {
   item: MediaItem
   onClose: () => void
@@ -19,6 +21,7 @@ export function DownloadGate({
 }): React.JSX.Element {
   const [view, setView] = useState<GateView>('pick')
   const [seconds, setSeconds] = useState(20)
+  const premium = userRole === 'premium' || userRole === 'vip' || userRole === 'admin'
 
   useEffect(() => {
     if (view !== 'wait') return
@@ -52,21 +55,28 @@ export function DownloadGate({
           <>
             <p className="eyebrow">Download panel</p>
             <h2>Download</h2>
-            <button className="dl-option" type="button" onClick={() => setView('wait')}>
-              <strong>Normal Download</strong>
-              <small>Free Download • 20 sec wait</small>
-            </button>
-            <button className="dl-option dl-option--gold" type="button" onClick={() => setView('premium')}>
-              <strong>Premium Download 👑</strong>
-              <small>Owner se contact karo — Discord / Telegram</small>
+            {premium ? (
+              <button className="dl-option dl-option--gold" type="button" onClick={runNormalDownload}>
+                <strong>Download Now 👑</strong>
+                <small>Premium / VIP • instant download</small>
+              </button>
+            ) : (
+              <button className="dl-option" type="button" onClick={() => setView('wait')}>
+                <strong>Normal Download</strong>
+                <small>Free Download • 20 sec wait</small>
+              </button>
+            )}
+            <button className="dl-option" type="button" onClick={() => setView('premium')}>
+              <strong>{premium ? 'Owner Contact' : 'Premium Download 👑'}</strong>
+              <small>Discord / Telegram — owner se contact karo</small>
             </button>
           </>
         )}
         {view === 'premium' && (
           <>
-            <p className="eyebrow">Premium Download</p>
-            <h2>Contact owner</h2>
-            <p>Premium access ke liye niche diye channels pe owner se contact karein.</p>
+            <p className="eyebrow">Owner contact</p>
+            <h2>{premium ? 'Contact / support' : 'Premium access'}</h2>
+            <p>Niche diye Discord / Telegram channels pe owner se contact karein.</p>
             <button className="dl-contact" type="button" onClick={() => openContact(OWNER_CONTACT.discord)}>
               <span aria-hidden="true">💬</span>
               <span>
@@ -108,7 +118,7 @@ export function DownloadGate({
           <>
             <p className="eyebrow">Normal Download</p>
             <h2>Download failed — Try Again</h2>
-            <button className="primary-button primary-button--wide" type="button" onClick={() => { setSeconds(20); setView('wait') }}>Try Again</button>
+            <button className="primary-button primary-button--wide" type="button" onClick={() => { if (premium) runNormalDownload(); else { setSeconds(20); setView('wait') } }}>Try Again</button>
           </>
         )}
         <button className="secondary-button" type="button" onClick={onClose}>Close</button>

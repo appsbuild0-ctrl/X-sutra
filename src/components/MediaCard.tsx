@@ -23,6 +23,16 @@ function premiumPlaceholder(itemId: string): MediaItem {
   return { id: itemId, title: 'Premium', duration: 0 } as MediaItem
 }
 
+/** True when the URL can be used as a <video> preview source. The premium
+ *  IndexedDB resolver can hand back `blob:` URLs and same-origin `/api/...`
+ *  file URLs, neither of which contains a video extension. */
+function isPreviewableVideoSource(url: string): boolean {
+  if (!url) return false
+  if (/^(?:blob:)/i.test(url)) return true
+  if (url.startsWith('/')) return url.startsWith('/api/media') || url.startsWith('/api/premium-file') || /\.(?:mp4|webm|mov|m4v)(?:[?#]|$)/i.test(url)
+  return /^https?:\/\//i.test(url) && /\.(?:mp4|webm|mov|m4v)(?:[?#]|$)/i.test(url)
+}
+
 /** Throttle detail API calls - one shared request per item id, cached for the session */
 function throttleDetailRequest(itemId: string, task: () => Promise<MediaItem>): Promise<MediaItem> {
   const cached = detailCache.get(itemId)
@@ -111,9 +121,8 @@ export function MediaCard({ item, queue, priority = false }: MediaCardProps): Re
   const saved = isSaved(display.id)
   const thumbnails = useMemo(() => [...new Set((display.thumbnailUrls?.length ? display.thumbnailUrls : (display.thumbnail ? [display.thumbnail] : [])).filter(Boolean))], [display.thumbnail, display.thumbnailUrls])
   const activeThumbnail = !imageExhausted ? thumbnails[thumbnailIndex] : undefined
-  const previewSource = /\.(?:mp4|webm|mov|m4v)(?:[?#]|$)/i.test(display.previewUrl ?? display.videoUrlSd ?? display.videoUrl ?? '')
-    ? (display.previewUrl ?? display.videoUrlSd ?? display.videoUrl)
-    : undefined
+  const previewCandidate = display.previewUrl ?? display.videoUrlSd ?? display.videoUrl ?? ''
+  const previewSource = isPreviewableVideoSource(previewCandidate) ? previewCandidate : undefined
   const embedUrl = isPremium ? '' : `https://www.redgifs.com/ifr/${encodeURIComponent(display.id)}?autoplay=1`
   const uncropped = isPremium && isUncroppedImage(display)
   const frameStyle = uncropped ? naturalFrameStyle(display.width, display.height) : {}
@@ -157,6 +166,14 @@ export function MediaCard({ item, queue, priority = false }: MediaCardProps): Re
     video.playsInline = true
     video.preload = 'auto' // Load metadata immediately for zero lag
     video.playbackRate = Math.max(0.5, Math.min(2, video.playbackRate || 1))
+    // Old Android WebViews return undefined from play(); normalise before any
+    // .then/.catch so a click / preview autoplay never crashes the feed.
+    try {
+      const p = video.play() as unknown
+      if (p && typeof (p as Promise<void>).then === 'function') {
+        void (p as Promise<void>).catch(() => undefined)
+      }
+    } catch { /* desktop/jsdom preview is optional */ }
 
     const onPlaying = () => setVideoPausedByUser(false)
     const onPause = () => setVideoPausedByUser(true)
@@ -196,6 +213,7 @@ export function MediaCard({ item, queue, priority = false }: MediaCardProps): Re
             key={previewSource}
             src={previewSource}
             muted
+            autoPlay
             playsInline
             preload="auto"
             poster={display.thumbnail}

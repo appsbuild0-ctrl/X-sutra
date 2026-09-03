@@ -26,9 +26,10 @@ const DOUBLE_TAP_MS = 200
 /**
  * Full-screen swipe/wheel player, ported 1:1 from the reference app's
  * Player.tsx: drag or scroll-wheel up/down to move between clips, single-tap
- * pauses (instant), double-tap likes, the rail carries like/sound/save/
- * download, and the previous/current/next slides stay mounted and preloaded
- * so stepping is instant.
+ * only resumes a paused clip (it never pauses a playing clip), double-tap
+ * likes, the rail carries like/sound/save/download, and the
+ * previous/current/next slides stay mounted and preloaded so stepping is
+ * instant.
  */
 export function VideoPlayerSheet(): React.JSX.Element | null {
   const {
@@ -64,6 +65,7 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
   const [heartBurst, setHeartBurst] = useState(false)
   const [activeSourceIndex, setActiveSourceIndex] = useState(0)
   const [downloadOpen, setDownloadOpen] = useState(false)
+  const [fallbackEmbed, setFallbackEmbed] = useState(false)
 
   const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map())
   const itemsRef = useRef(items)
@@ -89,13 +91,20 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
   )
   const activeCandidates = current ? candidatesFor(current) : []
   const source = activeCandidates[activeSourceIndex] ?? activeCandidates[0]
+  const embedUrl = current && !current.id.startsWith('hp-') && !current.id.startsWith('pm-') && !current.id.startsWith('premium-')
+    ? `https://www.redgifs.com/ifr/${encodeURIComponent(current.id)}?autoplay=1`
+    : undefined
 
   /** Feed cards can arrive without direct media URLs; resolve them at play time. */
   const ensureDirectSource = useCallback(async (): Promise<void> => {
     if (refreshAttempted.current) return
     refreshAttempted.current = true
     const merged = await refreshActiveMedia()
-    if (!merged || candidatesFor(merged).length === 0) notify('Using the public embed for this clip', 'error')
+    if (!merged || candidatesFor(merged).length === 0) {
+      notify('Using the public embed for this clip')
+      setFallbackEmbed(true)
+      setPlaying(false)
+    }
   }, [candidatesFor, notify, refreshActiveMedia])
 
   const step = useCallback(
@@ -125,6 +134,7 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
     setActiveSourceIndex(0)
     refreshAttempted.current = false
     setDownloadOpen(false)
+    setFallbackEmbed(false)
     setLiked(isLiked(current.id))
     setSaved(isSaved(current.id))
     setFollowing(isFollowing(current.creator))
@@ -163,11 +173,16 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
     const v = currentVideo()
     if (!v) return
     if (v.paused) {
+      // A tap on a paused/recovered clip should only start it again.
       wantPlayingRef.current = true
+      setPlaying(true)
       void safePlay(v).catch(() => setPlaying(false))
     } else {
-      wantPlayingRef.current = false
-      v.pause()
+      // Never pause the video on a single tap. Mobile WebViews briefly report
+      // "paused" while switching sources/buffering, so reacting to that here is
+      // exactly what made the player look stuck or throw after a user tap.
+      wantPlayingRef.current = true
+      setPlaying(true)
     }
   }, [currentVideo])
 
@@ -182,6 +197,11 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
     toggleLike(current)
     setLiked(true)
   }, [current, liked, toggleLike])
+
+  // Once a working source is present, never leave the embed fallback mounted.
+  useEffect(() => {
+    setFallbackEmbed(false)
+  }, [source])
 
   const onVideoTap = useCallback((): void => {
     const now = Date.now()
@@ -286,7 +306,12 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
     }
     if (!refreshAttempted.current) {
       void ensureDirectSource()
+      return
     }
+    // Every direct/proxied candidate has failed. For public RedGifs clips, fall
+    // back to the official embedded player instead of leaving a black screen.
+    setFallbackEmbed(true)
+    setPlaying(false)
   }
 
   // Keep current + next 2 slides mounted with preload for instant consecutive playback.
@@ -345,11 +370,33 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
                       : undefined
                   }
                   onPlay={isCurrent ? () => setPlaying(true) : undefined}
-                  onPause={isCurrent ? () => setPlaying(false) : undefined}
+                  onPause={isCurrent ? (event) => {
+                    // Transient pause (source swap, buffering, background tab)
+                    // should never paint the big paused overlay. Only an
+                    // explicit/unsuccessful play attempt flips the state, and
+                    // the tap handler above always resumes instead of pausing.
+                    if (wantPlayingRef.current) {
+                      setPlaying(true)
+                      if (!event.currentTarget.ended) {
+                        void safePlay(event.currentTarget).catch(() => setPlaying(false))
+                      }
+                    } else {
+                      setPlaying(false)
+                    }
+                  } : undefined}
+                />
+              ) : fallbackEmbed && isCurrent && embedUrl ? (
+                <iframe
+                  className="player-video player-embed"
+                  src={embedUrl}
+                  title="Video"
+                  allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+                  allowFullScreen
+                  referrerPolicy="no-referrer-when-downgrade"
                 />
               ) : (
                 <div className="player-video" style={{ display: 'grid', placeItems: 'center', background: '#000' }}>
-                  {isCurrent && <span className="player-chip">Loading…</span>}
+                  {isCurrent && <span className="player-chip">{itemSource ? 'Loading…' : 'Loading…'}</span>}
                 </div>
               )}
             </div>
