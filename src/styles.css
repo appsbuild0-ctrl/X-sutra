@@ -576,6 +576,12 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   background: #000;
   border-radius: 16px;
 }
+.player-video.player-embed {
+  border: 0;
+  height: calc(100% - 64px);
+  max-height: calc(100% - 64px);
+  background: #000;
+}
 .player-scrim {
   position: absolute;
   inset: 0;
