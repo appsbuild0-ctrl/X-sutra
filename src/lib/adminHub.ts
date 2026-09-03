@@ -1,5 +1,6 @@
 import { fetchWithRetry } from './http'
-import { fetchPremiumCatalog, premiumAdmin } from './premium'
+import { writePayQr } from './payQr'
+import { premiumAdmin } from './premium'
 import { readStored, writeStored } from './storage'
 
 const HUB_KEY = 'x-sutra.admin.hub.v1'
@@ -158,4 +159,58 @@ export function openHubLink(url: string, navigate: (path: string) => void): void
     return
   }
   window.open(value, '_blank', 'noopener,noreferrer')
+}
+
+/* ------------------------------------------------------------------ *
+ * Reactive hub store.
+ *
+ * Admin edits (payment QR, Premium/VIP plans, home banner, notifications)
+ * go through `commitHub`, which immediately updates this module-level value,
+ * re-caches it to localStorage and notifies every mounted subscriber. Screens
+ * that display the QR / plans / banner / bell then re-render with the change
+ * on the spot ("login page ka plan popup turant update" etc.), while the same
+ * device stays consistent with the server through `saveHub`.
+ * ------------------------------------------------------------------ */
+
+type HubListener = (hub: AdminHub) => void
+
+let current: AdminHub | null = null
+const listeners = new Set<HubListener>()
+
+export function getHubSnapshot(): AdminHub {
+  return current ?? normalizeHub(readStored<Partial<AdminHub>>(HUB_KEY, {}))
+}
+
+function publish(next: AdminHub): AdminHub {
+  current = normalizeHub(next)
+  for (const listener of listeners) {
+    try { listener(current) } catch { /* a dead subscriber must not break the rest */ }
+  }
+  return current
+}
+
+export function subscribeHub(listener: HubListener): () => void {
+  listeners.add(listener)
+  return () => { listeners.delete(listener) }
+}
+
+/**
+ * Persist an admin change everywhere and broadcast it. Local storage + the
+ * in-memory store are updated synchronously so the UI flips instantly; the
+ * server sync happens in the background and re-broadcasts the (normalized)
+ * result if it differs.
+ */
+export async function commitHub(next: AdminHub): Promise<AdminHub> {
+  const normalized = publish(cacheHub(normalizeHub(next)))
+  writePayQr(normalized.qr)
+  void saveHub(normalized)
+    .then((saved) => publish(normalizeHub(saved)))
+    .catch(() => { /* keep the already-broadcast local value on any error */ })
+  return normalized
+}
+
+/** Pull the latest hub from the server/local cache and broadcast it. */
+export async function refreshHub(): Promise<AdminHub> {
+  const hub = await loadHub()
+  return publish(hub)
 }

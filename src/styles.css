@@ -1117,9 +1117,24 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .notify-panel { margin: -10px 0 16px; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); display: grid; gap: 8px; max-height: 280px; overflow: auto; }
 .notify-item { display: grid; gap: 3px; padding: 8px; border: 0; border-radius: 10px; background: rgba(255,255,255,.03); color: inherit; text-align: left; }
 .notify-item em { color: var(--muted); font-size: 10px; font-style: normal; }
-.admin-tabs { position: sticky; bottom: calc(70px + var(--safe-bottom)); display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 18px; padding: 8px; border: 1px solid var(--line); border-radius: 14px; background: rgba(16,12,13,.92); }
-.admin-tabs button { min-height: 36px; border-radius: 10px; color: var(--muted); background: transparent; font-size: 10px; font-weight: 700; }
+.admin-tabs { position: sticky; bottom: calc(70px + var(--safe-bottom)); display: flex; gap: 6px; margin-top: 18px; padding: 8px; overflow-x: auto; scrollbar-width: none; border: 1px solid var(--line); border-radius: 14px; background: rgba(16,12,13,.92); }
+.admin-tabs::-webkit-scrollbar { display: none; }
+.admin-tabs button { flex: 0 0 auto; min-height: 36px; min-width: 86px; border-radius: 10px; color: var(--muted); background: transparent; font-size: 10px; font-weight: 700; white-space: nowrap; }
 .admin-tabs button.is-active { color: #2a1a05; background: var(--gold); }
+.screen--admin { padding-bottom: calc(120px + var(--safe-bottom)); }
+
+/* Admin tab content helpers (QR, Plans, Home Card, Notifications) */
+.save-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; margin-top: 12px; }
+.save-row .primary-button { min-height: 46px; }
+.save-row .secondary-button { min-height: 46px; padding: 0 20px; }
+.qr-preview { display: grid; place-items: center; min-height: 140px; padding: 12px; border: 1px dashed var(--line-strong); border-radius: 14px; background: var(--surface); }
+.qr-preview img { max-width: 190px; max-height: 190px; border-radius: 12px; background: #fff; }
+.admin-field { display: grid; gap: 6px; margin-top: 4px; }
+.admin-field > span { color: var(--muted); font-family: 'DM Mono', monospace; font-size: 9px; letter-spacing: .1em; text-transform: uppercase; }
+.banner-image-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 6px; }
+.banner-thumb { width: 74px; height: 74px; object-fit: cover; border-radius: 12px; border: 1px solid var(--line-strong); }
+.muted-em { color: var(--muted); font-style: normal; }
+.setting-row > .switch { margin-left: auto; }
 
 /* Premium access landing: protected content is never mounted for normal users. */
 .premium-gate-screen { display: grid; gap: 18px; padding-top: 18px; }
