@@ -6,9 +6,48 @@
 [build.environment]
   NODE_VERSION = "22"
 
+[functions]
+  node_bundler = "esbuild"
+
 [[redirects]]
   from = "/api/redgifs"
   to = "/.netlify/functions/redgifs"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/media"
+  to = "/.netlify/functions/media"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/premium"
+  to = "/.netlify/functions/premium"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/premium-scan"
+  to = "/.netlify/functions/premium-scan"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/premium-file"
+  to = "/.netlify/functions/premium-file"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/hotpic"
+  to = "/.netlify/functions/hotpic"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api/hotpic-html/*"
+  to = "https://hotpic.vip/:splat"
   status = 200
   force = true
 

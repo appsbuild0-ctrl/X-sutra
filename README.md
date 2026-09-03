@@ -1,18 +1,22 @@
-# X-sutra
+# RedGrab
 
-**X-sutra** is a dark, mobile-first public-media browser built as a standalone React + Capacitor application. It is branded and structured independently; the shared external project is used only as a product/feature reference.
+**RedGrab** is a dark, mobile-first RedGifs downloader built as a standalone React + Capacitor application. Download GIFs, images and videos from RedGifs in HD or SD. Browse, search, save and play clips.
 
 ## What works
 
 - Android-ready React + Capacitor project
-- Hash-routed pages: **Home**, **Discover**, **Search**, **Creator**, **Tag**, **Niche**, **Library**, **Collection**, **Downloads**, **You**, and **Settings**
+- Hash-routed pages: **Home**, **Discover**, **Search**, **Creator**, **Tag**, **Niche**, **Library**, **Collection**, **Downloads**, **You**, **Login**, and **Settings**
 - Real public RedGifs V2 feeds: Trending, Latest, search, tag results, creator clips, creator profiles, niche clips, live suggestions, categories, and related niches
 - Real public thumbnails and browser/native video playback in a full-screen player
 - Public watch-link / clip-ID resolver and device/browser download flow using the current media URL returned by the API
 - Browser response validation rejects HTML/error documents instead of renaming them as video files; CORS-only fallbacks are reported as opened, not completed
 - Local-only likes, saved clips, follows, collections, download history, autoplay/mute preferences, and blocked-tag filtering
+- Optional device-local login page (`#/login`) with username/password fields, sign-in / create-account modes, a show/hide password eye toggle, and a built-in admin account () that opens the admin panel
+- Premium section (Home + Library) with channel chat, admin-managed channels/albums and stored media; access is granted by admin-assigned local Premium/VIP roles
+- **Login stays logged in**: the local session is stored on the device, so the user never sees the login screen again after signing in
+- Uploaded images render at their own aspect ratio and resolution — no CSS cropping
+- Local accounts store only a SHA-256 password hash on the device; the raw password is never persisted or transmitted
 - No demo/fake feed data and no external account password/token capture
-- Login/authentication is intentionally not included yet; it can be added later as a separate flow
 
 ## How live API data works
 
@@ -22,7 +26,7 @@ Browser requests go through the included Netlify Function at `netlify/functions/
 2. It requests only allowlisted public V2/V1 read endpoints.
 3. The browser receives real JSON data through same-origin `/api/redgifs`.
 
-This prevents browser CORS problems and keeps external account credentials out of X-sutra. Vite development uses an equivalent local proxy for `/api/redgifs`. The Capacitor Android build uses Capacitor's native HTTP transport for the same temporary anonymous-token flow, because a packaged WebView has no deployed same-origin function. No private API key is bundled in either path.
+This prevents browser CORS problems and keeps external account credentials out of RedGrab. The function requests the API with a stable app User-Agent (`RedGifs-Downloader/4.0`), which returns clean non-watermarked media URLs; the Drop ZIP bundles the same function instead of a header-forwarding rewrite. Vite development uses an equivalent local proxy for `/api/redgifs`. The Capacitor Android build uses Capacitor's native HTTP transport for the same temporary anonymous-token flow, because a packaged WebView has no deployed same-origin function. No private API key is bundled in either path.
 
 ## Local development
 
@@ -35,13 +39,25 @@ The Vite server listens on `0.0.0.0:5173`.
 
 ## Direct Netlify Drop ZIP
 
-`X-sutra-netlify-drop.zip` is a static package ready to drag directly onto [Netlify Drop](https://app.netlify.com/drop). Do **not** unzip it. It contains the full production assets and an `_redirects` rule that uses Netlify's same-origin 200 rewrite proxy for `/api/redgifs/*`, so the live public V2 calls avoid browser CORS restrictions. No mock feed is embedded.
+`RedGrab-netlify-drop.zip` is a static package ready to drag directly onto [Netlify Drop](https://app.netlify.com/drop). Do **not** unzip it. It contains the full production assets and an `_redirects` rule that uses Netlify's same-origin 200 rewrite proxy for `/api/redgifs/*`, so the live public V2 calls avoid browser CORS restrictions. No mock feed is embedded.
 
-`X-sutra-standalone/` contains the same current UI as a single inlined `index.html` plus its Netlify `_redirects` rule. Regenerate both tracked delivery artifacts from the current `src/` implementation with:
+`X-sutra-standalone/` contains the same current UI as a single inlined `index.html` (legacy name preserved in build artifacts). Regenerate both tracked delivery artifacts from the current `src/` implementation with:
 
 ```bash
 npm run build:artifacts
 ```
+
+## Live deployment (Vercel)
+
+Production runs on Vercel and is what the repository homepage points at:
+
+```text
+https://redgrab.vercel.app
+```
+
+Vercel builds `main` for production and every pull request for preview (preview URLs are behind Vercel Authentication, so open them while logged in to the Vercel account). The backend is shared with Netlify: `api/[...path].mjs` routes `/api/*` to the handlers in `netlify/functions/`, Frontend requests use same-origin relative `/api/...` paths, so there is no `BACKEND_URL` setting and no separate backend deployment to configure. Configure the variables from `.env.example` in the Vercel project.
+
+A second Vercel project (`x-sutra-main-2`) builds the same branch but has no server variables configured, so its `/api/*` calls fail; use the main domain above.
 
 ## Git-connected Netlify deployment
 
@@ -62,6 +78,22 @@ main
 
 Netlify builds the app and deploys the public API function together. A plain static `index.html` opened via `file://` cannot call the same-origin function, so use the Netlify deployment for live data/playback.
 
+Premium access is role-based: the admin creates local accounts (admin panel →
+Users) and assigns Premium/VIP roles. There is no external Discord or Telegram
+integration — all data stays in the app and its premium catalog.
+
+## Tests
+
+```bash
+npm test
+```
+
+Node's built-in test runner over `scripts/tests/*.test.mjs`. It covers the
+premium catalog's channel/media persistence, the upload form's assignment of
+many selected files to one channel, the uncropped image display rules, and an
+end-to-end admin login regression (real app bundle in jsdom: admin/admin123
+lands on the full admin panel with no stray whole-page navigation).
+
 ## Production build
 
 ```bash
@@ -75,7 +107,17 @@ npm run cap:sync
 npm run android:open
 ```
 
-Open `android/` in Android Studio to run on a device/emulator or create a signed APK/AAB. The package ID is `app.xsutra.mobile` and the application label is `X-sutra`.
+Open `android/` in Android Studio to run on a device/emulator or create a signed APK/AAB. The package ID is `app.redgrab.downloader` and the application label is `RedGrab`.
+
+## Android APK download (latest build)
+
+Every push to `main` builds a signed release APK (`.github/workflows/main.yml`). To get the newest build:
+
+1. Open the **Actions** tab → the latest **Build APK** run on `main`.
+2. Download the **X-Sutra-APK** artifact and unzip it.
+3. Install `app-release.apk` on your phone (allow "install unknown apps").
+
+The APK's `versionCode` increases with every release (`1.1.8` in this build), so installing it always upgrades the app instead of leaving an older build in place. If a device still runs an old build after installing, uninstall the app first, then reinstall.
 
 ## Main commands
 
@@ -85,5 +127,6 @@ Open `android/` in Android Studio to run on a device/emulator or create a signed
 | `npm run build` | Type-check and create the production bundle |
 | `npm run build:artifacts` | Rebuild the standalone HTML and complete Netlify Drop ZIP from current `src/` |
 | `npm run check` | Type-check without creating `dist/` |
+| `npm test` | Run the Node test suite in `scripts/tests/` |
 | `npm run cap:sync` | Build web assets and copy them into Android |
 | `npm run android:open` | Open the Android Studio project |

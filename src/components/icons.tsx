@@ -86,6 +86,14 @@ export function CheckIcon(props: IconProps): React.JSX.Element {
   return <IconFrame {...props}><path d="m5 12 4.2 4.2L19 6.5" /></IconFrame>
 }
 
+export function PlusIcon(props: IconProps): React.JSX.Element {
+  return <IconFrame {...props} strokeWidth="2.4"><path d="M12 5v14M5 12h14" /></IconFrame>
+}
+
+export function ShieldIcon(props: IconProps): React.JSX.Element {
+  return <IconFrame {...props}><path d="M12 3 5 5.5v5c0 4.6 3 8.4 7 9.9 4-1.5 7-5.3 7-9.9v-5L12 3Z" /><path d="m9.2 12 2 2 3.6-3.8" /></IconFrame>
+}
+
 export function TrashIcon(props: IconProps): React.JSX.Element {
   return <IconFrame {...props}><path d="M4 7h16M9 7V4h6v3M7 7l.8 13h8.4L17 7M10 11v5M14 11v5" /></IconFrame>
 }
@@ -122,6 +130,44 @@ export function MuteIcon(props: IconProps): React.JSX.Element {
   return <IconFrame {...props}><path d="M4 10v4h4l5 4V6L8 10H4Z" /><path d="m17 10 4 4m0-4-4 4" /></IconFrame>
 }
 
+export function EyeIcon(props: IconProps): React.JSX.Element {
+  return <IconFrame {...props}><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12Z" /><circle cx="12" cy="12" r="3" /></IconFrame>
+}
+
+export function EyeOffIcon(props: IconProps): React.JSX.Element {
+  return <IconFrame {...props}><path d="M3 3l18 18" /><path d="M10.6 6.2A9.8 9.8 0 0 1 12 6.1c6 0 9.5 5.9 9.5 5.9a17.6 17.6 0 0 1-3.3 3.9M6.1 8.3A16.9 16.9 0 0 0 2.5 12S6 17.9 12 17.9a9.5 9.5 0 0 0 4-.85" /><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2" /></IconFrame>
+}
+
 export function PauseIcon(props: IconProps): React.JSX.Element {
   return <IconFrame {...props} fill="currentColor"><path d="M8 6h3v12H8zM13 6h3v12h-3z" stroke="none" /></IconFrame>
+}
+
+
+
+export function HashIcon(props: IconProps): React.JSX.Element {
+  return <IconFrame {...props}><path d="M5 5h2l1.5 6h-3L4 18h2l1.5-6h3L7 18h2l1.5-6h3L10 5h2l1.5 6h3L13 5h2l1.5 6H14l1 6h-2l-1.5-6h-3L9 18H7l-1-6H4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></IconFrame>
+}
+
+export function SendIcon(props: IconProps): React.JSX.Element {
+  return <IconFrame {...props}><path d="M3.5 12L20.5 3 12 20.5l-2-6.5L3.5 12Z" /><path d="m12 20.5 8.5-8.5" /></IconFrame>
+}
+
+export function PinIcon(props: IconProps): React.JSX.Element {
+  return <IconFrame {...props}><path d="M12 17v5" /><path d="M9 3h6l1 4-4 2-4-2 1-4Z" /><path d="M9 7l-2 6h10l-2-6" /></IconFrame>
+}
+
+export function EditIcon(props: IconProps): React.JSX.Element {
+  return <IconFrame {...props}><path d="M15.2 3.8l5 5L7.8 21.2H2.8v-5L15.2 3.8Z" /></IconFrame>
+}
+
+export function SmileIcon(props: IconProps): React.JSX.Element {
+  return <IconFrame {...props}><circle cx="12" cy="12" r="9.5" /><path d="M8.5 13.5s1 1.5 3.5 1.5 3.5-1.5 3.5-1.5" /><circle cx="9" cy="10" r="1" fill="currentColor" /><circle cx="15" cy="10" r="1" fill="currentColor" /></IconFrame>
+}
+
+export function ReplyIcon(props: IconProps): React.JSX.Element {
+  return <IconFrame {...props}><path d="M9 17 4 12l5-5" /><path d="M4 12h11a4 4 0 0 1 0 8h-1" /></IconFrame>
+}
+
+export function XIcon(props: IconProps): React.JSX.Element {
+  return <IconFrame {...props}><path d="m18 6-12 12M6 6l12 12" /></IconFrame>
 }

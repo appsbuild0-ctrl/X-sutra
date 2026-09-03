@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { mkdir, readFile, readdir, rm, utimes, writeFile } from 'node:fs/promises'
+import { mkdir, copyFile, readFile, readdir, rm, utimes, writeFile } from 'node:fs/promises'
 import { relative, resolve } from 'node:path'
 import { promisify } from 'node:util'
 import { build } from 'esbuild'
@@ -39,9 +39,35 @@ const html = `<!doctype html>
 
 await mkdir(standaloneDirectory, { recursive: true })
 await writeFile(resolve(standaloneDirectory, 'index.html'), html, 'utf8')
+await mkdir(resolve(standaloneDirectory, 'netlify/functions'), { recursive: true })
+for (const file of (await readdir('netlify/functions')).filter((name) => name.endsWith('.mjs'))) {
+  await copyFile(resolve('netlify/functions', file), resolve(standaloneDirectory, 'netlify/functions', file))
+}
 await writeFile(
   resolve(standaloneDirectory, '_redirects'),
-  '# Host this directory on Netlify to enable the same-origin public API proxy.\n/api/redgifs/*  https://api.redgifs.com/:splat  200!\n/*  /index.html  200\n',
+  [
+    '# Tier 1: bundled function proxy with the app User-Agent.',
+    '/api/redgifs  /.netlify/functions/redgifs  200',
+    '/api/media  /.netlify/functions/media  200',
+    '/api/premium  /.netlify/functions/premium  200',
+    '/api/premium-scan  /.netlify/functions/premium-scan  200',
+    '/api/premium-file  /.netlify/functions/premium-file  200',
+    '/api/hotpic  /.netlify/functions/hotpic  200',
+    '# Private Telegram source; telegram-auth is owner-only (x-admin-setup-secret required).',
+    '/api/telegram/channels  /.netlify/functions/telegram-channels  200',
+    '/api/internal/telegram-auth  /.netlify/functions/telegram-admin  200',
+    '# Discord media feed (auto-imports new images/videos from the guild).',
+    '/api/discord/feed  /.netlify/functions/discord-feed  200',
+    '# Discord web login (real OAuth2 account login for Premium).',
+    '/api/discord/login  /.netlify/functions/discord-login  200',
+    '/api/discord/callback  /.netlify/functions/discord-callback  200',
+    '/api/discord/refresh  /.netlify/functions/discord-refresh  200',
+    '/api/hotpic-html/*  https://hotpic.vip/:splat  200!',
+    '# Tier 2: static rewrite fallback for deployments without functions.',
+    '/api/redgifs/*  https://api.redgifs.com/:splat  200!',
+    '/*  /index.html  200',
+    ''
+  ].join('\n'),
   'utf8'
 )
 
@@ -71,4 +97,5 @@ try {
   throw new Error(`Could not create ${zipPath}. Install the standard "zip" command and retry.`, { cause: error })
 }
 
+await copyFile(zipPath, resolve(root, 'X-sutra-drop-NOPREMIUM.zip'))
 console.log('Updated X-sutra-standalone/index.html and X-sutra-netlify-drop.zip')
