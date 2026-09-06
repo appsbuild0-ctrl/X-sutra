@@ -4,8 +4,41 @@
  */
 
 const STORAGE_KEY = 'viewHistory'
+const WATCHED_KEY = 'watchedVideoIds'
 const MAX_CREATORS = 50
 const MAX_NICHES = 30
+const MAX_WATCHED = 600
+
+// A tiny reactive revision counter so a feed screen can re-filter the moment a
+// clip gets watched (i.e. removed from the home feed so it never re-surfaces).
+const watchedListeners = new Set<() => void>()
+let watchedRevision = 0
+function notifyWatched(): void {
+  watchedRevision += 1
+  watchedListeners.forEach((listener) => listener())
+}
+
+function loadWatchedIds(): string[] {
+  try {
+    const raw = localStorage.getItem(WATCHED_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+/** Ids of clips the user has already opened/watched. */
+export function getWatchedVideoIds(): Set<string> {
+  return new Set(loadWatchedIds())
+}
+
+/** Subscribe to watched-id changes (returns an unsubscribe function). */
+export function subscribeWatched(callback: () => void): () => void {
+  watchedListeners.add(callback)
+  return () => watchedListeners.delete(callback)
+}
 
 interface ViewEntry {
   creator: string
@@ -65,10 +98,24 @@ function saveHistory(history: ViewHistory): void {
 }
 
 /** Record that user watched a media item */
-export function recordView(item: { creator: string; niches?: string[]; tags?: string[] }, watchDurationMs: number = 0): void {
+export function recordView(item: { id?: string; creator: string; niches?: string[]; tags?: string[] }, watchDurationMs: number = 0): void {
   if (!item.creator) return
   const history = loadHistory()
   const now = Date.now()
+
+  // Remember the exact clip so home feeds don't keep re-showing it.
+  if (item.id) {
+    const current = loadWatchedIds()
+    if (!current.includes(item.id)) {
+      const next = [item.id, ...current].slice(0, MAX_WATCHED)
+      try {
+        localStorage.setItem(WATCHED_KEY, JSON.stringify(next))
+      } catch {
+        // Storage full or unavailable
+      }
+      notifyWatched()
+    }
+  }
 
   // Update creator stats
   const creatorStats = history.creators.get(item.creator) || { count: 0, lastViewed: 0, tags: new Set<string>() }
@@ -201,7 +248,13 @@ export function hasViewHistory(): boolean {
   return history.creators.size > 0 || history.niches.size > 0 || history.tags.size > 0
 }
 
-/** Clear all view history */
+/** Clear all view history (and remembered watched clips) */
 export function clearViewHistory(): void {
   localStorage.removeItem(STORAGE_KEY)
+  try {
+    localStorage.removeItem(WATCHED_KEY)
+  } catch {
+    // ignore
+  }
+  notifyWatched()
 }
