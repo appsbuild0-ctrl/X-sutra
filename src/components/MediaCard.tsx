@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { compactNumber, durationLabel } from '../lib/format'
 import { isUncroppedImage, naturalFrameStyle } from '../lib/imageFit'
@@ -17,11 +17,11 @@ interface MediaCardProps {
 const detailCache = new Map<string, MediaItem>()
 
 /** In-flight detail requests keyed by item id - guarantees max one API call per id */
-const detailInFlight = new Map<string, Promise<MediaItem>>()
+const detailInFlight = new Map<string, Promise<MediaItem | null>>()
 
-function premiumPlaceholder(itemId: string): MediaItem {
-  return { id: itemId, title: 'Premium', duration: 0 } as MediaItem
-}
+/** Ids whose detail request already failed this session — failed cards must
+ *  keep their feed-supplied media instead of retry-storming the API. */
+const detailFailed = new Set<string>()
 
 /** True when the URL can be used as a <video> preview source. The premium
  *  IndexedDB resolver can hand back `blob:` URLs and same-origin `/api/...`
@@ -33,27 +33,56 @@ function isPreviewableVideoSource(url: string): boolean {
   return /^https?:\/\//i.test(url) && /\.(?:mp4|webm|mov|m4v)(?:[?#]|$)/i.test(url)
 }
 
-/** Throttle detail API calls - one shared request per item id, cached for the session */
-function throttleDetailRequest(itemId: string, task: () => Promise<MediaItem>): Promise<MediaItem> {
+/** Fold a hydrated detail record into what the card is ALREADY showing.
+ *  Stats/title always refresh, but the visible media (thumbnail chain,
+ *  preview, video URLs) is kept whenever the card already has one. Replacing
+ *  the whole item on hydration remounted the <img>/<video> with a different
+ *  source — every card visibly blinked the moment its detail landed. */
+function mergeHydrated(current: MediaItem, detail: MediaItem): MediaItem {
+  return {
+    ...detail,
+    thumbnail: current.thumbnail || detail.thumbnail,
+    thumbnailUrls: current.thumbnailUrls?.length ? current.thumbnailUrls : detail.thumbnailUrls,
+    previewUrl: current.previewUrl || detail.previewUrl,
+    videoUrl: current.videoUrl || detail.videoUrl,
+    videoUrlSd: current.videoUrlSd || detail.videoUrlSd,
+    watermarkedUrls: current.watermarkedUrls?.length ? current.watermarkedUrls : detail.watermarkedUrls
+  }
+}
+
+/** True when the item already carries something the card can display — a
+ *  thumbnail or a playable preview/video. Such cards never need a detail
+ *  fetch, so scrolling a feed no longer fires one API call per card (the
+ *  resulting rate-limit failures were what emptied cards out). */
+function hasUsableMedia(item: MediaItem): boolean {
+  if (item.thumbnailUrls?.length || item.thumbnail) return true
+  return isPreviewableVideoSource(item.previewUrl ?? item.videoUrlSd ?? item.videoUrl ?? '')
+}
+
+/** Throttle detail API calls - one shared request per item id, cached for the
+ *  session. Resolves to null on failure (recorded in detailFailed) so callers
+ *  simply keep showing the feed item instead of an empty placeholder. */
+function throttleDetailRequest(itemId: string, task: () => Promise<MediaItem>): Promise<MediaItem | null> {
   const cached = detailCache.get(itemId)
   if (cached) return Promise.resolve(cached)
 
   // Premium catalog items are complete already - never hit the public API for them
   if (itemId.startsWith('pm-') || itemId.startsWith('premium-') || itemId.startsWith('hp-')) {
-    return Promise.resolve(premiumPlaceholder(itemId))
+    return Promise.resolve(null)
   }
 
   const inFlight = detailInFlight.get(itemId)
   if (inFlight) return inFlight
 
   const request = task()
-    .then((full) => {
+    .then((full): MediaItem | null => {
       detailCache.set(itemId, full)
       return full
     })
-    .catch(() => {
+    .catch((): MediaItem | null => {
       detailInFlight.delete(itemId)
-      return { id: itemId, title: 'Loading…', duration: 0 } as MediaItem
+      detailFailed.add(itemId)
+      return null
     })
   detailInFlight.set(itemId, request)
   return request
@@ -65,12 +94,24 @@ export function MediaCard({ item, queue, priority = false }: MediaCardProps): Re
   const navigate = useNavigate()
   const cardRef = useRef<HTMLElement | null>(null)
   const [inView, setInView] = useState(priority)
+  const isPremium = item.id.startsWith('pm-') || item.id.startsWith('premium-') || item.id.startsWith('hp-') || item.creator === 'premium'
   const [resolved, setResolved] = useState<MediaItem | null>(() => detailCache.get(item.id) ?? null)
   const [thumbnailIndex, setThumbnailIndex] = useState(0)
   const [imageExhausted, setImageExhausted] = useState(false)
   const [previewFailed, setPreviewFailed] = useState(false)
   const [opening, setOpening] = useState(false)
   const [videoPausedByUser, setVideoPausedByUser] = useState(false)
+
+  // Apply a hydrated detail record without disturbing the media the card is
+  // already showing (keeping the thumbnail/preview identity is what stops the
+  // cards from blinking when hydration lands).
+  const applyHydrated = useCallback((detail: MediaItem | null) => {
+    if (!detail?.id) return
+    setResolved((current) => {
+      if (current) return current
+      return mergeHydrated(item, detail)
+    })
+  }, [item])
 
   // Watch the card and hydrate lazily once it scrolls into view
   useEffect(() => {
@@ -92,31 +133,33 @@ export function MediaCard({ item, queue, priority = false }: MediaCardProps): Re
     return () => observer.disconnect()
   }, [])
 
-  // Hydrate detail URLs lazily once the card is in view
+  // Hydrate detail URLs lazily once the card is in view — but only when the
+  // feed gave this card nothing to show. Cards that already have thumbnails /
+  // a preview are left alone: the fetch adds nothing, and its failure used to
+  // swap in a bogus "Loading…" shell that emptied the whole card (premium
+  // cards always took that path, which is why their grids rendered empty).
   useEffect(() => {
-    if (!inView || resolved || !item.id) return
-    void throttleDetailRequest(item.id, () => publicMediaApi.getById(item.id)).then((full) => {
-      if (full.id) setResolved(full)
-    }).catch(() => undefined)
-  }, [inView, item, resolved])
+    if (!inView || resolved || isPremium || !item.id) return
+    if (hasUsableMedia(item) || detailFailed.has(item.id)) return
+    void throttleDetailRequest(item.id, () => publicMediaApi.getById(item.id)).then(applyHydrated)
+  }, [inView, item, resolved, isPremium, applyHydrated])
 
   // Reset per-item state when a different item lands in this card
   useEffect(() => {
-    setResolved(detailCache.get(item.id) ?? null)
+    setResolved(isPremium ? null : (detailCache.get(item.id) ?? null))
     setThumbnailIndex(0)
     setImageExhausted(false)
     setPreviewFailed(false)
-  }, [item.id])
+  }, [item.id, isPremium])
 
-  // Background hydration once thumbnail previews are exhausted
+  // Once every thumbnail failed, hydrate in the background to find fresh
+  // media (and stats). mergeHydrated keeps the current preview/video URLs, so
+  // a playing <video> preview is never swapped or wiped when this lands.
   useEffect(() => {
-    if (!imageExhausted || resolved || !inView) return
-    void throttleDetailRequest(item.id, () => publicMediaApi.getById(item.id)).then((full) => {
-      if (full.id) setResolved(full)
-    }).catch(() => undefined)
-  }, [imageExhausted, inView, item, resolved])
-
-  const isPremium = item.id.startsWith('pm-') || item.id.startsWith('premium-') || item.id.startsWith('hp-') || item.creator === 'premium'
+    if (!imageExhausted || resolved || !inView || isPremium || !item.id) return
+    if (detailFailed.has(item.id)) return
+    void throttleDetailRequest(item.id, () => publicMediaApi.getById(item.id)).then(applyHydrated)
+  }, [imageExhausted, inView, item, resolved, isPremium, applyHydrated])
   const display = resolved ?? item
   const saved = isSaved(display.id)
   const thumbnails = useMemo(() => [...new Set((display.thumbnailUrls?.length ? display.thumbnailUrls : (display.thumbnail ? [display.thumbnail] : [])).filter(Boolean))], [display.thumbnail, display.thumbnailUrls])
@@ -139,10 +182,8 @@ export function MediaCard({ item, queue, priority = false }: MediaCardProps): Re
     openPlayer(full, fullQueue)
 
     // Hydrate in background to get better URLs if not already loaded
-    if (!resolved && !isPremium) {
-      void throttleDetailRequest(item.id, () => publicMediaApi.getById(item.id)).then((hydrated) => {
-        setResolved(hydrated)
-      }).catch(() => undefined)
+    if (!resolved && !isPremium && !detailFailed.has(item.id)) {
+      void throttleDetailRequest(item.id, () => publicMediaApi.getById(item.id)).then(applyHydrated)
     }
     setTimeout(() => setOpening(false), 300)
   }

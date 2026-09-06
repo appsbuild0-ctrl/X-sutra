@@ -36,6 +36,18 @@ function rankRealItems(items: MediaItem[], mode: HomeFeed): MediaItem[] {
   return ranked
 }
 
+/** Drop duplicate ids from merged feed sources — the same clip often appears
+ *  in both trending and latest pages, and duplicate ids caused duplicate
+ *  React keys / double cards in the grid. */
+function dedupeById(items: MediaItem[]): MediaItem[] {
+  const seen = new Set<string>()
+  return items.filter((item) => {
+    if (seen.has(item.id)) return false
+    seen.add(item.id)
+    return true
+  })
+}
+
 function normalizePage(result: PageResult<MediaItem>, logicalPage: number, firstApiPage: number, mode: HomeFeed): PageResult<MediaItem> {
   const remainingPages = result.pages > 0 ? result.pages - firstApiPage + 1 : 1
   return { ...result, items: rankRealItems(result.items, mode), page: logicalPage, pages: Math.max(logicalPage, remainingPages) }
@@ -102,8 +114,8 @@ export function HomeScreen(): React.JSX.Element {
       ])
       
       if (!hasViewHistory()) {
-        // No history yet - mix trending and latest
-        const mixed = [...trending.items, ...latest.items]
+        // No history yet - mix trending and latest (deduped: both lists overlap)
+        const mixed = dedupeById([...trending.items, ...latest.items])
         // Shuffle for variety using daily seed for consistent daily rotation
         for (let i = mixed.length - 1; i > 0; i--) {
           const j = Math.floor(Math.random() * (i + 1));
@@ -112,8 +124,8 @@ export function HomeScreen(): React.JSX.Element {
         return { ...trending, items: mixed, page: logicalPage, pages: Math.max(trending.pages, latest.pages) }
       }
       
-      // Sort by user preferences
-      const allItems = [...trending.items, ...latest.items]
+      // Sort by user preferences (deduped: both lists overlap)
+      const allItems = dedupeById([...trending.items, ...latest.items])
       const personalized = sortForUser(allItems)
       // Also apply daily rotation to personalized feed
       const shuffledPersonalized = deterministicShuffle(personalized, dailySeed)
@@ -159,14 +171,20 @@ export function HomeScreen(): React.JSX.Element {
     })
     
     // Sort by user's viewing preferences - ONLY ONCE when feed first loads
-    return sortForUser(allItems).slice(0, 100)
+    return sortForUser(allItems)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [feed.items.length > 0 ? feed.items[0].id : 'empty', mode, hasPersonalization, creatorFeeds.size])
 
   const visibleItems = useMemo(() => {
     const blocked = new Set(preferences.blockedTags.map((tag) => tag.toLowerCase()))
     const hidden = new Set(hub.hiddenVideos)
-    const sourceItems = mode === 'foryou' && hasPersonalization ? personalizedItems : feed.items
+    // For You (personalized): the sorted FIRST page comes first, then pages
+    // loaded afterwards append in their natural order. The old slice(0,100)
+    // silently dropped every page past the first — the feed looked "finished"
+    // (empty below) even though more clips had loaded.
+    const sourceItems = dedupeById(
+      mode === 'foryou' && hasPersonalization ? [...personalizedItems, ...feed.items] : feed.items
+    )
     return sourceItems.filter(
       (item) => isRedgifsVideo(item)
         && !watchedIds.has(item.id)      // clips you already watched don't keep re-appearing
