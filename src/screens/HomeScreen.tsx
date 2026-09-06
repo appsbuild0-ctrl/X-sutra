@@ -14,7 +14,7 @@ import { deterministicShuffle, getDailySeed } from '../hooks/usePagedMedia'
 import { useHub } from '../hooks/useHub'
 import { markNotificationsRead, openHubLink, refreshHub, relativeTime, unreadCount } from '../lib/adminHub'
 import { isRedgifsVideo, publicMediaApi } from '../lib/redgifs'
-import { sortForUser, hasViewHistory, getTopCreators, getTopTags } from '../lib/viewHistory'
+import { sortForUser, hasViewHistory, getTopCreators, getTopTags, getWatchedVideoIds, subscribeWatched } from '../lib/viewHistory'
 import type { FeedOrder, MediaItem, PageResult } from '../types'
 
 type HomeFeed = 'latest' | 'trending' | 'likes' | 'views' | 'longest' | 'foryou'
@@ -59,6 +59,12 @@ export function HomeScreen(): React.JSX.Element {
   const hasPersonalization = hasViewHistory()
   const topCreators = getTopCreators(5)
   const topTags = getTopTags(8)
+
+  // Re-filter whenever a clip is watched so it drops out of the feed and never
+  // keeps re-surfacing at the top.
+  const [watchedRevision, setWatchedRevision] = useState(0)
+  useEffect(() => subscribeWatched(() => setWatchedRevision((r) => r + 1)), [])
+  const watchedIds = useMemo(() => getWatchedVideoIds(), [watchedRevision])
 
   // Load feeds from top creators for personalization
   useEffect(() => {
@@ -161,8 +167,13 @@ export function HomeScreen(): React.JSX.Element {
     const blocked = new Set(preferences.blockedTags.map((tag) => tag.toLowerCase()))
     const hidden = new Set(hub.hiddenVideos)
     const sourceItems = mode === 'foryou' && hasPersonalization ? personalizedItems : feed.items
-    return sourceItems.filter((item) => isRedgifsVideo(item) && !hidden.has(item.id) && !item.tags.some((tag) => blocked.has(tag.toLowerCase())))
-  }, [feed.items, personalizedItems, mode, hasPersonalization, preferences.blockedTags, hub.hiddenVideos])
+    return sourceItems.filter(
+      (item) => isRedgifsVideo(item)
+        && !watchedIds.has(item.id)      // clips you already watched don't keep re-appearing
+        && !hidden.has(item.id)
+        && !item.tags.some((tag) => blocked.has(tag.toLowerCase()))
+    )
+  }, [feed.items, personalizedItems, mode, hasPersonalization, preferences.blockedTags, hub.hiddenVideos, watchedIds])
 
   const refreshRealFeed = useCallback(async () => {
     setFirstApiPage((current) => current >= 7 ? 1 : current + 1)

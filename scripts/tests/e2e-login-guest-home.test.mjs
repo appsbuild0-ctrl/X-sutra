@@ -91,11 +91,18 @@ test('guest arrow sits at the top of login and navigates straight to the homepag
     const follows = (arrow.compareDocumentPosition(form) & window.Node.DOCUMENT_POSITION_FOLLOWING) !== 0
     assert.ok(follows, 'guest arrow sits above the sign-in form')
 
-    // 3. Tapping it navigates to the homepage feed.
+    // 3. Tapping it navigates to the homepage feed. Screens are kept alive, so
+    //    the login screen may stay mounted hidden behind it — the assertion is
+    //    that Home is the visible screen the user lands on.
+    const isVisible = (el) => {
+      const screen = el?.closest('.route-screen')
+      return screen ? screen.style.display !== 'none' : false
+    }
     arrow.click()
     await waitFor(() => window.location.hash === '#/', 5000, 'hash to become #/')
-    await waitFor(() => window.document.querySelector('.screen--home'), 5000, 'home screen to render')
-    assert.ok(!window.document.querySelector('form.login-form'), 'login form is gone after entering as guest')
+    const home = await waitFor(() => window.document.querySelector('.screen--home'), 5000, 'home screen to render')
+    assert.ok(isVisible(home), 'home screen is the visible one after entering as guest')
+    assert.ok(!isVisible(window.document.querySelector('.login-card')), 'login screen is hidden behind home')
   } finally {
     window.close()
   }
