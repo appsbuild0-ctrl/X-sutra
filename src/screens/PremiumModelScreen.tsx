@@ -47,8 +47,16 @@ export function PremiumModelScreen(): React.JSX.Element {
       navigate(`/premium/hotpic/${card.id}`)
       return
     }
+    // A photo has no video stream to feed into the player. Opening the real
+    // file in the browser avoids the "Loading…"/stuck player you get when the
+    // player is handed a jpg/webp instead of an mp4.
+    if (card.kind === 'pic') {
+      const target = card.cover || `https://hotpic.vip/i/${card.id}`
+      window.open(target, '_blank', 'noopener,noreferrer')
+      return
+    }
     const item = hotpicApi.cardToMedia(card)
-    const queue = (card.kind === 'video' ? videos : pics).map(hotpicApi.cardToMedia)
+    const queue = videos.map(hotpicApi.cardToMedia)
     openPlayer(item, queue.length ? queue : [item])
   }
 

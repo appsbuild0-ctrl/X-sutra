@@ -13,6 +13,7 @@ import { hotpicApi } from '../lib/hotpic'
 import { publicMediaApi } from '../lib/redgifs'
 import { createUser, onAccountsChange, readSession, verifyLogin, writeSession } from '../lib/accounts'
 import { readStored, writeStored, removeStored } from '../lib/storage'
+import { recordView } from '../lib/viewHistory'
 import type { AuthResult, Creator, DownloadRecord, DownloadStatus, LocalAccount, LocalCollection, MediaItem, Preferences } from '../types'
 
 type ToastTone = 'default' | 'success' | 'error'
@@ -89,7 +90,9 @@ function mergeMediaDetail(item: MediaItem, detail: MediaItem): MediaItem {
     ...item,
     ...detail,
     thumbnail: detail.thumbnail ?? item.thumbnail,
-    thumbnailUrls: detail.thumbnailUrls.length ? detail.thumbnailUrls : item.thumbnailUrls,
+    // The public API shape is intentionally tolerant here: never trust that a
+    // partial/detail response carries thumbnailUrls/watermarkedUrls.
+    thumbnailUrls: detail.thumbnailUrls?.length ? detail.thumbnailUrls : (item.thumbnailUrls?.length ? item.thumbnailUrls : (item.thumbnail ? [item.thumbnail] : [])),
     previewUrl: detail.previewUrl ?? item.previewUrl,
     videoUrl: detail.videoUrl ?? item.videoUrl,
     videoUrlSd: detail.videoUrlSd ?? item.videoUrlSd,
@@ -301,13 +304,19 @@ export function AppProvider({ children }: { children: ReactNode }): React.JSX.El
     setPlayerQueue(resolvedQueue)
     setPlayerIndex(index)
     setActiveMedia(resolvedQueue[index] ?? item)
+    // Track view for personalized algorithm
+    recordView(item)
   }, [])
 
   const stepPlayer = useCallback((direction: -1 | 1) => {
     setPlayerIndex((current) => {
       const next = Math.min(Math.max(current + direction, 0), Math.max(playerQueue.length - 1, 0))
       const nextItem = playerQueue[next]
-      if (nextItem) setActiveMedia(nextItem)
+      if (nextItem) {
+        setActiveMedia(nextItem)
+        // Track view for personalized algorithm
+        recordView(nextItem)
+      }
       return next
     })
   }, [playerQueue])

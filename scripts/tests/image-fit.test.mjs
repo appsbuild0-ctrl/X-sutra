@@ -68,7 +68,6 @@ describe('premium image display is not cropped in CSS', () => {
     assert.match(ruleFor(css, '.msg-image-btn img'), /object-fit: contain/)
     assert.match(ruleFor(css, '.media-card__visual--natural img'), /object-fit: contain/)
     assert.match(ruleFor(css, '.premium-scan-item__thumb'), /object-fit: contain/)
-    assert.match(ruleFor(css, '.discord-imported__item img'), /object-fit: contain/)
   })
 
   it('renders real <img> elements instead of a cropped background image', async () => {

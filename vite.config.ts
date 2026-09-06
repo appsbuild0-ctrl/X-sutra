@@ -20,12 +20,10 @@ const LOCAL_API_HANDLERS: Record<string, string> = {
   '/api/premium-scan': './netlify/functions/premium-scan.mjs',
   '/api/premium-file': './netlify/functions/premium-file.mjs',
   '/api/hotpic': './netlify/functions/hotpic.mjs',
-  '/api/discord/health': './netlify/functions/discord-health.mjs',
-  '/api/discord/upload': './netlify/functions/discord-upload.mjs',
-  '/api/discord/delete': './netlify/functions/discord-delete.mjs',
-  '/api/discord/sync': './netlify/functions/discord-sync.mjs',
   '/api/discord/feed': './netlify/functions/discord-feed.mjs',
-  '/api/discord/media': './netlify/functions/discord-media.mjs'
+  '/api/discord/login': './netlify/functions/discord-login.mjs',
+  '/api/discord/callback': './netlify/functions/discord-callback.mjs',
+  '/api/discord/refresh': './netlify/functions/discord-refresh.mjs'
 }
 
 function allowedTarget(rawPath: string): URL | null {

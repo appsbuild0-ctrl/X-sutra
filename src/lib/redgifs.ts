@@ -337,19 +337,19 @@ export const publicMediaApi = {
   async trending(page = 1): Promise<PageResult<MediaItem>> {
     // Use the paginated search endpoint with trending order for unlimited pages.
     // The /v2/feeds/trending/popular endpoint only returns 1 page (no pagination).
-    return mediaPage(await request('/v2/gifs/search', { page, count: 80, order: 'trending' }))
+    return mediaPage(await request('/v2/gifs/search', { page, count: 100, order: 'trending' }))
   },
 
   async latest(page = 1, order: FeedOrder = 'latest'): Promise<PageResult<MediaItem>> {
-    return mediaPage(await request('/v2/gifs/search', { page, count: 80, order }))
+    return mediaPage(await request('/v2/gifs/search', { page, count: 100, order }))
   },
 
   async search(query: string, page = 1, order: FeedOrder = 'latest'): Promise<PageResult<MediaItem>> {
-    return mediaPage(await request('/v2/gifs/search', { page, count: 80, order, query: query.trim() }))
+    return mediaPage(await request('/v2/gifs/search', { page, count: 100, order, query: query.trim() }))
   },
 
   async tag(tag: string, page = 1, order: FeedOrder = 'latest'): Promise<PageResult<MediaItem>> {
-    return mediaPage(await request('/v2/gifs/search', { page, count: 80, order, query: tag.trim() }))
+    return mediaPage(await request('/v2/gifs/search', { page, count: 100, order, query: tag.trim() }))
   },
 
   async getById(id: string): Promise<MediaItem> {
@@ -362,7 +362,7 @@ export const publicMediaApi = {
   },
 
   async similar(id: string, page = 1): Promise<PageResult<MediaItem>> {
-    return mediaPage(await request('/v2/recommend/tags/' + encodeURIComponent(id), { page, count: 80 }))
+    return mediaPage(await request('/v2/recommend/tags/' + encodeURIComponent(id), { page, count: 100 }))
   },
 
   async creators(query = '', page = 1): Promise<Creator[]> {
@@ -387,7 +387,7 @@ export const publicMediaApi = {
       const feed = await grgUserFeed(username, page)
       if (feed) return { items: feed.items, page, pages: page + (feed.hasMore ? 1 : 0), total: feed.items.length }
     } catch { /* fall through to the API flow */ }
-    return mediaPage(await request(`/v2/users/${encodeURIComponent(username)}/search`, { page, count: 80, order }))
+    return mediaPage(await request(`/v2/users/${encodeURIComponent(username)}/search`, { page, count: 100, order }))
   },
 
   async creatorProfile(username: string): Promise<CreatorProfile> {
@@ -434,7 +434,7 @@ export const publicMediaApi = {
   },
 
   async niche(id: string, page = 1, order: FeedOrder = 'latest'): Promise<PageResult<MediaItem>> {
-    return mediaPage(await request('/v2/niches/' + encodeURIComponent(id) + '/gifs', { page, count: 80, order }))
+    return mediaPage(await request('/v2/niches/' + encodeURIComponent(id) + '/gifs', { page, count: 100, order }))
   },
 
   async relatedNiches(id: string): Promise<Niche[]> {

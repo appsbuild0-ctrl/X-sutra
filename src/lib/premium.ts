@@ -1,4 +1,5 @@
 import type { MediaItem } from '../types'
+import { fetchWithRetry } from './http'
 import { idbPutFile, resolvePremiumSrc } from './premium-idb'
 import { readStored, writeStored } from './storage'
 
@@ -23,8 +24,8 @@ export interface PremiumChannel {
   status: 'on' | 'off'
   order: number
   createdAt: string
-  /** Where the channel came from: 'discord' channels are created by a sync. */
-  source?: 'upload' | 'discord' | 'telegram'
+  /** Where the channel came from. */
+  source?: string
   sourceId?: string
 }
 
@@ -174,7 +175,7 @@ export const emptyCatalog = (): PremiumCatalog => ({
 export async function fetchPremiumCatalog(): Promise<PremiumCatalog> {
   const local = localCatalog()
   try {
-    const response = await fetch(ENDPOINT, { headers: { Accept: 'application/json' } })
+    const response = await fetchWithRetry(ENDPOINT, { headers: { Accept: 'application/json' } })
     if (!response.ok) return cacheCatalog(local)
     const data = await response.json() as Partial<PremiumCatalog>
     const fallback = emptyCatalog()
@@ -312,7 +313,7 @@ function applyLocalAdmin(action: string, payload: Record<string, unknown>): Prem
 
 export async function premiumAdmin(action: string, payload: Record<string, unknown> = {}): Promise<{ ok: boolean; error?: string; catalog?: PremiumCatalog; added?: number; skipped?: number }> {
   try {
-    const response = await fetch(ENDPOINT, {
+    const response = await fetchWithRetry(ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ password: ADMIN_KEY, action, ...payload })
@@ -335,7 +336,7 @@ export async function premiumAdmin(action: string, payload: Record<string, unkno
 
 export async function scanPremiumPages(urls: string): Promise<{ ok: boolean; error?: string; pages?: ScanPage[]; totals?: { images: number; videos: number; media: number } }> {
   try {
-    const response = await fetch(SCAN, {
+    const response = await fetchWithRetry(SCAN, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({ password: ADMIN_KEY, urls })
@@ -350,15 +351,15 @@ export async function scanPremiumPages(urls: string): Promise<{ ok: boolean; err
 
 export function premiumMediaToItem(entry: PremiumMedia): MediaItem {
   const isVideo = entry.type === 'video'
-  // Discord videos have no poster image, so `#t=0.1` makes the browser paint the
+  // Videos may have no poster image, so `#t=0.1` makes the browser paint the
   // real first frame as the preview instead of an empty black tile.
-  const videoPreview = entry.source === 'discord' ? `${entry.url}#t=0.1` : entry.url
+  const videoPreview = isVideo ? `${entry.url}#t=0.1` : entry.url
   return {
     id: entry.id,
     title: entry.title || (isVideo ? 'Premium video' : 'Premium image'),
     description: entry.title || '',
     creator: 'premium',
-    thumbnail: entry.thumbnail || (isVideo ? (entry.source === 'discord' ? videoPreview : '') : entry.url),
+    thumbnail: entry.thumbnail || (isVideo ? videoPreview : entry.url),
     thumbnailUrls: [entry.thumbnail || (!isVideo ? entry.url : videoPreview)].filter(Boolean),
     previewUrl: isVideo ? videoPreview : entry.url,
     videoUrl: isVideo ? entry.url : undefined,
