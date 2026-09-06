@@ -1,19 +1,33 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { MediaGrid } from '../components/MediaGrid'
+import { PremiumImageTile } from '../components/PremiumImageTile'
 import { ScreenHeader } from '../components/ScreenHeader'
-import { fetchPremiumCatalog, premiumMediaToItem, type PremiumCatalog } from '../lib/premium'
+import { XIcon } from '../components/icons'
+import { fetchPremiumCatalog, premiumMediaToItem, type PremiumCatalog, type PremiumMedia } from '../lib/premium'
+import { naturalFrameStyle } from '../lib/imageFit'
 
+/**
+ * One Premium section: the media the admin stored in the premium catalog for
+ * this channel, newest first, plus any albums that live inside it.
+ */
 export function PremiumChannelScreen(): React.JSX.Element {
   const { id = '' } = useParams()
   const navigate = useNavigate()
   const [catalog, setCatalog] = useState<PremiumCatalog | null>(null)
+  const [lightbox, setLightbox] = useState<number | null>(null)
 
   useEffect(() => { void fetchPremiumCatalog().then(setCatalog) }, [])
 
   const channel = catalog?.channels.find((entry) => entry.id === id)
   const albums = useMemo(() => (catalog?.albums ?? []).filter((album) => album.channelId === id), [catalog, id])
-  const media = useMemo(() => (catalog?.media ?? []).filter((item) => item.channelId === id), [catalog, id])
+
+  const media: PremiumMedia[] = useMemo(() => {
+    return (catalog?.media ?? [])
+      .filter((entry) => entry.channelId === id)
+      .sort((a, b) => Date.parse(b.createdAt || '0') - Date.parse(a.createdAt || '0'))
+  }, [catalog, id])
+
   const videos = media.filter((item) => item.type === 'video')
   const images = media.filter((item) => item.type === 'image')
   const showImages = channel?.type !== 'videos'
@@ -21,7 +35,11 @@ export function PremiumChannelScreen(): React.JSX.Element {
 
   return (
     <section className="screen">
-      <ScreenHeader title={channel?.name ?? 'Channel'} eyebrow="Premium channel" actions={<button className="round-button" type="button" onClick={() => navigate('/premium?tab=categories')} aria-label="Back">‹</button>} />
+      <ScreenHeader
+        title={channel?.name ?? 'Channel'}
+        eyebrow={channel?.type || 'Premium channel'}
+        actions={<button className="round-button" type="button" onClick={() => navigate('/premium/library')} aria-label="Back">‹</button>}
+      />
       {!catalog && <div className="media-grid">{Array.from({ length: 4 }, (_, index) => <div className="media-skeleton" key={index} />)}</div>}
       {catalog && !channel && <div className="empty-state"><strong>Channel not found.</strong></div>}
       {channel && (
@@ -58,11 +76,37 @@ export function PremiumChannelScreen(): React.JSX.Element {
             <>
               <div className="section-heading section-heading--spaced"><div><p className="eyebrow">Images</p><h3>Channel photos</h3></div></div>
               <div className="premium-image-grid">
-                {images.map((item) => <a key={item.id} className="premium-image" href={item.url} target="_blank" rel="noreferrer" style={{ backgroundImage: `url(${item.thumbnail || item.url})` }} />)}
+                {images.map((item, index) => (
+                  <PremiumImageTile
+                    key={item.id}
+                    url={item.thumbnail || item.url}
+                    title={item.title}
+                    width={item.width}
+                    height={item.height}
+                    onOpen={() => setLightbox(index)}
+                  />
+                ))}
               </div>
             </>
           )}
         </>
+      )}
+
+      {lightbox !== null && images[lightbox] && (
+        <div className="lightbox" onClick={() => setLightbox(null)}>
+          <div className="lightbox__inner" onClick={(event) => event.stopPropagation()}>
+            <button type="button" className="lightbox__close" onClick={() => setLightbox(null)} aria-label="Close"><XIcon size={24} /></button>
+            <button type="button" className="lightbox__prev" disabled={lightbox === 0} onClick={() => setLightbox(lightbox - 1)} aria-label="Previous">‹</button>
+            <img
+              src={images[lightbox].thumbnail || images[lightbox].url}
+              alt={images[lightbox].title}
+              className="lightbox__img"
+              style={naturalFrameStyle(images[lightbox].width, images[lightbox].height)}
+            />
+            <button type="button" className="lightbox__next" disabled={lightbox >= images.length - 1} onClick={() => setLightbox(lightbox + 1)} aria-label="Next">›</button>
+            <div className="lightbox__counter">{lightbox + 1} / {images.length}</div>
+          </div>
+        </div>
       )}
     </section>
   )

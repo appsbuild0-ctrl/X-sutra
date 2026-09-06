@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">X-sutra</string>
-    <string name="title_activity_main">X-sutra</string>
-    <string name="package_name">app.xsutra.mobile</string>
-    <string name="custom_url_scheme">app.xsutra.mobile</string>
+    <string name="app_name">RedGrab</string>
+    <string name="title_activity_main">RedGrab</string>
+    <string name="package_name">app.redgrab.downloader</string>
+    <string name="custom_url_scheme">app.redgrab.downloader</string>
 </resources>

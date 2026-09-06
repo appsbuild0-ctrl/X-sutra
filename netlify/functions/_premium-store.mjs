@@ -28,6 +28,8 @@ export const defaultSettings = {
   newVideoNotifications: true
 }
 
+
+
 function emptyCatalog() {
   return {
     settings: { ...defaultSettings },
@@ -193,8 +195,8 @@ export function mediaToItem(entry) {
     duration: 0,
     likes: 0,
     views: 0,
-    width: 0,
-    height: 0,
+    width: Number(entry.width) || 0,
+    height: Number(entry.height) || 0,
     createdAt: Date.parse(entry.createdAt) || 0,
     hasAudio: isVideo,
     tags: entry.tags || [],

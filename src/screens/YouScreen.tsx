@@ -56,7 +56,7 @@ export function YouScreen(): React.JSX.Element {
         <button type="button" onClick={() => navigate('/downloads')}><span><DownloadIcon size={19} /><strong>Download history</strong><small>Public files sent to your device</small></span><i>›</i></button>
         <button type="button" onClick={() => navigate('/settings')}><span><SettingsIcon size={19} /><strong>Preferences</strong><small>Quality, player and blocked tags</small></span><i>›</i></button>
       </div>
-      <div className="settings-card settings-card--about"><div className="about-row"><span className="about-x">X</span><span><strong>X-sutra</strong><small>Real public data · local controls</small></span></div><p>Local-only login is optional. This build uses temporary public API access and never sends your password or an external account token anywhere.</p></div>
+      <div className="settings-card settings-card--about"><div className="about-row"><span className="about-x">RG</span><span><strong>RedGrab</strong><small>Download GIFs, images & videos from RedGifs</small></span></div><p>Local-only login is optional. This app uses temporary public API access and never sends your password or an external account token anywhere.</p></div>
     </section>
   )
 }

@@ -135,7 +135,16 @@ export const handler = async (event) => {
           channelId: String(body.channelId || ''),
           albumId: String(body.albumId || ''),
           sourcePage: String(raw.sourcePage || ''),
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
+          // Kept so an upload survives a reload with its filename, its dedupe
+          // hash and — most importantly — its real pixel size, which is what
+          // lets the app render the image at its own aspect ratio.
+          filename: String(raw.filename || '').slice(0, 200),
+          size: Number(raw.size) || 0,
+          hash: String(raw.hash || ''),
+          width: Number(raw.width) || 0,
+          height: Number(raw.height) || 0,
+          source: String(raw.source || 'upload')
         }
         if (raw.role === 'hero') {
           catalog.heroes.unshift({

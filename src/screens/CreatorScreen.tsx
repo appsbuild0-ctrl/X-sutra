@@ -4,7 +4,7 @@ import { CreatorAvatar } from '../components/CreatorAvatar'
 import { LiveError, ScreenNotice } from '../components/LiveState'
 import { MediaGrid } from '../components/MediaGrid'
 import { ScreenHeader } from '../components/ScreenHeader'
-import { ArrowLeftIcon, BookmarkIcon, RefreshIcon } from '../components/icons'
+import { BookmarkIcon, RefreshIcon } from '../components/icons'
 import { useApp } from '../context/AppContext'
 import { usePagedMedia } from '../hooks/usePagedMedia'
 import { compactNumber } from '../lib/format'
@@ -53,7 +53,7 @@ export function CreatorScreen(): React.JSX.Element {
       <ScreenHeader
         title="Creator"
         eyebrow="Public profile"
-        actions={<><button className="round-button" type="button" onClick={() => navigate(-1)} aria-label="Go back"><ArrowLeftIcon size={19} /></button><button className="round-button" type="button" onClick={() => void loadProfile()} aria-label="Refresh creator"><RefreshIcon size={19} /></button></>}
+        showBack
       />
 
       <div className="creator-profile-card">

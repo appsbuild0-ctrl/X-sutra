@@ -21,14 +21,15 @@ import type { MediaItem } from '../types'
 const SWIPE_COMMIT = 0.18
 const WHEEL_STEP_PX = 60
 const STEP_LOCK_MS = 320
-const DOUBLE_TAP_MS = 280
+const DOUBLE_TAP_MS = 200
 
 /**
  * Full-screen swipe/wheel player, ported 1:1 from the reference app's
  * Player.tsx: drag or scroll-wheel up/down to move between clips, single-tap
- * pauses (instant), double-tap likes, the rail carries like/sound/save/
- * download, and the previous/current/next slides stay mounted and preloaded
- * so stepping is instant.
+ * only resumes a paused clip (it never pauses a playing clip), double-tap
+ * likes, the rail carries like/sound/save/download, and the
+ * previous/current/next slides stay mounted and preloaded so stepping is
+ * instant.
  */
 export function VideoPlayerSheet(): React.JSX.Element | null {
   const {
@@ -45,6 +46,7 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
     isFollowing,
     toggleFollow,
     requestDownload,
+    account,
     preferences,
     updatePreferences,
     notify
@@ -63,6 +65,7 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
   const [heartBurst, setHeartBurst] = useState(false)
   const [activeSourceIndex, setActiveSourceIndex] = useState(0)
   const [downloadOpen, setDownloadOpen] = useState(false)
+  const [fallbackEmbed, setFallbackEmbed] = useState(false)
 
   const videoRefs = useRef<Map<string, HTMLVideoElement>>(new Map())
   const itemsRef = useRef(items)
@@ -88,13 +91,20 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
   )
   const activeCandidates = current ? candidatesFor(current) : []
   const source = activeCandidates[activeSourceIndex] ?? activeCandidates[0]
+  const embedUrl = current && !current.id.startsWith('hp-') && !current.id.startsWith('pm-') && !current.id.startsWith('premium-')
+    ? `https://www.redgifs.com/ifr/${encodeURIComponent(current.id)}?autoplay=1`
+    : undefined
 
   /** Feed cards can arrive without direct media URLs; resolve them at play time. */
   const ensureDirectSource = useCallback(async (): Promise<void> => {
     if (refreshAttempted.current) return
     refreshAttempted.current = true
     const merged = await refreshActiveMedia()
-    if (!merged || candidatesFor(merged).length === 0) notify('Using the public embed for this clip', 'error')
+    if (!merged || candidatesFor(merged).length === 0) {
+      notify('Using the public embed for this clip')
+      setFallbackEmbed(true)
+      setPlaying(true)
+    }
   }, [candidatesFor, notify, refreshActiveMedia])
 
   const step = useCallback(
@@ -124,6 +134,7 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
     setActiveSourceIndex(0)
     refreshAttempted.current = false
     setDownloadOpen(false)
+    setFallbackEmbed(false)
     setLiked(isLiked(current.id))
     setSaved(isSaved(current.id))
     setFollowing(isFollowing(current.creator))
@@ -138,12 +149,14 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
     if (v && wantPlayingRef.current) {
       v.muted = muted
       v.currentTime = 0
-      v.play().then(() => setPlaying(true)).catch(() => {
+      // Older Android WebViews return undefined from play() instead of a
+      // Promise — calling .then() on that crashed the player on open.
+      safePlay(v).then(() => setPlaying(true)).catch(() => {
         // Browser blocked audible autoplay: fall back to muted autoplay so the
         // clip still starts instead of showing as paused.
         v.muted = true
         setMuted(true)
-        void v.play().then(() => setPlaying(true)).catch(() => setPlaying(false))
+        void safePlay(v).then(() => setPlaying(true)).catch(() => setPlaying(false))
       })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -160,11 +173,16 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
     const v = currentVideo()
     if (!v) return
     if (v.paused) {
+      // A tap on a paused/recovered clip should only start it again.
       wantPlayingRef.current = true
-      void v.play().catch(() => setPlaying(false))
+      setPlaying(true)
+      void safePlay(v).catch(() => setPlaying(false))
     } else {
-      wantPlayingRef.current = false
-      v.pause()
+      // Never pause the video on a single tap. Mobile WebViews briefly report
+      // "paused" while switching sources/buffering, so reacting to that here is
+      // exactly what made the player look stuck or throw after a user tap.
+      wantPlayingRef.current = true
+      setPlaying(true)
     }
   }, [currentVideo])
 
@@ -179,6 +197,26 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
     toggleLike(current)
     setLiked(true)
   }, [current, liked, toggleLike])
+
+  // Once a working source is present, never leave the embed fallback mounted.
+  useEffect(() => {
+    setFallbackEmbed(false)
+  }, [source])
+
+  // The direct source can arrive AFTER the clip has opened (detail refresh or
+  // a candidate retry). The autoPlay attribute is not reliably honoured by
+  // every Android WebView once the element is mounted or its src is swapped,
+  // so nudge playback whenever a playable source appears while the clip should
+  // be playing. It only ever starts a paused clip — it never pauses one.
+  useEffect(() => {
+    if (!current || !source) return
+    if (!wantPlayingRef.current) return
+    const v = currentVideo()
+    if (!v || !v.paused) return
+    v.muted = muted
+    void safePlay(v).catch(() => undefined)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [source, current?.id])
 
   const onVideoTap = useCallback((): void => {
     const now = Date.now()
@@ -283,10 +321,15 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
     }
     if (!refreshAttempted.current) {
       void ensureDirectSource()
+      return
     }
+    // Every direct/proxied candidate has failed. For public RedGifs clips, fall
+    // back to the official embedded player instead of leaving a black screen.
+    setFallbackEmbed(true)
+    setPlaying(true)
   }
 
-  // Keep one extra upcoming slide mounted so consecutive swipes stay instant.
+  // Keep current + next 2 slides mounted with preload for instant consecutive playback.
   const first = Math.max(0, playerIndex - 1)
   const slides = playerQueue.slice(first, Math.min(playerQueue.length, playerIndex + 3))
 
@@ -342,11 +385,33 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
                       : undefined
                   }
                   onPlay={isCurrent ? () => setPlaying(true) : undefined}
-                  onPause={isCurrent ? () => setPlaying(false) : undefined}
+                  onPause={isCurrent ? (event) => {
+                    // Transient pause (source swap, buffering, background tab)
+                    // should never paint the big paused overlay. Only an
+                    // explicit/unsuccessful play attempt flips the state, and
+                    // the tap handler above always resumes instead of pausing.
+                    if (wantPlayingRef.current) {
+                      setPlaying(true)
+                      if (!event.currentTarget.ended) {
+                        void safePlay(event.currentTarget).catch(() => setPlaying(false))
+                      }
+                    } else {
+                      setPlaying(false)
+                    }
+                  } : undefined}
+                />
+              ) : fallbackEmbed && isCurrent && embedUrl ? (
+                <iframe
+                  className="player-video player-embed"
+                  src={embedUrl}
+                  title="Video"
+                  allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+                  allowFullScreen
+                  referrerPolicy="no-referrer-when-downgrade"
                 />
               ) : (
                 <div className="player-video" style={{ display: 'grid', placeItems: 'center', background: '#000' }}>
-                  {isCurrent && <span className="player-chip">Loading…</span>}
+                  {isCurrent && <span className="player-chip">{itemSource ? 'Loading…' : 'Loading…'}</span>}
                 </div>
               )}
             </div>
@@ -362,7 +427,7 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
         </div>
       )}
 
-      {!playing && (
+      {!playing && !fallbackEmbed && (
         <div className="player-paused" aria-hidden="true">
           <PlayIcon size={66} />
         </div>
@@ -399,18 +464,14 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
         <div className="player-id">
           <button
             className={`player-follow${following ? ' on' : ''}`}
-            onClick={() => {
-              if (!current) return
-              toggleFollow({ username: current.creator, displayName: current.creator, followers: 0, gifs: 0, views: 0, verified: false })
-              setFollowing(!following)
-            }}
+            onClick={(e) => { e.stopPropagation(); if (!current) return; toggleFollow({ username: current.creator, displayName: current.creator, followers: 0, gifs: 0, views: 0, verified: false }); setFollowing(!following) }}
             aria-label={following ? 'Following — tap to unfollow' : 'Follow'}
           >
             <UserIcon size={24} />
             <span className="player-follow-badge">{following ? <CheckIcon size={12} /> : <PlusIcon size={12} />}</span>
           </button>
           <div className="player-id-text">
-            <button className="player-handle" onClick={goCreator}>@{current.creator}</button>
+            <button className="player-handle" onClick={(e) => { e.stopPropagation(); goCreator() }}>@{current.creator}</button>
             <div className="player-stats">
               {compactNumber(current.views)} views · {durationLabel(current.duration)}
             </div>
@@ -419,7 +480,7 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
         {current.tags.length > 0 && (
           <div className="player-tags">
             {current.tags.slice(0, 6).map((tag) => (
-              <button key={tag} className="player-tag" onClick={() => goTag(tag)}>
+              <button key={tag} className="player-tag" onClick={(e) => { e.stopPropagation(); goTag(tag) }}>
                 #{tag}
               </button>
             ))}
@@ -429,15 +490,27 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
 
       <div className="player-scrub"><i style={{ width: `${Math.round(progress * 100)}%` }} /></div>
       {downloadOpen && current && (
-        <DownloadGate
+        <DownloadGate userRole={account?.role}
           item={current}
           onClose={() => setDownloadOpen(false)}
           onNormalDownload={(item) => requestDownload(item)}
-          onBuyNow={() => { setDownloadOpen(false); closePlayer(); navigate('/login') }}
         />
       )}
     </div>
   )
+}
+
+/** play() only returns a Promise on modern engines; old Android WebViews
+ *  return undefined, so normalise it before chaining .then/.catch. */
+function safePlay(v: HTMLVideoElement): Promise<void> {
+  try {
+    const p = v.play() as unknown
+    return p && typeof (p as Promise<void>).then === 'function'
+      ? (p as Promise<void>)
+      : Promise.resolve()
+  } catch (error) {
+    return Promise.reject(error instanceof Error ? error : new Error('play failed'))
+  }
 }
 
 function RailBtn({
@@ -453,7 +526,7 @@ function RailBtn({
 }): React.JSX.Element {
   return (
     <div style={{ textAlign: 'center' }}>
-      <button className={`player-rail-btn ${on ? 'on' : ''}`} onClick={onClick} aria-label={label}>
+      <button className={`player-rail-btn ${on ? 'on' : ''}`} onClick={(e) => { e.stopPropagation(); onClick() }} aria-label={label}>
         {children}
       </button>
       <div className="player-rail-label">{label}</div>

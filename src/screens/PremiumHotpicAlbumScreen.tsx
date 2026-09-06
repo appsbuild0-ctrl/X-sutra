@@ -2,13 +2,12 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { MediaGrid } from '../components/MediaGrid'
 import { ScreenHeader } from '../components/ScreenHeader'
-import { useApp } from '../context/AppContext'
 import { hotpicApi, type HotpicAlbum } from '../lib/hotpic'
+import { UNCROPPED_IMAGE_STYLE } from '../lib/imageFit'
 
 export function PremiumHotpicAlbumScreen(): React.JSX.Element {
   const { id = '' } = useParams()
   const navigate = useNavigate()
-  const { openPlayer } = useApp()
   const [album, setAlbum] = useState<HotpicAlbum | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -37,10 +36,11 @@ export function PremiumHotpicAlbumScreen(): React.JSX.Element {
               key={item.id}
               className="premium-image"
               type="button"
-              style={{ backgroundImage: `url(${item.thumbnail || item.previewUrl})` }}
-              onClick={() => openPlayer({ ...item, videoUrl: item.previewUrl || item.sourceUrl, previewUrl: item.previewUrl || item.sourceUrl }, images)}
+              onClick={() => window.open(item.previewUrl || item.thumbnail || item.sourceUrl, '_blank', 'noopener,noreferrer')}
               aria-label={item.title}
-            />
+            >
+              <img src={item.thumbnail || item.previewUrl} alt={item.title} loading="lazy" style={UNCROPPED_IMAGE_STYLE} />
+            </button>
           ))}
         </div>
       ) : <p className="form-help">No pics in this album.</p>}

@@ -370,7 +370,7 @@ export const hotpicApi = {
         ...item,
         ...full,
         thumbnail: full.thumbnail || item.thumbnail,
-        thumbnailUrls: full.thumbnailUrls.length ? full.thumbnailUrls : item.thumbnailUrls,
+        thumbnailUrls: full.thumbnailUrls?.length ? full.thumbnailUrls : (item.thumbnailUrls?.length ? item.thumbnailUrls : (item.thumbnail ? [item.thumbnail] : [])),
         videoUrl: full.videoUrl || (item.videoUrl && isDirectFile(item.videoUrl) ? item.videoUrl : undefined),
         previewUrl: full.previewUrl || item.previewUrl
       }
