@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { CreatorAvatar } from '../components/CreatorAvatar'
 import { MediaGrid } from '../components/MediaGrid'
 import { ScreenHeader } from '../components/ScreenHeader'
@@ -11,7 +11,21 @@ type LibraryView = 'saved' | 'likes' | 'collections' | 'following'
 export function LibraryScreen(): React.JSX.Element {
   const navigate = useNavigate()
   const { saved, liked, follows, collections, createCollection } = useApp()
-  const [view, setView] = useState<LibraryView>('saved')
+  const [searchParams, setSearchParams] = useSearchParams()
+  const tabParam = searchParams.get('tab')
+  const initialView: LibraryView = tabParam === 'likes' || tabParam === 'collections' || tabParam === 'following' ? tabParam : 'saved'
+  const [view, setView] = useState<LibraryView>(initialView)
+
+  // Keep the tab in the URL so You-screen stats can link straight to a section.
+  useEffect(() => {
+    if (tabParam && tabParam !== view) setView(initialView)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabParam])
+
+  const selectView = (next: LibraryView): void => {
+    setView(next)
+    setSearchParams(next === 'saved' ? {} : { tab: next }, { replace: true })
+  }
   const [creating, setCreating] = useState(false)
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
@@ -36,10 +50,10 @@ export function LibraryScreen(): React.JSX.Element {
       </div>
 
       <div className="segmented library-segmented" role="tablist" aria-label="Library sections">
-        <button type="button" className={view === 'saved' ? 'is-active' : ''} onClick={() => setView('saved')}>Saved</button>
-        <button type="button" className={view === 'likes' ? 'is-active' : ''} onClick={() => setView('likes')}>Likes</button>
-        <button type="button" className={view === 'collections' ? 'is-active' : ''} onClick={() => setView('collections')}>Collections</button>
-        <button type="button" className={view === 'following' ? 'is-active' : ''} onClick={() => setView('following')}>Following</button>
+        <button type="button" className={view === 'saved' ? 'is-active' : ''} onClick={() => selectView('saved')}>Saved</button>
+        <button type="button" className={view === 'likes' ? 'is-active' : ''} onClick={() => selectView('likes')}>Likes</button>
+        <button type="button" className={view === 'collections' ? 'is-active' : ''} onClick={() => selectView('collections')}>Collections</button>
+        <button type="button" className={view === 'following' ? 'is-active' : ''} onClick={() => selectView('following')}>Following</button>
       </div>
 
       {view === 'saved' && <>

@@ -1,8 +1,8 @@
 import type { CapacitorConfig } from '@capacitor/cli'
 
 const config: CapacitorConfig = {
-  appId: 'app.xsutra.mobile',
-  appName: 'X-sutra',
+  appId: 'app.redgrab.downloader',
+  appName: 'RedGrab',
   webDir: 'dist',
   plugins: {
     CapacitorHttp: {
