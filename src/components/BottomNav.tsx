@@ -22,7 +22,17 @@ export function BottomNav(): React.JSX.Element {
             key={path}
             className={`nav-tab${selected ? ' is-active' : ''}`}
             type="button"
-            onClick={() => navigate(path)}
+            onClick={() => {
+              // Tapping the current tab scrolls its screen back to the top.
+              if (selected) {
+                window.scrollTo({ top: 0, behavior: 'smooth' })
+                return
+              }
+              // Tab switches REPLACE the history entry: tabs are roots, not
+              // stacked screens — this keeps Back predictable and stops
+              // tab-hopping from piling duplicate screens into history.
+              navigate(path, { replace: true })
+            }}
             aria-current={selected ? 'page' : undefined}
           >
             <span className="nav-icon"><Icon size={20} /></span>

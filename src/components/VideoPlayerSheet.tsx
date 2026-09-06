@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import { compactNumber, durationLabel } from '../lib/format'
 import { playbackCandidates } from '../lib/media'
@@ -52,6 +52,16 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
     notify
   } = useApp()
   const navigate = useNavigate()
+  const location = useLocation()
+
+  // Close via UI (X button / Escape): when the Back-trap marker is the current
+  // history entry, closing pops it so no zombie marker is left behind; the
+  // pop itself closes the sheet via the effect in XsApp. Otherwise close
+  // directly.
+  const closeFromUi = useCallback((): void => {
+    if ((location.state as { playerSheet?: boolean } | null)?.playerSheet) navigate(-1)
+    else closePlayer()
+  }, [location.state, navigate, closePlayer])
 
   const items = playerQueue
   const current = activeMedia
@@ -289,7 +299,7 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
   useEffect(() => {
     if (!current) return
     const onKey = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') closePlayer()
+      if (event.key === 'Escape') closeFromUi()
       else if (event.key === 'ArrowDown') step(1)
       else if (event.key === 'ArrowUp') step(-1)
       else if (event.key === ' ') {
@@ -305,7 +315,7 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
       window.removeEventListener('keydown', onKey)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [current?.id, closePlayer, step, togglePlay])
+  }, [current?.id, closeFromUi, step, togglePlay])
 
   if (!current) {
     return null
@@ -437,7 +447,7 @@ export function VideoPlayerSheet(): React.JSX.Element | null {
         <span className="player-chip">
           Clips · {playerIndex + 1}/{playerQueue.length || 1}
         </span>
-        <button className="player-close" onClick={closePlayer} aria-label="Close">
+        <button className="player-close" onClick={closeFromUi} aria-label="Close">
           <CloseIcon size={22} />
         </button>
       </div>

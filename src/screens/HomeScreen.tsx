@@ -14,7 +14,7 @@ import { deterministicShuffle, getDailySeed } from '../hooks/usePagedMedia'
 import { useHub } from '../hooks/useHub'
 import { markNotificationsRead, openHubLink, refreshHub, relativeTime, unreadCount } from '../lib/adminHub'
 import { isRedgifsVideo, publicMediaApi } from '../lib/redgifs'
-import { sortForUser, hasViewHistory, getTopCreators, getTopTags, getWatchedVideoIds, subscribeWatched } from '../lib/viewHistory'
+import { sortForUser, hasViewHistory, getTopCreators, getTopTags, getWatchedVideoIds } from '../lib/viewHistory'
 import type { FeedOrder, MediaItem, PageResult } from '../types'
 
 type HomeFeed = 'latest' | 'trending' | 'likes' | 'views' | 'longest' | 'foryou'
@@ -72,11 +72,12 @@ export function HomeScreen(): React.JSX.Element {
   const topCreators = getTopCreators(5)
   const topTags = getTopTags(8)
 
-  // Re-filter whenever a clip is watched so it drops out of the feed and never
-  // keeps re-surfacing at the top.
-  const [watchedRevision, setWatchedRevision] = useState(0)
-  useEffect(() => subscribeWatched(() => setWatchedRevision((r) => r + 1)), [])
-  const watchedIds = useMemo(() => getWatchedVideoIds(), [watchedRevision])
+  // Watched-clip filter, frozen for the lifetime of the rendered feed. It is
+  // refreshed only while a (re)load is running — never mid-browse — so opening
+  // a clip and coming back finds the grid EXACTLY where it was (the old live
+  // re-filter yanked the just-opened card the instant the player opened and
+  // shifted the whole grid). Watched clips still drop out on the next reload.
+  const [watchedIds, setWatchedIds] = useState<Set<string>>(() => getWatchedVideoIds())
 
   // Load feeds from top creators for personalization
   useEffect(() => {
@@ -140,6 +141,12 @@ export function HomeScreen(): React.JSX.Element {
     return normalizePage(result, logicalPage, firstApiPage, mode)
   }, [firstApiPage, mode])
   const feed = usePagedMedia(loadFeed, [mode, firstApiPage], dailySeed)
+
+  // Re-arm the watched filter only while a feed (re)load is in flight.
+  const feedLoading = feed.loading
+  useEffect(() => {
+    if (feedLoading) setWatchedIds(getWatchedVideoIds())
+  }, [feedLoading])
 
   // Stable feed - no auto-refresh that changes order. User scrolls = load more at bottom only.
   const [scrollProgress, setScrollProgress] = useState(0)

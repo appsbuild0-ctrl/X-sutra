@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { HashRouter, Navigate, Route, Routes, useLocation } from 'react-router-dom'
+import { HashRouter, Navigate, Route, Routes, useLocation, useNavigate, useNavigationType } from 'react-router-dom'
 import { BottomNav } from './components/BottomNav'
 import { ContentShield } from './components/ContentShield'
 import { ErrorBoundary } from './components/ErrorBoundary'
@@ -32,6 +32,15 @@ import { TagScreen } from './screens/TagScreen'
 import { YouScreen } from './screens/YouScreen'
 
 type RouteLocation = ReturnType<typeof useLocation>
+
+/** History marker pushed while the video player sheet is open. The browser /
+ *  Android Back button then pops the marker (closing the sheet) instead of
+ *  leaving the screen underneath. */
+const PLAYER_STATE_KEY = 'playerSheet'
+
+function isPlayerMarker(location: RouteLocation): boolean {
+  return Boolean((location.state as { playerSheet?: boolean } | null)?.playerSheet)
+}
 
 function PremiumOnly({ children }: { children: React.ReactNode }): React.JSX.Element {
   const { account } = useApp()
@@ -81,6 +90,9 @@ const MAX_KEPT_SCREENS = 12
  */
 function RouteKeepAlive(): React.JSX.Element {
   const location = useLocation()
+  const navigationType = useNavigationType()
+  const navigate = useNavigate()
+  const { activeMedia } = useApp()
   // Each history entry's screen stays mounted so a "back" resumes it in place.
   const [entries, setEntries] = useState<Array<{ key: string; location: RouteLocation }>>(() => [
     { key: location.key, location }
@@ -96,6 +108,37 @@ function RouteKeepAlive(): React.JSX.Element {
     const key = location.key
     if (key === handledKey.current) return
     handledKey.current = key
+
+    // The player's Back-trap marker never touches the stack or the scroll:
+    // the screen that was on top when the player opened simply stays on top
+    // (same content, same scroll) while the sheet covers it.
+    if (isPlayerMarker(location)) {
+      if (!activeMedia) {
+        // A zombie marker (the player was closed via an in-app link, leaving
+        // its marker in the stack): hop straight past it.
+        window.setTimeout(() => navigate(-1), 0)
+      }
+      return
+    }
+
+    if (navigationType === 'REPLACE') {
+      setEntries((current) => {
+        const top = current[current.length - 1]
+        if (top && top.location.pathname === location.pathname) {
+          // Same screen, only params/state replaced (Library tabs): update the
+          // mounted copy in place — no remount, and its scroll is preserved
+          // because we deliberately do not bump restoreTick.
+          return [...current.slice(0, -1), { key: top.key, location }]
+        }
+        // A root-level replace (bottom-nav tab taps use replace so tabs never
+        // pile up in history): collapse to the single fresh screen. Older
+        // stacked copies are dropped rather than kept loading in the dark.
+        return [{ key, location }]
+      })
+      if (entries[entries.length - 1]?.location.pathname !== location.pathname) setRestoreTick((t) => t + 1)
+      return
+    }
+
     setEntries((current) => {
       let next: Array<{ key: string; location: RouteLocation }>
       const existing = current.findIndex((entry) => entry.key === key)
@@ -103,6 +146,10 @@ function RouteKeepAlive(): React.JSX.Element {
         // Back to a screen that is still mounted: drop any screens opened
         // after it, then show that older copy again in place.
         next = current.slice(0, existing + 1)
+      } else if (navigationType === 'POP' && current.length > 0 && current[current.length - 1].location.pathname === location.pathname) {
+        // POP into an entry we already replaced for the same screen (browser
+        // forward into a params-replaced entry): refresh the mounted copy.
+        next = [...current.slice(0, -1), { key, location }]
       } else {
         // A brand-new push: keep the current screen mounted underneath it.
         next = [...current, { key, location }]
@@ -162,7 +209,43 @@ function RouteKeepAlive(): React.JSX.Element {
 
 function XsApp(): React.JSX.Element {
   const location = useLocation()
+  const navigate = useNavigate()
+  const { activeMedia, closePlayer } = useApp()
   const inPremium = location.pathname.startsWith('/premium')
+  // Whether the currently open player has its Back-trap marker in history.
+  const playerTrapArmed = useRef(false)
+
+  // The video player sheet is part of navigation history. Opening it pushes a
+  // marker entry on the SAME path, so the hardware/browser Back button pops
+  // the marker and closes the sheet — leaving the feed/search/tag screen
+  // underneath exactly where it was (mounted, same scroll). Without the
+  // marker, Back left the whole screen and returning started from the top.
+  useEffect(() => {
+    if (!activeMedia) {
+      playerTrapArmed.current = false
+      return
+    }
+    if (isPlayerMarker(location)) {
+      // Our trap entry just landed (or the sheet is still sitting on it).
+      playerTrapArmed.current = true
+      return
+    }
+    if (playerTrapArmed.current) {
+      // We HAD a marker but the location no longer carries it: the user
+      // pressed Back, switched tabs, or followed an in-app link. Close the
+      // sheet — do not navigate anywhere from here.
+      playerTrapArmed.current = false
+      closePlayer()
+      return
+    }
+    // The sheet just opened: arm the trap.
+    playerTrapArmed.current = true
+    navigate(
+      { pathname: location.pathname, search: location.search, hash: location.hash },
+      { state: { playerSheet: true } }
+    )
+  }, [activeMedia, location, navigate, closePlayer])
+
   return (
     <div className={`app-frame${inPremium ? ' app-frame--ott' : ''}${location.pathname.startsWith('/admin') ? '' : ' app-frame--guard'}`}>
       <ContentShield />
