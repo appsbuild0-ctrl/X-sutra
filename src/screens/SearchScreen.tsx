@@ -111,7 +111,7 @@ export function SearchScreen(): React.JSX.Element {
       {creatorError && <ScreenNotice>Creator results are temporarily unavailable.</ScreenNotice>}
 
       <div className="subsection-heading subsection-heading--spaced">Video results</div>
-      {feed.error ? <LiveError message={feed.error} onRetry={feed.reload} title="Search could not load live data." /> : (
+      {feed.error && feed.items.length === 0 ? <LiveError message={feed.error} onRetry={feed.reload} title="Search could not load live data." /> : (
         <MediaGrid items={feed.items} loading={feed.loading} canLoadMore={feed.canLoadMore} loadingMore={feed.loadingMore} onLoadMore={() => void feed.loadMore()} empty={<div className="empty-state"><strong>No public matches found.</strong><span>Try a shorter tag, title, or creator name.</span></div>} />
       )}
     </section>

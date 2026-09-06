@@ -86,7 +86,7 @@ export function CreatorScreen(): React.JSX.Element {
         <label className="sort-control"><span className="sr-only">Sort creator clips</span><select value={order} onChange={(event) => setOrder(event.target.value as FeedOrder)}><option value="latest">Latest</option><option value="score">Score</option><option value="top">Top</option></select></label>
       </div>
 
-      {feed.error ? <LiveError message={feed.error} onRetry={feed.reload} title="Creator clips could not load." /> : (
+      {feed.error && feed.items.length === 0 ? <LiveError message={feed.error} onRetry={feed.reload} title="Creator clips could not load." /> : (
         <MediaGrid items={feed.items} loading={feed.loading} canLoadMore={feed.canLoadMore} loadingMore={feed.loadingMore} onLoadMore={() => void feed.loadMore()} empty={<div className="empty-state"><strong>No public clips are available for this creator.</strong></div>} />
       )}
     </section>

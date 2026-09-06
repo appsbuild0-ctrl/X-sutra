@@ -13,7 +13,7 @@ export function PremiumVideosScreen(): React.JSX.Element {
   return (
     <section className="screen screen--ott">
       <ScreenHeader title="Desi videos" eyebrow="RedGifs · public" actions={<button className="round-button" type="button" onClick={() => navigate('/premium')} aria-label="Back">‹</button>} />
-      {feed.error
+      {feed.error && feed.items.length === 0
         ? <LiveError message={feed.error} onRetry={feed.reload} title="Desi videos could not load." />
         : <MediaGrid items={feed.items} loading={feed.loading} canLoadMore={feed.canLoadMore} loadingMore={feed.loadingMore} onLoadMore={() => void feed.loadMore()} empty={<div className="empty-state"><strong>No public Desi clips right now.</strong></div>} />}
     </section>

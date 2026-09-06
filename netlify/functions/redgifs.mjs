@@ -11,10 +11,18 @@ const BASE_HEADERS = {
   Origin: 'https://www.redgifs.com'
 }
 
-// Short-lived cache for public GET responses. Warm function instances share
-// the module scope, so revisits/retries reuse successful pages for 5 minutes.
+// Response cache for public GETs. Warm function instances share the module
+// scope, so revisits reuse successful pages for 5 minutes — and for up to 2
+// hours AFTER expiry a stale copy can still answer when the upstream rate
+// limit is rejecting everything (shared egress IPs hit RedGifs' per-IP 429).
 const CACHE_TTL = 5 * 60 * 1000
+const STALE_TTL = 2 * 60 * 60 * 1000
 const cache = new Map()
+
+// Reuse the anonymous token across warm invocations instead of asking for a
+// new one per request — token calls count against the same shared-IP budget.
+let cachedToken = ''
+let tokenExpiry = 0
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 
@@ -59,12 +67,15 @@ function allowedPath(path, source) {
   }
 }
 
-async function temporaryToken() {
+async function temporaryToken(force = false) {
+  if (!force && cachedToken && Date.now() < tokenExpiry) return cachedToken
   const response = await fetch(`${ORIGIN}/v2/auth/temporary`, { headers: { ...BASE_HEADERS } })
   if (!response.ok) throw new Error(`Temporary token request failed (${response.status})`)
   const data = await response.json()
   if (!data?.token) throw new Error('Temporary public token response was empty')
-  return data.token
+  cachedToken = data.token
+  tokenExpiry = Date.now() + 40 * 60 * 1000
+  return cachedToken
 }
 
 export const handler = async (event) => {
@@ -78,16 +89,19 @@ export const handler = async (event) => {
   const hit = cache.get(cacheKey)
   if (hit && Date.now() < hit.exp) return json(200, hit.body)
 
+  // When the upstream flat-out refuses (rate limit, outage), an expired cache
+  // copy is still far better than an error screen.
+  const stale = () => (hit && Date.now() < hit.staleExp ? json(200, hit.body, { 'X-Cache': 'stale' }) : null)
+
   try {
-    // A fresh anonymous token is obtained in the same function invocation as
-    // the API request, with the same request fingerprint (UA + Referer +
-    // Origin) so the API returns the clean media URLs.
+    // Anonymous token (cached on the instance) + the same request fingerprint
+    // (UA + Referer + Origin) so the API returns the clean media URLs.
     let body = ''
     let status = 0
     for (let attempt = 0; attempt <= 2; attempt++) {
       const headers = source === 'getredgifs'
         ? { Accept: 'application/json', 'User-Agent': USER_AGENT }
-        : { ...BASE_HEADERS, Authorization: `Bearer ${await temporaryToken()}` }
+        : { ...BASE_HEADERS, Authorization: `Bearer ${await temporaryToken(attempt > 0 && status === 401)}` }
       const response = await fetch(target, { headers })
       status = response.status
       if (status === 429 && attempt < 2) {
@@ -99,14 +113,24 @@ export const handler = async (event) => {
         await sleep(delay)
         continue
       }
+      if (status === 401 && attempt < 2) {
+        await sleep(400)
+        continue
+      }
       body = await response.text()
       break
     }
-    if (status === 200) cache.set(cacheKey, { body: JSON.parse(body), exp: Date.now() + CACHE_TTL })
+    if (status === 200) cache.set(cacheKey, { body: JSON.parse(body), exp: Date.now() + CACHE_TTL, staleExp: Date.now() + STALE_TTL })
+    else {
+      const fallback = stale()
+      if (fallback) return fallback
+    }
     return json(status, body, {
       'Cache-Control': status === 200 ? 'public, max-age=45, s-maxage=45' : 'no-store'
     })
   } catch (error) {
+    const fallback = stale()
+    if (fallback) return fallback
     const message = error instanceof Error ? error.message : 'Unable to retrieve public media data.'
     return json(502, { error: message }, { 'Cache-Control': 'no-store' })
   }

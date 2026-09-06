@@ -1,5 +1,5 @@
 import { Capacitor, CapacitorHttp } from '@capacitor/core'
-import { grgGif, grgUserFeed } from './getredgifs'
+import { grgGif, grgTrending, grgUserFeed } from './getredgifs'
 import type { Creator, CreatorProfile, FeedOrder, MediaItem, Niche, PageResult, TagSuggestion } from '../types'
 
 /**
@@ -31,6 +31,46 @@ let nativeToken = ''
 let nativeTokenExpiry = 0
 
 type RawRecord = Record<string, unknown>
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
+
+/**
+ * Parse the API's rate-limit body ("error.delay" is in seconds) into a wait
+ * time in milliseconds, with an exponential floor and jitter so every stalled
+ * client doesn't hammer the API again in lockstep.
+ */
+function rateLimitDelayMs(body: string, attempt: number): number {
+  let seconds = 0
+  try {
+    const parsed = JSON.parse(body) as { error?: { delay?: unknown } }
+    const raw = parsed?.error?.delay
+    seconds = typeof raw === 'number' ? raw : Number(raw) || 0
+  } catch { /* body was not JSON */ }
+  const backoffFloor = 1000 * 2 ** attempt
+  return Math.min(Math.max(seconds * 1000, backoffFloor), 8000) + Math.random() * 250
+}
+
+/**
+ * Fetch a proxy URL retrying ONLY 429 responses. The whole site shares the
+ * proxy's egress IP, so bursts trip RedGifs' per-IP rate limit; the status is
+ * transient by design and the body tells us how long to wait. Every other
+ * status returns immediately.
+ */
+async function fetchWithRateLimitRetry(url: string, init?: RequestInit, retries = 2): Promise<Response> {
+  let response = await fetch(url, init)
+  for (let attempt = 0; response.status === 429 && attempt < retries; attempt += 1) {
+    const body = await response.text().catch(() => '')
+    await sleep(rateLimitDelayMs(body, attempt))
+    response = await fetch(url, init)
+  }
+  return response
+}
+
+// Short-lived client cache for successful feed responses. Tab switches and
+// keep-alive remounts reuse a page for 60s instead of re-hitting the API —
+// every cached page is one fewer request against the shared proxy rate limit.
+const FEED_CACHE_TTL = 60 * 1000
+const feedCache = new Map<string, { data: unknown; exp: number }>()
 
 function record(value: unknown): RawRecord {
   return value && typeof value === 'object' ? (value as RawRecord) : {}
@@ -160,7 +200,7 @@ async function nativeRequest<T>(path: string, retry = true): Promise<T> {
 
 async function rewriteTemporaryToken(force = false): Promise<string> {
   if (!force && rewriteToken && Date.now() < rewriteTokenExpiry) return rewriteToken
-  const response = await fetch(`${PROXY_PATH}/v2/auth/temporary`, { headers: { Accept: 'application/json' } })
+  const response = await fetchWithRateLimitRetry(`${PROXY_PATH}/v2/auth/temporary`, { headers: { Accept: 'application/json' } })
   if (!response.ok) throw new Error(`Temporary public token request failed (${response.status})`)
   const data = await response.json() as { token?: string }
   if (!data.token) throw new Error('Temporary public token response was empty')
@@ -171,7 +211,7 @@ async function rewriteTemporaryToken(force = false): Promise<string> {
 
 async function rewriteRequest<T>(path: string, retry = true): Promise<T> {
   const token = await rewriteTemporaryToken(!retry)
-  const response = await fetch(`${PROXY_PATH}${path}`, {
+  const response = await fetchWithRateLimitRetry(`${PROXY_PATH}${path}`, {
     headers: { Accept: 'application/json', Authorization: `Bearer ${token}` }
   })
   if (response.status === 401 && retry) {
@@ -189,7 +229,7 @@ async function rewriteRequest<T>(path: string, retry = true): Promise<T> {
 async function functionRequest<T>(path: string): Promise<T> {
   const url = new URL(PROXY_PATH, window.location.origin)
   url.searchParams.set('path', path)
-  const response = await fetch(url.toString(), { headers: { Accept: 'application/json' } })
+  const response = await fetchWithRateLimitRetry(url.toString(), { headers: { Accept: 'application/json' } })
   // A missing function (plain static deploy) is answered with 404 or the SPA
   // shell HTML — both mean "no function here", never valid feed data.
   if (!response.ok) throw new Error(`Function proxy unavailable (${response.status})`)
@@ -200,16 +240,24 @@ async function functionRequest<T>(path: string): Promise<T> {
 
 async function request<T>(pathname: string, params?: Record<string, string | number | boolean | undefined>): Promise<T> {
   const path = queryPath(pathname, params)
-  if (Capacitor.isNativePlatform()) return nativeRequest<T>(path)
+  const hit = feedCache.get(path)
+  if (hit && Date.now() < hit.exp) return hit.data as T
 
-  if (proxyMode === 'function') {
+  let data: T
+  if (Capacitor.isNativePlatform()) {
+    data = await nativeRequest<T>(path)
+  } else if (proxyMode === 'function') {
     try {
-      return await functionRequest<T>(path)
+      data = await functionRequest<T>(path)
     } catch {
       proxyMode = 'rewrite'
+      data = await rewriteRequest<T>(path)
     }
+  } else {
+    data = await rewriteRequest<T>(path)
   }
-  return rewriteRequest<T>(path)
+  feedCache.set(path, { data: data as unknown, exp: Date.now() + FEED_CACHE_TTL })
+  return data
 }
 
 function mediaFromRaw(value: unknown): MediaItem {
@@ -333,11 +381,32 @@ function nicheFromRaw(value: unknown): Niche | null {
   }
 }
 
+// True after the current trending page 1 was served by the no-login source —
+// deeper pages then offset the paginated search endpoint by one page.
+let trendingPageOneDirect = false
+
 export const publicMediaApi = {
   async trending(page = 1): Promise<PageResult<MediaItem>> {
-    // Use the paginated search endpoint with trending order for unlimited pages.
-    // The /v2/feeds/trending/popular endpoint only returns 1 page (no pagination).
-    return mediaPage(await request('/v2/gifs/search', { page, count: 100, order: 'trending' }))
+    // Page 1 rides getredgifs.com straight from the BROWSER (each visitor's own
+    // IP — CORS-open, no login). The home/trending feeds are the hottest
+    // traffic, and sending them through the proxy got the proxy's shared
+    // egress IP rate-limited (HTTP 429) for every visitor at once. Deeper
+    // pages still use the paginated search endpoint (with 429 retries).
+    if (page === 1) {
+      try {
+        const items = await grgTrending()
+        if (items.length) {
+          trendingPageOneDirect = true
+          return { items, page: 1, pages: Number.MAX_SAFE_INTEGER, total: items.length }
+        }
+      } catch { /* fall through to the proxy flow */ }
+      trendingPageOneDirect = false
+      return mediaPage(await request('/v2/gifs/search', { page: 1, count: 100, order: 'trending' }))
+    }
+    // The no-login trending batch already covered page 1, so the proxied
+    // search starts at ITS first page (overlaps are filtered by the pager).
+    const searchPage = trendingPageOneDirect ? Math.max(1, page - 1) : page
+    return mediaPage(await request('/v2/gifs/search', { page: searchPage, count: 100, order: 'trending' }))
   },
 
   async latest(page = 1, order: FeedOrder = 'latest'): Promise<PageResult<MediaItem>> {

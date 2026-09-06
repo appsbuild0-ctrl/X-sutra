@@ -269,7 +269,7 @@ export function HomeScreen(): React.JSX.Element {
         {preferences.blockedTags.length > 0 && <ScreenNotice>{preferences.blockedTags.length} blocked tag{preferences.blockedTags.length === 1 ? '' : 's'} are hidden from this live feed.</ScreenNotice>}
         <div className="section-heading"><div><p className="eyebrow">{selected.eyebrow}</p><h3>{selected.title}</h3></div>{!feed.loading && <span>{visibleItems.length} loaded</span>}</div>
 
-        {feed.error ? <LiveError message={feed.error} onRetry={feed.reload} /> : <MediaGrid items={visibleItems} loading={feed.loading} canLoadMore={feed.canLoadMore} loadingMore={feed.loadingMore} onLoadMore={() => void feed.loadMore()} empty={<div className="empty-state"><strong>No public clips matched.</strong><span>Change the feed or review blocked tags in Settings.</span></div>} />}
+        {feed.error && visibleItems.length === 0 && !feed.loading ? <LiveError message={feed.error} onRetry={feed.reload} /> : <MediaGrid items={visibleItems} loading={feed.loading} canLoadMore={feed.canLoadMore} loadingMore={feed.loadingMore} onLoadMore={() => void feed.loadMore()} empty={<div className="empty-state"><strong>No public clips matched.</strong><span>Change the feed or review blocked tags in Settings.</span></div>} />}
       </section>
     </PullToRefresh>
   )

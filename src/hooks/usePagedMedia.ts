@@ -59,11 +59,18 @@ export function usePagedMedia(
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const generation = useRef(0)
+  // Once a loadMore call fails, stop auto-retrying that page: the grid stays
+  // mounted (screens only show the full error state when EMPTY), and the
+  // scroll sentinel would otherwise retrigger the request on every render —
+  // an endless retry storm exactly when the API is already rate-limiting us.
+  // Pull-to-refresh / a feed reload re-enables pagination.
+  const loadMoreBlocked = useRef(false)
 
   const reload = useCallback(async () => {
     const requestGeneration = ++generation.current
     setLoading(true)
     setError(null)
+    loadMoreBlocked.current = false
     try {
       const response = await loader(1, dailySeed)
       if (generation.current !== requestGeneration) return
@@ -93,7 +100,7 @@ export function usePagedMedia(
   }, [loader, dailySeed])
 
   const loadMore = useCallback(async () => {
-    if (loading || loadingMore || page >= pages) return
+    if (loading || loadingMore || loadMoreBlocked.current || page >= pages) return
     const requestGeneration = generation.current
     const nextPage = page + 1
     setLoadingMore(true)
@@ -110,7 +117,10 @@ export function usePagedMedia(
       setPage(response.page)
       setPages(response.pages)
     } catch (reason) {
-      if (generation.current === requestGeneration) setError(reason instanceof Error ? reason.message : 'Unable to load more public data.')
+      if (generation.current === requestGeneration) {
+        setError(reason instanceof Error ? reason.message : 'Unable to load more public data.')
+        loadMoreBlocked.current = true
+      }
     } finally {
       if (generation.current === requestGeneration) setLoadingMore(false)
     }

@@ -131,7 +131,7 @@ export function DiscoverScreen(): React.JSX.Element {
           <h3>Fresh clips</h3>
         </div>
       </div>
-      {feed.error ? <LiveError message={feed.error} onRetry={feed.reload} /> : (
+      {feed.error && feed.items.length === 0 ? <LiveError message={feed.error} onRetry={feed.reload} /> : (
         <MediaGrid items={feed.items} loading={feed.loading} canLoadMore={feed.canLoadMore} loadingMore={feed.loadingMore} onLoadMore={() => void feed.loadMore()} empty={<div className="empty-state"><strong>No fresh public clips found.</strong></div>} />
       )}
       </section>

@@ -22,7 +22,7 @@ export function TagScreen(): React.JSX.Element {
         <div className="section-heading section-heading--inline"><div><p className="eyebrow">Tag feed</p><h3>Live results</h3></div></div>
         <label className="sort-control"><span className="sr-only">Sort tag results</span><select value={order} onChange={(event) => setOrder(event.target.value as FeedOrder)}><option value="latest">Latest</option><option value="score">Score</option><option value="top">Top</option></select></label>
       </div>
-      {feed.error ? <LiveError message={feed.error} onRetry={feed.reload} title="Tag search could not load." /> : <MediaGrid items={feed.items} loading={feed.loading} canLoadMore={feed.canLoadMore} loadingMore={feed.loadingMore} onLoadMore={() => void feed.loadMore()} empty={<div className="empty-state"><strong>No public clips found for this tag.</strong></div>} />}
+      {feed.error && feed.items.length === 0 ? <LiveError message={feed.error} onRetry={feed.reload} title="Tag search could not load." /> : <MediaGrid items={feed.items} loading={feed.loading} canLoadMore={feed.canLoadMore} loadingMore={feed.loadingMore} onLoadMore={() => void feed.loadMore()} empty={<div className="empty-state"><strong>No public clips found for this tag.</strong></div>} />}
     </section>
   )
 }
