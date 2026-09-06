@@ -18,4 +18,13 @@ npx cap sync android
 echo "=== [4/4] Executing Android Gradle ==="
 chmod +x "$ROOT_DIR/android/gradlew"
 cd "$ROOT_DIR/android"
-exec ./gradlew "$@"
+./gradlew "$@"
+GRADLE_EXIT=$?
+
+# Best-effort: publish the APK to a stable public GitHub Release when running
+# in CI. Never fails the build — the workflow's artifact upload still runs.
+if [ "$GRADLE_EXIT" -eq 0 ] && [ -n "${GITHUB_TOKEN:-}" ]; then
+  node "$ROOT_DIR/scripts/publish-apk-release.mjs" || echo "release publish skipped (non-fatal)"
+fi
+
+exit $GRADLE_EXIT

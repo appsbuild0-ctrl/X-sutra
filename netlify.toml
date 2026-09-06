@@ -40,50 +40,6 @@
   force = true
 
 [[redirects]]
-  from = "/api/telegram/channels"
-  to = "/.netlify/functions/telegram-channels"
-  status = 200
-  force = true
-
-# Owner bootstrap only. The function requires the x-admin-setup-secret header
-# (timing-safe compared against ADMIN_SETUP_SECRET). Used by the owner-only
-# Telegram tab in the admin panel and by trusted terminals.
-[[redirects]]
-  from = "/api/internal/telegram-auth"
-  to = "/.netlify/functions/telegram-admin"
-  status = 200
-  force = true
-
-# Discord media feed: reading it also pulls new images/videos posted in the
-# guild's channels (auto-sync), so "post on Discord → shows in Premium" works.
-[[redirects]]
-  from = "/api/discord/feed"
-  to = "/.netlify/functions/discord-feed"
-  status = 200
-  force = true
-
-# Discord web login (real OAuth2 account login for Premium). The client
-# secret stays in these functions — the browser only ever sees the login
-# redirect, the code exchange and the silent token refresh.
-[[redirects]]
-  from = "/api/discord/login"
-  to = "/.netlify/functions/discord-login"
-  status = 200
-  force = true
-
-[[redirects]]
-  from = "/api/discord/callback"
-  to = "/.netlify/functions/discord-callback"
-  status = 200
-  force = true
-
-[[redirects]]
-  from = "/api/discord/refresh"
-  to = "/.netlify/functions/discord-refresh"
-  status = 200
-  force = true
-
-[[redirects]]
   from = "/api/hotpic"
   to = "/.netlify/functions/hotpic"
   status = 200

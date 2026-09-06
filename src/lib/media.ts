@@ -21,13 +21,25 @@ export function mediaProxyUrl(url: string): string | null {
  * residential/mobile ones) — so direct URLs come first. The same-origin media
  * proxy stays as a final fallback for environments where direct loading is refused.
  */
+/** A source the <video> element can load: http(s), same-origin API/assets, or
+ *  local blob URLs produced by the premium IndexedDB store. */
+function isPlayableSource(url: string): boolean {
+  if (/^(?:https?|blob):/i.test(url)) return true
+  if (url.startsWith('/')) return /\.(?:mp4|webm|mov|m4v)(?:[?#]|$)/i.test(url) || url.startsWith('/api/media') || url.startsWith('/api/premium-file')
+  return false
+}
+
+function isHotpicSource(url: string): boolean {
+  return /hotpic\.(?:vip|cc|one)(?:\/|$)/i.test(url)
+}
+
 export function playbackCandidates(item: MediaItem): string[] {
   const direct = [
     item.videoUrlSd,   // SD first for faster initial playback
     item.videoUrl,     // HD as fallback after SD starts
     /\.(?:mp4|webm)(?:[?#]|$)/i.test(item.previewUrl ?? '') ? item.previewUrl : undefined,
     ...(item.watermarkedUrls ?? [])
-  ].filter((url): url is string => typeof url === 'string' && /^https?:\/\//i.test(url) && !/hotpic\.(vip|cc|one)\/i\//i.test(url) && /\.(?:mp4|webm|mov|m4v)(?:[?#]|$)/i.test(url))
+  ].filter((url): url is string => typeof url === 'string' && isPlayableSource(url) && !isHotpicSource(url))
 
   const withFallbacks = [...direct]
   for (const url of direct) {

@@ -142,13 +142,7 @@ export function PauseIcon(props: IconProps): React.JSX.Element {
   return <IconFrame {...props} fill="currentColor"><path d="M8 6h3v12H8zM13 6h3v12h-3z" stroke="none" /></IconFrame>
 }
 
-export function DiscordIcon(props: IconProps): React.JSX.Element {
-  return <IconFrame {...props}><path d="M7.5 16.2c3.6 1.7 5.4 1.7 9 0M8.2 14.4s-.8-1.1-.5-3.4c0 0 .8-.2 2.6.9 0 0 1.4-.3 2.7-.3s2.7.3 2.7.3c1.8-1.1 2.6-.9 2.6-.9.3 2.3-.5 3.4-.5 3.4M9.6 12.2c0 .6.5 1 1 1s1-.4 1-1-.4-1-1-1-1 .4-1 1Zm4.8 0c0 .6.4 1 1 1s1-.4 1-1-.5-1-1-1-1 .4-1 1Z" /><path d="M8 6.2C9.6 5.4 11.3 5 13 5s3.4.4 5 1.2c1.2 2.3 1.6 4.6 1.5 6.8-1.5 1.3-3.2 2.2-5 2.7l-.8-1.4c.9-.2 1.7-.6 2.5-1.1-2 .9-4.2.9-6.4 0 .8.5 1.6.9 2.5 1.1l-.8 1.4c-1.8-.5-3.5-1.4-5-2.7C6.4 10.8 6.8 8.5 8 6.2Z" /></IconFrame>
-}
 
-export function TelegramIcon(props: IconProps): React.JSX.Element {
-  return <IconFrame {...props}><path d="M20.4 5.2 3.8 11.4c-1.1.4-1.1 1.1-.2 1.4l4.2 1.3 1.6 5c.2.6.1.8.8.8.4 0 .6-.2.8-.4l2.4-2.3 4.6 3.4c.8.5 1.4.2 1.6-.8l2.9-13.7c.3-1.2-.4-1.8-1.5-1.4Z" /><path d="m9.8 14.1 8.6-5.4c.4-.3.8 0 .5.3l-7 6.4-.3 3.2" /></IconFrame>
-}
 
 export function HashIcon(props: IconProps): React.JSX.Element {
   return <IconFrame {...props}><path d="M5 5h2l1.5 6h-3L4 18h2l1.5-6h3L7 18h2l1.5-6h3L10 5h2l1.5 6h3L13 5h2l1.5 6H14l1 6h-2l-1.5-6h-3L9 18H7l-1-6H4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></IconFrame>

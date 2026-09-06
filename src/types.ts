@@ -104,6 +104,8 @@ export interface LocalAccount {
   createdAt: string
   role: UserRole
   status?: 'on' | 'off'
+  /** Optional local profile photo (data URL) shown as the circular avatar. */
+  profileImageUrl?: string
 }
 
 export type AuthResult = { ok: true } | { ok: false; error: string }

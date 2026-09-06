@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { compactNumber, durationLabel } from '../lib/format'
 import { isUncroppedImage, naturalFrameStyle } from '../lib/imageFit'
-import { hotpicApi } from '../lib/hotpic'
 import { publicMediaApi } from '../lib/redgifs'
 import type { MediaItem } from '../types'
 import { useApp } from '../context/AppContext'
@@ -14,38 +13,49 @@ interface MediaCardProps {
   priority?: boolean
 }
 
+/** Module-level detail cache so every card reuses hydrated media details */
 const detailCache = new Map<string, MediaItem>()
-const detailRequests = new Map<string, Promise<MediaItem>>()
-let activeDetailRequests = 0
-const queuedDetailTasks: Array<() => void> = []
-const MAX_DETAIL_REQUESTS = 4
 
-function runDetailTask<T>(task: () => Promise<T>): Promise<T> {
-  return new Promise((resolve, reject) => {
-    const run = () => {
-      activeDetailRequests += 1
-      void task().then(resolve, reject).finally(() => {
-        activeDetailRequests -= 1
-        queuedDetailTasks.shift()?.()
-      })
-    }
-    if (activeDetailRequests < MAX_DETAIL_REQUESTS) run()
-    else queuedDetailTasks.push(run)
-  })
+/** In-flight detail requests keyed by item id - guarantees max one API call per id */
+const detailInFlight = new Map<string, Promise<MediaItem>>()
+
+function premiumPlaceholder(itemId: string): MediaItem {
+  return { id: itemId, title: 'Premium', duration: 0 } as MediaItem
 }
 
-async function hydrateMedia(item: MediaItem): Promise<MediaItem> {
-  const cached = detailCache.get(item.id)
-  if (cached) return cached
-  const existing = detailRequests.get(item.id)
-  if (existing) return existing
-  const request = runDetailTask(() => publicMediaApi.getById(item.id))
+/** True when the URL can be used as a <video> preview source. The premium
+ *  IndexedDB resolver can hand back `blob:` URLs and same-origin `/api/...`
+ *  file URLs, neither of which contains a video extension. */
+function isPreviewableVideoSource(url: string): boolean {
+  if (!url) return false
+  if (/^(?:blob:)/i.test(url)) return true
+  if (url.startsWith('/')) return url.startsWith('/api/media') || url.startsWith('/api/premium-file') || /\.(?:mp4|webm|mov|m4v)(?:[?#]|$)/i.test(url)
+  return /^https?:\/\//i.test(url) && /\.(?:mp4|webm|mov|m4v)(?:[?#]|$)/i.test(url)
+}
+
+/** Throttle detail API calls - one shared request per item id, cached for the session */
+function throttleDetailRequest(itemId: string, task: () => Promise<MediaItem>): Promise<MediaItem> {
+  const cached = detailCache.get(itemId)
+  if (cached) return Promise.resolve(cached)
+
+  // Premium catalog items are complete already - never hit the public API for them
+  if (itemId.startsWith('pm-') || itemId.startsWith('premium-') || itemId.startsWith('hp-')) {
+    return Promise.resolve(premiumPlaceholder(itemId))
+  }
+
+  const inFlight = detailInFlight.get(itemId)
+  if (inFlight) return inFlight
+
+  const request = task()
     .then((full) => {
-      detailCache.set(item.id, full)
+      detailCache.set(itemId, full)
       return full
     })
-    .finally(() => detailRequests.delete(item.id))
-  detailRequests.set(item.id, request)
+    .catch(() => {
+      detailInFlight.delete(itemId)
+      return { id: itemId, title: 'Loading…', duration: 0 } as MediaItem
+    })
+  detailInFlight.set(itemId, request)
   return request
 }
 
@@ -60,7 +70,37 @@ export function MediaCard({ item, queue, priority = false }: MediaCardProps): Re
   const [imageExhausted, setImageExhausted] = useState(false)
   const [previewFailed, setPreviewFailed] = useState(false)
   const [opening, setOpening] = useState(false)
+  const [videoPausedByUser, setVideoPausedByUser] = useState(false)
 
+  // Watch the card and hydrate lazily once it scrolls into view
+  useEffect(() => {
+    const node = cardRef.current
+    if (!node || typeof IntersectionObserver === 'undefined') {
+      setInView(true)
+      return
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          setInView(true)
+          observer.disconnect()
+        }
+      },
+      { rootMargin: '400px 0px' }
+    )
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [])
+
+  // Hydrate detail URLs lazily once the card is in view
+  useEffect(() => {
+    if (!inView || resolved || !item.id) return
+    void throttleDetailRequest(item.id, () => publicMediaApi.getById(item.id)).then((full) => {
+      if (full.id) setResolved(full)
+    }).catch(() => undefined)
+  }, [inView, item, resolved])
+
+  // Reset per-item state when a different item lands in this card
   useEffect(() => {
     setResolved(detailCache.get(item.id) ?? null)
     setThumbnailIndex(0)
@@ -68,47 +108,24 @@ export function MediaCard({ item, queue, priority = false }: MediaCardProps): Re
     setPreviewFailed(false)
   }, [item.id])
 
+  // Background hydration once thumbnail previews are exhausted
   useEffect(() => {
-    const element = cardRef.current
-    if (!element || priority || !('IntersectionObserver' in window)) return
-    const observer = new IntersectionObserver((entries) => {
-      if (entries.some((entry) => entry.isIntersecting)) {
-        setInView(true)
-        observer.disconnect()
-      }
-    }, { rootMargin: '260px 0px' })
-    observer.observe(element)
-    return () => observer.disconnect()
-  }, [priority, item.id])
+    if (!imageExhausted || resolved || !inView) return
+    void throttleDetailRequest(item.id, () => publicMediaApi.getById(item.id)).then((full) => {
+      if (full.id) setResolved(full)
+    }).catch(() => undefined)
+  }, [imageExhausted, inView, item, resolved])
 
   const isPremium = item.id.startsWith('pm-') || item.id.startsWith('premium-') || item.id.startsWith('hp-') || item.creator === 'premium'
-  const requiresDetail = !isPremium && (!item.videoUrl || item.thumbnailUrls.length === 0)
-  useEffect(() => {
-    if (!inView || resolved || !requiresDetail) return
-    let cancelled = false
-    void hydrateMedia(item).then((full) => { if (!cancelled) setResolved(full) }).catch(() => undefined)
-    return () => { cancelled = true }
-  }, [inView, item, requiresDetail, resolved])
-
   const display = resolved ?? item
   const saved = isSaved(display.id)
   const thumbnails = useMemo(() => [...new Set((display.thumbnailUrls?.length ? display.thumbnailUrls : (display.thumbnail ? [display.thumbnail] : [])).filter(Boolean))], [display.thumbnail, display.thumbnailUrls])
   const activeThumbnail = !imageExhausted ? thumbnails[thumbnailIndex] : undefined
-  const previewSource = /\.(?:mp4|webm|mov|m4v)(?:[?#]|$)/i.test(display.previewUrl ?? display.videoUrlSd ?? display.videoUrl ?? '')
-    ? (display.previewUrl ?? display.videoUrlSd ?? display.videoUrl)
-    : undefined
+  const previewCandidate = display.previewUrl ?? display.videoUrlSd ?? display.videoUrl ?? ''
+  const previewSource = isPreviewableVideoSource(previewCandidate) ? previewCandidate : undefined
   const embedUrl = isPremium ? '' : `https://www.redgifs.com/ifr/${encodeURIComponent(display.id)}?autoplay=1`
-  // Imported/uploaded images keep their own aspect ratio: the frame is sized from
-  // the media's real pixel size and the image is fitted inside it, never cropped.
   const uncropped = isPremium && isUncroppedImage(display)
   const frameStyle = uncropped ? naturalFrameStyle(display.width, display.height) : {}
-
-  useEffect(() => {
-    if (!imageExhausted || resolved || !inView || isPremium) return
-    let cancelled = false
-    void hydrateMedia(item).then((full) => { if (!cancelled) setResolved(full) }).catch(() => undefined)
-    return () => { cancelled = true }
-  }, [imageExhausted, inView, item, resolved])
 
   const nextThumbnail = () => {
     if (thumbnailIndex + 1 < thumbnails.length) setThumbnailIndex((current) => current + 1)
@@ -117,19 +134,66 @@ export function MediaCard({ item, queue, priority = false }: MediaCardProps): Re
 
   const open = () => {
     setOpening(true)
-    // Open player immediately with cached/resolved data, hydrate in background for better URLs
     const full = resolved ?? item
     const fullQueue = (queue?.length ? queue : [item]).map((entry) => entry.id === full.id ? full : (detailCache.get(entry.id) ?? entry))
     openPlayer(full, fullQueue)
-    
-    // Hydrate in background to get better quality URLs if not already loaded
+
+    // Hydrate in background to get better URLs if not already loaded
     if (!resolved && !isPremium) {
-      void hydrateMedia(item).then((hydrated) => {
+      void throttleDetailRequest(item.id, () => publicMediaApi.getById(item.id)).then((hydrated) => {
         setResolved(hydrated)
-        // Update player queue with better URLs if player is still open
       }).catch(() => undefined)
     }
     setTimeout(() => setOpening(false), 300)
+  }
+
+  // Handle video ref for autoplay control.
+  //
+  // Stability contract (the feed "blink" fix): this effect must ONLY re-run when
+  // the <video> element itself is replaced (previewSource is also its React
+  // key). Late detail hydration changes `resolved` — an unrelated value — and
+  // previously sat in the dependency list, so the effect re-ran, its cleanup
+  // wiped video.src, and because the key was unchanged React never restored
+  // the source: every feed card blinked black the moment its detail loaded.
+  const videoRef = useRef<HTMLVideoElement>(null)
+
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+
+    // Mobile browsers only autoplay muted, inline video.
+    video.muted = true
+    video.playsInline = true
+    video.preload = 'auto' // Load metadata immediately for zero lag
+    video.playbackRate = Math.max(0.5, Math.min(2, video.playbackRate || 1))
+    // Old Android WebViews return undefined from play(); normalise before any
+    // .then/.catch so a click / preview autoplay never crashes the feed.
+    try {
+      const p = video.play() as unknown
+      if (p && typeof (p as Promise<void>).then === 'function') {
+        void (p as Promise<void>).catch(() => undefined)
+      }
+    } catch { /* desktop/jsdom preview is optional */ }
+
+    const onPlaying = () => setVideoPausedByUser(false)
+    const onPause = () => setVideoPausedByUser(true)
+    video.addEventListener('playing', onPlaying)
+    video.addEventListener('pause', onPause)
+
+    return () => {
+      video.removeEventListener('playing', onPlaying)
+      video.removeEventListener('pause', onPause)
+      // NEVER clear video.src in this cleanup: the element is either discarded
+      // by React (nothing to preserve) or kept with its source. Wiping it on a
+      // kept element leaves a permanently black, unresponsive preview.
+      try { video.pause() } catch { /* jsdom/autplay edge cases */ }
+    }
+  }, [previewSource])
+
+  const handlePlayClick = () => {
+    // User clicked play - unpause/mute handling
+    setVideoPausedByUser(false)
+    // The video element will handle autoplay unmute on user interaction
   }
 
   return (
@@ -138,27 +202,37 @@ export function MediaCard({ item, queue, priority = false }: MediaCardProps): Re
         className={`media-card__visual${activeThumbnail || (previewSource && !previewFailed) ? '' : ' media-card__visual--empty'}${uncropped ? ' media-card__visual--natural' : ''}`}
         style={frameStyle}
         type="button"
-        onClick={() => void open()}
+        onClick={() => open()}
         aria-label={`Open ${display.title}`}
       >
         {activeThumbnail ? (
           <img key={activeThumbnail} src={activeThumbnail} alt="" loading={priority ? 'eager' : 'lazy'} decoding="async" onError={nextThumbnail} />
         ) : previewSource && inView && !previewFailed ? (
-          <video key={previewSource} src={previewSource} muted playsInline preload="metadata" poster={display.thumbnail} onError={() => setPreviewFailed(true)} />
+          <video
+            ref={videoRef}
+            key={previewSource}
+            src={previewSource}
+            muted
+            autoPlay
+            playsInline
+            preload="auto"
+            poster={display.thumbnail}
+            onError={() => setPreviewFailed(true)}
+          />
         ) : previewFailed ? (
           <span className="media-card__missing">Video unavailable</span>
         ) : (
           <span className="media-card__missing">{opening ? 'Opening…' : 'Preview'}</span>
         )}
         <span className="media-card__shade" aria-hidden="true" />
-        <span className="media-card__play" aria-hidden="true"><PlayIcon size={18} /></span>
+        <span className="media-card__play" aria-hidden="true" onClick={handlePlayClick}><PlayIcon size={18} /></span>
         <span className="media-card__duration">{durationLabel(display.duration)}</span>
         {display.hasAudio && <span className="media-card__audio">Audio</span>}
       </button>
 
       <div className="media-card__info">
         <div className="media-card__copy">
-          <button className="media-card__title" type="button" onClick={() => void open()}>{display.title}</button>
+          <button className="media-card__title" type="button" onClick={() => open()}>{display.title}</button>
           <button className="media-card__creator" type="button" onClick={() => navigate(`/creator/${encodeURIComponent(display.creator)}`)}>@{display.creator}</button>
         </div>
         <button className={`save-button${saved ? ' is-saved' : ''}`} type="button" aria-label={saved ? `Remove ${display.title} from library` : `Save ${display.title} to library`} onClick={() => toggleSaved(display)}><BookmarkIcon size={17} filled={saved} /></button>

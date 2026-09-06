@@ -191,7 +191,7 @@ function UploadAllPanel({ catalog, setCatalog, notify }: { catalog: PremiumCatal
             <option value="">Auto (first active channel)</option>
             {catalog.channels.map((channel) => (
               <option key={channel.id} value={channel.id} disabled={channel.status === 'off'}>
-                {channel.name}{channel.status === 'off' ? ' (off)' : ''}{channel.source === 'discord' ? ' · Discord' : ''}
+                {channel.name}{channel.status === 'off' ? ' (off)' : ''}
               </option>
             ))}
           </select>
@@ -243,7 +243,7 @@ function UploadAllPanel({ catalog, setCatalog, notify }: { catalog: PremiumCatal
         <div className="settings-card">
           {catalog.channels.map((channel) => (
             <label className="setting-row" key={channel.id}>
-              <span><strong>{channel.name}</strong><small>{channel.source === 'discord' ? 'Discord import' : 'Category / channel'}</small></span>
+              <span><strong>{channel.name}</strong><small>Category / channel</small></span>
               <input className="switch" type="checkbox" checked={channel.status !== 'off'} onChange={async () => {
                 const result = await premiumAdmin('updateChannel', { id: channel.id, status: channel.status === 'on' ? 'off' : 'on' })
                 if (result.ok && result.catalog) setCatalog(result.catalog)

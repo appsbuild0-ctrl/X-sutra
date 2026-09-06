@@ -1,18 +1,17 @@
 /**
- * PremiumScreen — Discord-style community channel system.
- * Stack-based: channel list → chat view. Accessible from Home → Premium.
+ * PremiumScreen — community channel system.
+ * Stack-based: channel list → chat view. Accessible via /premium with a
+ * local premium/vip role assigned by the admin.
  */
 
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { CrownMark } from '../components/CrownMark'
 import { PayQrModal, PlanCards, type PlanId } from '../components/PlanPay'
 import { useApp } from '../context/AppContext'
 import { useCommunity } from '../context/CommunityContext'
-import { useDiscordLogin } from '../context/DiscordLoginContext'
 import { uploadToCloudinary, isCloudinaryConfigured } from '../lib/cloudinary'
 import { UNCROPPED_IMAGE_STYLE } from '../lib/imageFit'
-import { DiscordLoginCard, DiscordLogo } from '../components/DiscordLoginCard'
-import { DiscordServerWidget } from '../components/DiscordServerWidget'
 import { hasPremiumAccess, roleLabel } from '../lib/roles'
 import type { CommunityChannel, CommunityCategory, CommunityMessage, MessageAttachment } from '../lib/community'
 import { ChevronRightIcon, PlusIcon, SendIcon, PinIcon, TrashIcon, EditIcon, SmileIcon, ReplyIcon, XIcon } from '../components/icons'
@@ -264,10 +263,6 @@ function PremiumChannelList({ onOpen }: { onOpen: (ch: CommunityChannel) => void
       </header>
 
       <div className="comm-list__body">
-        {/* Live channels of the real x-sutra Discord server (official widget). */}
-        <DiscordServerWidget />
-        {/* Real Discord web login: connected chip, or the one-tap login card. */}
-        <DiscordLoginCard compact />
         {cats.map((cat) => {
           const chs = state.channels.filter((c) => c.categoryId === cat.id).sort((a, b) => a.order - b.order).filter((c) => canView(c))
           if (chs.length === 0 && cat.collapsed) return null
@@ -399,7 +394,7 @@ function PremiumChatView({ channel, onBack }: { channel: CommunityChannel; onBac
       try {
         if (useCloudinary) {
           setUpProg(`Uploading ${i + 1}/${files.length}...`)
-          const res = await uploadToCloudinary(f, 'x-sutra', (pct) => setUpProg(`${f.name} ${pct}%`))
+          const res = await uploadToCloudinary(f, 'redgrab', (pct) => setUpProg(`${f.name} ${pct}%`))
           const type: MessageAttachment['type'] = f.type.startsWith('video/') ? 'video' : f.type.startsWith('image/') ? 'image' : 'file'
           atts.push({ id: `att-${Date.now()}-${i}-${Math.random().toString(36).slice(2,6)}`, type, url: res.secure_url, name: f.name, size: f.size, mimeType: f.type, width: res.width, height: res.height })
         } else {
@@ -493,32 +488,29 @@ function PremiumChatView({ channel, onBack }: { channel: CommunityChannel; onBac
 }
 
 // ═══════════════════════════════════════════════════════
-//  GATE: simple Discord login (or the old plan option)
+//  GATE: local premium role required (plans shown for reference)
 // ═══════════════════════════════════════════════════════
 function UpgradeScreen(): React.JSX.Element {
   const navigate = useNavigate()
   const { account } = useApp()
-  const { busy, error, login, clearError } = useDiscordLogin()
   const [plan, setPlan] = useState<PlanId | null>(null)
   return (
     <section className="screen premium-gate-screen">
-      <div className="premium-gate-hero premium-gate-hero--discord">
+      <div className="premium-gate-hero">
         <button className="ott-exit" type="button" onClick={() => navigate('/')}>← Home</button>
-        <span className="premium-gate-crown premium-gate-crown--discord"><DiscordLogo size={34} /></span>
-        <p className="eyebrow">X-Sutra Premium</p>
-        <h1>Discord se login karo</h1>
-        <p>Apni Discord id se login karo — seedha Premium. Ek baar login karne ke baad baar baar login nahi aayega.</p>
+        <span className="premium-gate-crown"><CrownMark size={34} /></span>
+        <p className="eyebrow">RedGrab Premium</p>
+        <h1>Premium access</h1>
+        <p>Premium/VIP access is activated by the admin on your local account. Sign in and ask the admin to upgrade your role.</p>
         <div className="premium-gate-hero__login">
-          <button type="button" className="discord-login-button" onClick={login} disabled={busy}>
-            <DiscordLogo size={20} />
-            <span>{busy ? 'Opening Discord…' : 'Login with Discord'}</span>
+          <button type="button" className="primary-button primary-button--wide" onClick={() => navigate(account ? '/you' : '/login')}>
+            {account ? `Signed in as @${account.username} (${roleLabel(account.role)})` : 'Sign in to your account'}
           </button>
-          {error && <p className="login-error login-error--center" role="alert" onClick={clearError}>{error}</p>}
         </div>
-        {account && <p className="form-help">App account: {roleLabel(account.role)} · Premium ke liye Discord login karo.</p>}
+        {account && <p className="form-help">Current role: {roleLabel(account.role)} · Premium/VIP role ke baad yahan content unlock ho jayega.</p>}
       </div>
       <details className="premium-plan-details">
-        <summary>Ya plan leke Premium unlock karo ⭐</summary>
+        <summary>Plans dekhein ⭐</summary>
         <div className="premium-plan-section">
           <h2>Premium & VIP plans</h2>
           <PlanCards onPick={setPlan} />
@@ -535,10 +527,9 @@ function UpgradeScreen(): React.JSX.Element {
 // ═══════════════════════════════════════════════════════
 export function PremiumScreen(): React.JSX.Element {
   const { account } = useApp()
-  const { user } = useDiscordLogin()
   const [active, setActive] = useState<CommunityChannel | null>(null)
-  // Premium opens with a local premium role OR a real Discord login session.
-  if (!hasPremiumAccess(account?.role) && !user) return <UpgradeScreen />
+  // Premium opens only with a local premium/vip role assigned by the admin.
+  if (!hasPremiumAccess(account?.role)) return <UpgradeScreen />
   if (active) return <PremiumChatView channel={active} onBack={() => setActive(null)} />
   return <PremiumChannelList onOpen={setActive} />
 }
